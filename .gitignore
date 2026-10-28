@@ -1,0 +1,17 @@
+# Node / Python 运行产物 —— 不进版本库
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+# 插件运行时数据一律在家目录（$DSH_HOME/bili-duty/），万一被复制进来也不要提交
+config.json
+state.json
+token-ledger.json
+pet-log.jsonl
+activity.jsonl
+bili_credential.json
+duty.log*
+install.log
+asr-install.log
+*.tmp

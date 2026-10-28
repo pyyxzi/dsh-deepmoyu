@@ -1,0 +1,83 @@
+{
+  "name": "dsh-deepmoyu",
+  "version": "2.3.0",
+  "private": false,
+  "description": "🐋 DeepMoYu 鲸鱼摸鱼 —— 一只鲸鱼娘在 DSH 里替你刷 B站：搜、读字幕、写日报，可选评论 @ 你（dsh-bili-scroll 0.1.19 分叉，已断开一切自动更新通道）",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "bilibili",
+    "deepmoyu",
+    "鲸鱼摸鱼",
+    "dafeiyu"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyyxzi/dsh-deepmoyu.git"
+  },
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "AGENTS.md",
+    "CONTRIBUTORS.md",
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "assets",
+    "client.js",
+    "cordis.patch.yml",
+    "index.js",
+    "lib",
+    "presets",
+    "prompts",
+    "selfcheck.mjs",
+    "tests",
+    "vendor"
+  ],
+  "engines": {
+    "dsh": ">=0.1.7-rc.1",
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node selfcheck.mjs",
+    "test": "node selfcheck.mjs && node --test tests/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/deepmoyu.patch.yml"
+      ]
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ]
+    }
+  }
+}
