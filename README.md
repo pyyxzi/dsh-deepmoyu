@@ -30,13 +30,15 @@ B站登录凭证只存在本机运行目录，不上传任何服务器。
 
 ## 安装
 
-### 方式一：DSH 插件市场 / npm（推荐）
+### 方式一：通过 npm 安装（已发布）
+
+正式版 **2.3.0** 已发布到 [npm](https://www.npmjs.com/package/dsh-deepmoyu)，`latest` 指向正式版，可直接安装：
 
 ```powershell
 dsh plugin --profile web add dsh-deepmoyu
 ```
 
-或在 DSH 桌面版的插件市场里搜索 **DeepMoYu / 鲸鱼摸鱼**（npm 发布后可检索到，索引同步可能有一点延迟）。
+**DSH 插件市场收录是另一个步骤。** `dshmarket` 使用 [awesome-dsh-plugin 插件目录](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)，需提交条目并经维护者审核；npm 发布不会自动让插件出现在市场。当前尚未收录，市场未搜到时请用上面的命令安装。目录要求仓库创建至少满一天，具体规则见其 [贡献指南](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)。
 
 ### 方式二：从 GitHub 源码
 
