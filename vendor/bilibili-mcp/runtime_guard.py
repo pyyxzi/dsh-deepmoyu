@@ -286,7 +286,27 @@ class RuntimeGuard:
             return
         now, factor = self._clock(), self._pace_factor()
 
-        def event(kind, stamp, next_stamp=None):
+        # JS pins the actual next free time into last[kind].next using the factor that
+        # was active when that send happened. Re-deriving it from `recent` with the
+        # *current* factor made "switch to careful" lengthen waits that were already
+        # fixed (observed: 115s became 355s). Keep the recorded value authoritative.
+        last = raw.get("last")
+        stored = []
+        for kind, row in (last.items() if isinstance(last, dict) else []):
+            if isinstance(row, dict):
+                at = _finite(row.get("at"))
+                nxt = _finite(row.get("next"))
+                stored.append((kind, at, nxt if nxt > 0 else None))
+            else:
+                stored.append((kind, _finite(row), None))
+
+        def recorded_next(kind, at):
+            for s_kind, s_at, s_next in stored:
+                if s_kind == kind and s_next and abs(s_at - at) <= 2000:
+                    return s_next
+            return None
+
+        def event(kind, stamp, next_stamp=None, pinned=False):
             at = _finite(stamp) / 1000
             if kind not in PACE or at <= 0:
                 return
@@ -300,8 +320,15 @@ class RuntimeGuard:
                                   "WHERE kind=? AND status='sent' AND token<>'' AND ABS(at-?)<=2 "
                                   "ORDER BY ABS(at-?) LIMIT 1", (kind, at, at)).fetchone()
             if native:
-                conn.execute("UPDATE guard_pace_events SET next=MAX(next,?) WHERE event_key=?",
-                             (free, native["event_key"]))
+                # The host already pinned this interval (one random draw, shown in the GUI).
+                # Python's own independent draw must not silently lengthen it — otherwise the
+                # UI says "40s left" while the native guard still waits 90s.
+                if pinned:
+                    conn.execute("UPDATE guard_pace_events SET next=? WHERE event_key=?",
+                                 (free, native["event_key"]))
+                else:
+                    conn.execute("UPDATE guard_pace_events SET next=MAX(next,?) WHERE event_key=?",
+                                 (free, native["event_key"]))
                 return
             key = f"seed:{kind}:{int(round(at * 1000))}"
             conn.execute("INSERT INTO guard_pace_events(event_key,kind,at,next,status,token) "
@@ -311,13 +338,11 @@ class RuntimeGuard:
         recent = raw.get("recent")
         for row in (recent[-200:] if isinstance(recent, list) else []):
             if isinstance(row, dict):
-                event(str(row.get("k") or ""), row.get("t"))
-        last = raw.get("last")
-        for kind, row in (last.items() if isinstance(last, dict) else []):
-            if isinstance(row, dict):
-                event(kind, row.get("at"), row.get("next"))
-            else:
-                event(kind, row)
+                kind, at = str(row.get("k") or ""), _finite(row.get("t"))
+                nxt = recorded_next(kind, at)
+                event(kind, at, nxt, pinned=nxt is not None)
+        for kind, at, nxt in stored:
+            event(kind, at, nxt, pinned=nxt is not None)
         book = self._pace_state(conn)
         cool = _finite(raw.get("cooldownUntil")) / 1000
         if cool > book["cooldown_until"]:

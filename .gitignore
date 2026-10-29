@@ -15,3 +15,29 @@ duty.log*
 install.log
 asr-install.log
 *.tmp
+
+# Local credentials and account data
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+feiyu.json
+send-review.json
+learn.json
+voice.md
+soul.md
+seen.md
+*.sqlite*
+
+# Release bundles and validation outputs
+/release/
+/dist/
+/coverage/
+.qa-output/
+.tmp/
+*.tgz
+*.zip
+.venv*/
+.pytest_cache/

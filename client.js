@@ -14,9 +14,9 @@
  *       slots.inject('settings.section', () => slots.register(
  *         { name: 'settings.section', id: 'dafeiyu', order: 30, label: '刷B站' }, …))   // ✗ 已移除
  *
- *   现在的入口只有一条：**点桌宠 → 弹菜单 → ⚙️ 设置 → 弹窗**（PetSettingsModal）。
- *   弹窗九项侧栏：偏好与桌宠 / 运行方式 / 互动与投递 / 表情收藏 / 学习与记忆 /
- *   token 账本 / 运行日志 / 日报视频 / 账号与环境；仅构建当前页，账本独立并支持截图。
+ *   现在的入口只有一条：**点桌宠 → 弹菜单 → 工作台 → 弹窗**（PetSettingsModal）。
+ *   弹窗六组导航：运行方式 / 互动与投递 / 记忆与素材 / 视频工作室 / 记录与用量 /
+ *   偏好与设置；表情、账本、回顾与环境通过子页访问，仅构建当前页。
  *   ⇒ `inject` 也跟着清空成 `[]`，apply() 只做两件事：挂样式、挂桌宠。
  *   ⚠️ 别再加回 settings.section —— selfcheck.mjs 会直接判红。
  *
@@ -66,6 +66,7 @@ window.__ModuleLoader__.load({
       const error = new Error('HTTP ' + res.status + why + (message ? '：' + message : ''))
       error.status = res.status
       error.code = detail?.code
+      error.sessionId = detail?.sessionId
       throw error
     }
     const jget = async (p) => asJson(await fetch(API + p, { credentials: 'same-origin' }))
@@ -232,7 +233,7 @@ window.__ModuleLoader__.load({
   border:1.5px solid rgba(255,255,255,.9);background:#9db8c8;box-shadow:0 1px 4px rgba(2,12,22,.35);
   pointer-events:none;z-index:2;}
 [data-bd-pet-mood][data-mood=curious]{background:#56c8d2;box-shadow:0 0 8px rgba(86,200,210,.8);animation:bdMoodBreathe 3.2s ease-in-out infinite;}
-[data-bd-pet-mood][data-mood=content]{background:#8fd08f;box-shadow:0 0 8px rgba(143,208,143,.7);}
+[data-bd-pet-mood][data-mood=content]{background:#f0ac91;box-shadow:0 0 8px rgba(240,172,145,.5);}
 [data-bd-pet-mood][data-mood=glum]{background:#a39ad9;box-shadow:0 0 6px rgba(163,154,217,.55);}
 [data-bd-pet-mood][data-mood=attention]{background:#ffb14d;box-shadow:0 0 10px rgba(255,177,77,.9);animation:bdMoodPulse 1.6s ease-in-out infinite;}
 @keyframes bdMoodBreathe{0%,100%{transform:scale(1);}50%{transform:scale(1.2);}}
@@ -477,7 +478,77 @@ window.__ModuleLoader__.load({
 [data-bd-page-content]{display:flex;flex-direction:column;gap:22px;min-width:0;}
 [data-bd-pghead]{padding:0 1px 2px;align-items:flex-start;gap:8px;}
 [data-bd-pghead] b{color:#224b5d;font-size:17px;font-weight:600;}
-[data-bd-pghead] p{color:#66808d;font-size:11px;line-height:1.7;margin:6px 0 0;}
+[data-bd-pghead] p{color:#526d79;font-size:12px;line-height:1.7;margin:6px 0 0;}
+[data-bd-today]{display:flex;flex-direction:column;gap:18px;}
+[data-bd-today-hero]{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:154px;padding:22px 24px;border:1px solid #d9e7ee;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#fffdf9 0%,#f4f9fb 62%,#edf4ff 100%);box-shadow:0 12px 30px rgba(65,111,131,.08);}
+[data-bd-today-hero-copy]{min-width:0;}
+[data-bd-today-hero] h1{margin:8px 0 6px;color:#204b5e;font:600 25px/1.35 'Noto Serif SC','Source Han Serif SC','SimSun',serif;letter-spacing:.02em;}
+[data-bd-today-hero] p{max-width:560px;margin:0;color:#4b6c83;font-size:12px;line-height:1.8;}
+[data-bd-today-hero] [data-bd-eyebrow],[data-bd-today-hero] [data-bd-note]{color:#4b6c83;}
+[data-bd-today-fish]{display:flex;align-items:center;justify-content:center;flex:none;width:92px;height:92px;border-radius:50%;font-size:52px;background:#fff;border:1px solid #d9e7ee;box-shadow:0 8px 20px rgba(65,111,131,.1);transform:rotate(-7deg);}
+[data-bd-today-fish] img{width:100%;height:100%;object-fit:contain;}
+[data-bd-today-grid]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+[data-bd-today-grid]>[data-bd-today-card]{min-height:148px;}
+[data-bd-today-card]{display:flex;flex-direction:column;gap:8px;min-height:148px;padding:13px 14px;border-radius:10px;border:1px solid #d9e7ee;background:#fff;}
+[data-bd-today-current]{display:flex;align-items:center;min-height:38px;padding:9px 10px;border-radius:8px;background:#f6fafc;color:#4f6975;font-size:12px;line-height:1.55;}
+[data-bd-today-next] strong{font-size:18px;color:#214f63;}
+[data-bd-today-trust]{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+[data-bd-today-trust] strong{font-size:18px;color:#214f63;}
+[data-bd-today-trust] span{font-size:11px;color:#718792;}
+[data-bd-today-wide]{grid-column:1/-1;}
+[data-bd-timeline]{display:flex;gap:0;position:relative;padding:6px 4px 2px;}
+[data-bd-timeline]:before{content:'';position:absolute;left:10px;right:10px;top:14px;height:1px;background:#d9e7ee;}
+[data-bd-timeline-item]{position:relative;z-index:1;display:flex;flex:1;flex-direction:column;gap:8px;color:#8aa0a9;font-size:11px;line-height:1.5;}
+[data-bd-timeline-item] i{display:block;width:10px;height:10px;border-radius:50%;background:#d9e7ee;border:2px solid #fff;box-sizing:content-box;}
+[data-bd-timeline-item][data-on] i{background:#63a6c1;box-shadow:0 0 0 3px rgba(99,166,193,.13);}
+[data-bd-timeline-item][data-on]{color:#4f6975;}
+[data-bd-run-plan-grid]{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+[data-bd-run-plan-grid] div{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:8px;background:#f6fafc;min-width:0;}
+[data-bd-run-plan-grid] span{font-size:11px;color:#526d79;}
+[data-bd-run-plan-grid] strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#315b6c;font-size:12px;font-weight:600;}
+[data-bd-log-summary] p{margin:0;color:#4f6975;font-size:12px;line-height:1.7;}
+[data-bd-pet-modal] [data-bd-recovery-copy]>span,
+[data-bd-pet-modal] [data-bd-ledger-heading] p,
+[data-bd-pet-modal] [data-bd-ledger-number]>span,
+[data-bd-pet-modal] [data-bd-ledger-hero]>p,
+[data-bd-pet-modal] [data-bd-tok-kpis] small,
+[data-bd-pet-modal] [data-bd-ledger-sectionhead]>span,
+[data-bd-pet-modal] [data-bd-tok-chip]{color:#526d79;}
+[data-bd-companion-settings]{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding-top:14px;border-top:1px solid #d9e7ee;}
+[data-bd-pet-reaction]{position:absolute;right:0;top:0;display:flex;align-items:center;gap:4px;max-width:124px;box-sizing:border-box;padding:5px 9px;border-radius:13px 13px 13px 3px;background:#fff8ef;border:1px solid #eed9bf;color:#986027;font-size:16px;box-shadow:0 4px 14px #54320712;animation:bdReactionIn .3s ease-out;pointer-events:none;}
+[data-bd-pet-reaction] small{font:500 10px/1.4 'Microsoft YaHei',sans-serif;color:#71523a;white-space:nowrap;}
+[data-bd-pet-fish][data-reaction=celebrate] [data-bd-pet-img]{animation:bdFishCelebrate .7s ease-in-out 2;}
+[data-bd-pet-fish][data-reaction=curious] [data-bd-pet-img]{animation:bdFishPeek .8s ease-in-out;}
+[data-bd-pet-fish][data-reaction=learned] [data-bd-pet-reaction]{background:#edf4ff;border-color:#c5d6ed;color:#4d72a3;}
+[data-bd-pet-fish][data-reduced-motion],[data-bd-pet-fish][data-reduced-motion] *{animation:none!important;transition:none!important;}
+@keyframes bdReactionIn{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}
+@keyframes bdFishCelebrate{0%,100%{transform:rotate(0)}35%{transform:rotate(-6deg) translateY(-5px)}70%{transform:rotate(5deg)}}
+@keyframes bdFishPeek{0%,100%{transform:rotate(0)}50%{transform:rotate(-5deg) translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){[data-bd-pet-fish],[data-bd-pet-fish] *{animation:none!important;transition:none!important;}}
+[data-bd-week-recovery]{display:grid;grid-template-columns:1.05fr .95fr;gap:14px;}
+[data-bd-week-card],[data-bd-recovery-card]{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid #d9e7ee;border-radius:12px;background:#fff;min-width:0;}
+[data-bd-week-days]{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;align-items:end;min-height:74px;}
+[data-bd-week-day]{display:flex;flex-direction:column;justify-content:flex-end;gap:4px;min-width:0;text-align:center;color:#526d79;font-size:10px;}
+[data-bd-week-day] i{display:block;min-height:4px;border-radius:4px 4px 2px 2px;background:#d9e7ee;}
+[data-bd-week-day][data-on] i{background:#6ca8bd;}
+[data-bd-week-day][data-missing] i{background:repeating-linear-gradient(135deg,#eef3f5,#eef3f5 3px,#dce7eb 3px,#dce7eb 5px);}
+[data-bd-week-day] b{font-size:10px;color:#315b6c;overflow:hidden;text-overflow:ellipsis;}
+[data-bd-week-themes]{display:flex;gap:5px;flex-wrap:wrap;}
+[data-bd-week-themes] span{max-width:100%;padding:3px 7px;border-radius:999px;background:#f2f7f9;color:#56727e;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+[data-bd-week-change]{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid #e5edef;}
+[data-bd-week-change-row]{display:grid;grid-template-columns:42px minmax(0,1fr);gap:7px;align-items:start;}
+[data-bd-week-change-row]>b{font-size:10px;color:#526d79;}
+[data-bd-week-change-chips]{display:flex;gap:4px;flex-wrap:wrap;}
+[data-bd-week-change-chips] span{padding:2px 6px;border-radius:5px;background:#f4f8fa;color:#55717d;font-size:9px;}
+[data-bd-recovery-list]{display:flex;flex-direction:column;gap:7px;}
+[data-bd-recovery-row]{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:8px;align-items:start;padding:8px 9px;border-radius:8px;background:#f6fafc;}
+[data-bd-recovery-row]>i{width:8px;height:8px;margin-top:4px;border-radius:50%;background:#93aab3;}
+[data-bd-recovery-row][data-state="running"]>i,[data-bd-recovery-row][data-state="ready"]>i{background:#4ca079;}
+[data-bd-recovery-row][data-state="failed"]>i,[data-bd-recovery-row][data-state="interrupted"]>i,[data-bd-recovery-row][data-state="blocked"]>i{background:#d36555;}
+[data-bd-recovery-row][data-state="paused"]>i,[data-bd-recovery-row][data-state="held"]>i{background:#d19746;}
+[data-bd-recovery-copy]{display:flex;flex-direction:column;gap:2px;min-width:0;}
+[data-bd-recovery-copy] strong{font-size:11px;color:#315b6c;}
+[data-bd-recovery-copy] span{font-size:10px;line-height:1.45;color:#78909a;overflow-wrap:anywhere;}
 [data-bd-pet-modal] [data-bd-ico]{display:none;}
 [data-bd-pet-grid],[data-bd-grid2]{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;min-width:0;}
 [data-bd-page-content]>[data-bd-pet-grid],[data-bd-pet-body]>[data-bd-pet-grid]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start;}
@@ -515,9 +586,9 @@ window.__ModuleLoader__.load({
 [data-bd-pet-modal] [data-bd-btn][data-primary] [data-bd-ico]{color:#fff;background:transparent;}
 [data-bd-pet-modal] [data-bd-msg]{background:#dceffb;color:#24536e;border:1px solid #b9d8eb;}
 [data-bd-pet-modal] [data-bd-msg][data-warn]{background:#fff2da;border-color:#e8c98f;color:#805311;}
-[data-bd-pet-modal] [data-bd-msg][data-good]{background:#e4f5ed;border-color:#b6dbcb;color:#256447;}
+[data-bd-pet-modal] [data-bd-msg][data-good]{background:#edf4ff;border-color:#bfd3ed;color:#355a85;}
 [data-bd-pet-modal] [data-bd-badge],[data-bd-pet-card] [data-bd-pet-badge]{background:#e1f0f9;color:#365b75;}
-[data-bd-pet-modal] [data-bd-badge][data-live],[data-bd-pet-card] [data-bd-pet-badge][data-live]{background:#d9f0e5;color:#256447;}
+[data-bd-pet-modal] [data-bd-badge][data-live],[data-bd-pet-card] [data-bd-pet-badge][data-live]{background:#e5efff;color:#355a85;}
 [data-bd-pet-modal] [data-bd-badge][data-warn],[data-bd-pet-card] [data-bd-pet-badge][data-warn]{background:#fff0d6;color:#805311;}
 [data-bd-pet-modal] [data-bd-pre]{color:#365b75;background:#edf6fc;border:1px solid #d2e5f0;}
 [data-bd-pet-modal] [data-bd-sub]{border-color:#cbdde4;margin-left:3px;padding-left:14px;gap:12px;}
@@ -554,7 +625,7 @@ window.__ModuleLoader__.load({
 /* ═══════════ 独立 token 账本：海盐蓝 / 暖白 / 编辑式数字排版 ═══════════ */
 [data-bd-ledger]{gap:20px;}
 [data-bd-ledger-heading]{display:flex;align-items:center;justify-content:space-between;gap:16px;}
-[data-bd-eyebrow]{font-family:'Cascadia Code','Consolas',monospace;font-size:9px;letter-spacing:.16em;color:#66818e;}
+[data-bd-eyebrow]{font-family:'Cascadia Code','Consolas',monospace;font-size:10px;letter-spacing:.16em;color:#526d79;}
 [data-bd-ledger-heading] h2{font-family:'Noto Serif SC','Source Han Serif SC','SimSun',serif;font-size:27px;line-height:1.35;font-weight:600;letter-spacing:.035em;color:#173f52;margin:7px 0 5px;}
 [data-bd-ledger-heading] p{font-size:12px;color:#617882;margin:0;}
 [data-bd-ledger-summary]{padding:25px 28px 18px;border:1px solid #cadde3;border-top:3px solid #216b87;border-radius:3px 3px 12px 12px;background:#fffefb;
@@ -630,6 +701,13 @@ window.__ModuleLoader__.load({
   [data-bd-pet-tabs]{padding:0 9px;}
   [data-bd-pet-tab]{padding:10px 9px;}
   [data-bd-pet-body]{padding:20px 14px 24px;}
+  [data-bd-today-hero]{padding:18px;min-height:132px;}
+  [data-bd-today-hero] h1{font-size:21px;}
+  [data-bd-today-fish]{width:68px;height:68px;font-size:38px;}
+  [data-bd-today-grid]{grid-template-columns:minmax(0,1fr);}
+  [data-bd-today-wide]{grid-column:auto;}
+  [data-bd-run-plan-grid]{grid-template-columns:repeat(2,minmax(0,1fr));}
+  [data-bd-week-recovery]{grid-template-columns:minmax(0,1fr);}
   [data-bd-page-content]>[data-bd-pet-grid],[data-bd-pet-body]>[data-bd-pet-grid]{columns:1;}
   [data-bd-pet-grid],[data-bd-grid2]{grid-template-columns:minmax(0,1fr);}
   [data-bd-pet-modal] [data-bd-sec]{padding:20px 17px;}
@@ -661,14 +739,14 @@ window.__ModuleLoader__.load({
 [data-bd-settings-title] p{margin-top:4px;font-size:11px;}
 [data-bd-settings-layout]{display:grid;grid-template-columns:172px minmax(0,1fr);flex:1;min-height:0;}
 [data-bd-pet-tabs]{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:18px 12px;border:0;border-right:1px solid #dbe5e8;background:#f0f5f5;overflow-y:auto;min-height:0;}
-[data-bd-nav-group]{font-size:9px;letter-spacing:.12em;color:#82959b;padding:13px 13px 5px;}
+[data-bd-nav-group]{font-size:10px;letter-spacing:.12em;color:#526d79;padding:13px 13px 5px;}
 [data-bd-nav-group]:first-child{padding-top:0;}
 [data-bd-pet-tab]{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;white-space:normal;text-align:left;min-height:48px;padding:9px 13px;border-radius:8px;font-size:12px;line-height:1.4;color:#53707e;}
-[data-bd-pet-tab] small{font-size:9px;font-weight:400;letter-spacing:.02em;color:#78909a;}
+[data-bd-pet-tab] small{font-size:10px;font-weight:400;letter-spacing:.02em;color:#526d79;}
 [data-bd-pet-tab]:hover{background:#e5edef;color:#255c73;}
 [data-bd-pet-tab][data-on]{box-shadow:none;background:#dcebef;color:#20536b;}
-[data-bd-pet-tab][data-on] small{color:#537e8f;}
-[data-bd-nav-foot]{margin-top:auto;padding:20px 13px 4px;color:#8c9b9f;font:9px/1.8 'Consolas',monospace;letter-spacing:.07em;}
+[data-bd-pet-tab][data-on] small{color:#3d6172;}
+[data-bd-nav-foot]{margin-top:auto;padding:20px 13px 4px;color:#526d79;font:10px/1.8 'Consolas',monospace;letter-spacing:.07em;}
 [data-bd-settings-main]{display:flex;flex-direction:column;min-width:0;min-height:0;}
 [data-bd-pet-body]{padding:26px;min-height:0;}
 [data-bd-pghead] b{font:600 24px/1.4 'Noto Serif SC','Source Han Serif SC','SimSun',serif;letter-spacing:.035em;color:#204b5e;}
@@ -676,7 +754,7 @@ window.__ModuleLoader__.load({
 [data-bd-pet-modal] [data-bd-sec]{padding:20px;gap:13px;}
 [data-bd-pet-modal] [data-bd-h] b{font-size:13px;}
 [data-bd-segments]{display:inline-flex;align-self:flex-start;gap:4px;padding:4px;border:1px solid #d4e1e6;border-radius:10px;background:#edf3f3;max-width:100%;}
-[data-bd-segments] button{border:0;border-radius:7px;padding:8px 17px;color:#64808b;background:transparent;font:inherit;font-size:11px;cursor:pointer;}
+[data-bd-segments] button{border:0;border-radius:7px;padding:8px 17px;color:#526d79;background:transparent;font:inherit;font-size:11px;cursor:pointer;}
 [data-bd-segments] button[aria-pressed="true"]{background:#fffefb;color:#235d76;box-shadow:0 1px 4px #233d4a14;}
 [data-bd-pet-modal] [data-bd-learn-list]{height:360px;min-height:180px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 7px 2px 0;}
 [data-bd-pet-modal] [data-bd-learn-list]>[data-bd-sec]{padding:17px;flex:none;background:#f9fbfa;}
@@ -695,6 +773,33 @@ window.__ModuleLoader__.load({
 [data-bd-memory]>[data-bd-pet-grid]{margin:16px 0;}
 [data-bd-memory]>[data-bd-pet-grid]>[data-bd-sec]{padding:12px!important;gap:9px!important;}
 [data-bd-memory]>[data-bd-note]{margin-top:10px;}
+[data-bd-memory-overview]{background:linear-gradient(135deg,#fffdf9 0%,#f5fafb 100%)!important;}
+[data-bd-memory-grid]{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;}
+[data-bd-memory-tile]{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px;border:1px solid #dce8ec;border-radius:9px;background:rgba(255,255,255,.72);}
+[data-bd-memory-tile] strong{font-size:12px;color:#2a5668;}
+[data-bd-memory-tile] span{font-size:10px;line-height:1.5;color:#718792;min-height:30px;}
+[data-bd-memory-detail]{margin-top:2px;border-top:1px solid #e1ebee;padding-top:8px;}
+[data-bd-memory-detail]>summary{cursor:pointer;color:#4d7384;font-size:12px;font-weight:600;}
+[data-bd-memory-trends]{display:flex;flex-direction:column;gap:5px;margin-top:9px;}
+[data-bd-memory-trend]{display:grid;grid-template-columns:minmax(90px,1fr) auto auto;gap:8px;align-items:center;padding:6px 8px;border-radius:7px;background:#f6fafc;color:#496875;font-size:11px;}
+[data-bd-memory-trend] b{font-size:10px;font-weight:500;color:#6c8792;}
+[data-bd-memory-trend] em{font-style:normal;font-size:9px;color:#b17640;}
+[data-bd-memory-quotes]{display:flex;flex-direction:column;gap:4px;margin-top:10px;}
+[data-bd-memory-quotes] blockquote{margin:0;padding:6px 8px;border-left:2px solid #e1a07e;color:#5b7079;font-size:11px;line-height:1.5;background:#fffaf7;}
+[data-bd-memory-results]{display:flex;flex-direction:column;gap:9px;min-height:120px;max-height:380px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:3px 5px 3px 0;}
+[data-bd-memory-result]{display:flex;flex-direction:column;gap:6px;border:1px solid #dae6ec;border-radius:9px;padding:12px;background:#fbfdfe;}
+[data-bd-memory-result] p{margin:0;color:#355c6d;font-size:12px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;}
+[data-bd-memory-result] time{white-space:nowrap;}
+[data-bd-memory-result]:focus-within{border-color:#8fb5c9;}
+@media(max-width:650px){
+ [data-bd-memory-grid]{grid-template-columns:repeat(2,minmax(0,1fr));}
+ [data-bd-memory-tile] span{min-height:24px;}
+ [data-bd-memory-trend]{grid-template-columns:1fr auto;}
+ [data-bd-memory-trend] em{grid-column:2;grid-row:1;}
+ [data-bd-memory-overview] [data-bd-kpi]{gap:7px;}
+ [data-bd-memory-result] time{width:100%;}
+ [data-bd-memory-results]{max-height:340px;}
+}
 [data-bd-pet-card]{background:#fafcf9;border-color:#ccdde4;backdrop-filter:none;-webkit-backdrop-filter:none;}
 [data-bd-pet-card][data-bd-menu]{width:238px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;}
 [data-bd-menu] [data-bd-pet-cardhead]{padding:13px 15px;color:#748a95;}
@@ -753,8 +858,16 @@ window.__ModuleLoader__.load({
 [data-bd-sticker-itemfoot]{display:flex;align-items:center;gap:5px;min-height:29px;padding:0 8px 9px;font-size:9px;color:#7a8f8c;}
 [data-bd-sticker-itemfoot]>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 [data-bd-pet-modal] [data-bd-sticker-itemfoot] [data-bd-btn]{font-size:9px;padding:3px 6px;color:#8a6e63;background:transparent;border-color:#decfc6;}
+[data-bd-sticker-item][data-pending]{border-color:#d9bd83;background:#fffcf3;}
+[data-bd-sticker-status]{color:#8e682b!important;}
+[data-bd-sticker-reviewbar]{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:11px 13px;border:1px solid #e1cea6;border-left:3px solid #c49b53;border-radius:7px;background:#fffcf3;color:#765a30;font-size:11px;line-height:1.7;}
+[data-bd-sticker-reviewbar]>span{flex:1 1 190px;}
+[data-bd-sticker-reviewactions]{display:flex;flex-wrap:wrap;gap:5px;}
+[data-bd-pet-modal] [data-bd-sticker-reviewactions] [data-bd-btn]{font-size:10px;padding:5px 9px;}
+[data-bd-sticker-item]>[data-bd-sticker-reviewactions]{padding:0 8px 10px;}
+[data-bd-pet-modal] [data-bd-sticker-reviewactions] [data-primary]{color:#355a85;background:#e5efff;border-color:#bfd3ed;}
 [data-bd-sticker-empty]{display:grid;place-items:center;height:100%;text-align:center;font-size:11px;color:#7b9095;line-height:1.8;padding:20px;box-sizing:border-box;}
-[data-bd-sticker-detail]{display:grid;grid-template-columns:144px minmax(0,1fr);gap:19px;padding:17px;background:#edf4f2;border:1px solid #d1e0db;border-radius:9px;color:#44685f;}
+[data-bd-sticker-detail]{display:grid;grid-template-columns:144px minmax(0,1fr);gap:19px;padding:17px;background:#f4f7fc;border:1px solid #d4dfed;border-radius:9px;color:#44617d;}
 [data-bd-sticker-detail] p{font-size:11px;line-height:1.7;overflow-wrap:anywhere;margin:8px 0;}
 [data-bd-sticker-detail] [data-bd-sticker-thumb]{border-radius:7px;}
 [data-bd-sticker-detail] [data-bd-grow]{overflow-wrap:anywhere;}
@@ -785,16 +898,122 @@ window.__ModuleLoader__.load({
 @media(max-width:660px){[data-bd-sticker-list]{height:360px;}[data-bd-sticker-grid]{grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:10px;}[data-bd-sticker-detail]{grid-template-columns:90px minmax(0,1fr);gap:12px;padding:13px;}[data-bd-basic-grid]>[data-bd-sec]>textarea{flex:none!important;}}
 @media(prefers-reduced-motion:reduce){[data-bd-pet-modal]{animation:none;}[data-bd-preview]{animation:none;}[data-bd-pet-mood]{animation:none;}[data-bd-tok-bar] i,[data-bd-btn],[data-bd-sw]{transition:none;}}
 
+/* ────────────── 视频工作室：明亮编辑台 ────────────── */
+[data-bd-settings-page="video"]{color:#26354a;}
+[data-bd-settings-page="video"] [data-bd-pet-grid]{gap:16px;}
+[data-bd-settings-page="video"] [data-bd-sec]{background:linear-gradient(145deg,#fffefd 0%,#f6f8ff 100%);border:1px solid #d9e2ee;border-radius:16px;box-shadow:0 10px 28px rgba(48,67,108,.08);padding:19px 20px;}
+[data-bd-settings-page="video"] [data-bd-sec]:hover{border-color:#c6d3e4;box-shadow:0 12px 32px rgba(48,67,108,.11);}
+[data-bd-settings-page="video"] [data-bd-h]{color:#6a7890;font-size:11px;letter-spacing:.08em;text-transform:uppercase;}
+[data-bd-settings-page="video"] [data-bd-h] b{color:#1d2c47;font-size:15px;letter-spacing:.01em;}
+[data-bd-settings-page="video"] [data-bd-note]{color:#69778d;line-height:1.65;}
+[data-bd-settings-page="video"] [data-bd-label]{color:#31445f;font-weight:600;}
+[data-bd-settings-page="video"] [data-bd-input]{background:#fff;color:#26354a;border-color:#cfdbe8;box-shadow:0 2px 0 rgba(62,86,130,.03);}
+[data-bd-settings-page="video"] [data-bd-input]::placeholder{color:#8a98a8;}
+[data-bd-settings-page="video"] [data-bd-input]:focus{border-color:#5b63d4;outline:3px solid rgba(91,99,212,.14);}
+[data-bd-settings-page="video"] [data-bd-segments]{padding:4px;background:#f0f3ff;border:1px solid #d9def7;border-radius:12px;gap:4px;}
+[data-bd-settings-page="video"] [data-bd-segments] [data-bd-btn],
+[data-bd-settings-page="video"] [data-bd-segments] button{border-color:transparent;background:transparent;color:#5f6d86;border-radius:9px;}
+[data-bd-settings-page="video"] [data-bd-segments] [aria-pressed="true"]{background:#fff;color:#4f58bf;border-color:#cfd3f6;box-shadow:0 3px 10px rgba(78,86,180,.12);font-weight:700;}
+[data-bd-settings-page="video"] [data-bd-btn][data-primary]{background:#ed6a57;border-color:#ed6a57;color:#fff;box-shadow:0 7px 16px rgba(237,106,87,.22);}
+[data-bd-settings-page="video"] [data-bd-btn][data-primary]:hover:not(:disabled){background:#d95646;border-color:#d95646;box-shadow:0 9px 20px rgba(237,106,87,.28);}
+[data-bd-settings-page="video"] [data-bd-btn]:not([data-primary]){background:#fff;border-color:#cfdbe8;color:#425570;}
+[data-bd-settings-page="video"] [data-bd-btn]:not([data-primary]):hover:not(:disabled){background:#f3f6ff;border-color:#aebce2;color:#4f58bf;}
+[data-bd-settings-page="video"] [data-bd-msg]{background:#eef5ff;border:1px solid #d0e0f4;color:#3d5e83;}
+[data-bd-settings-page="video"] [data-bd-msg][data-warn]{background:#fff0ec;border-color:#f1c6bb;color:#a1483e;}
+[data-bd-settings-page="video"] [data-bd-video-progress]{position:relative;padding:12px 14px 12px 18px;background:linear-gradient(90deg,#fff1e9,#f0f3ff);border-color:#f0c9bd;color:#42516c;font-weight:600;overflow:hidden;}
+[data-bd-settings-page="video"] [data-bd-video-progress]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#ed6a57;}
+[data-bd-settings-page="video"] [data-bd-video-stage="starting"],[data-bd-settings-page="video"] [data-bd-video-stage="authoring"],[data-bd-settings-page="video"] [data-bd-video-stage="plan"],[data-bd-settings-page="video"] [data-bd-video-stage="cover"],[data-bd-settings-page="video"] [data-bd-video-stage="render"],[data-bd-settings-page="video"] [data-bd-video-stage="verify"],[data-bd-settings-page="video"] [data-bd-video-stage="publish"]{background:#fff1e9;color:#b85b4d;border:1px solid #f0c9bd;}
+[data-bd-settings-page="video"] [data-bd-video-stage="done"]{background:#eef1ff;color:#4e58b7;border:1px solid #cfd4f4;}
+[data-bd-settings-page="video"] [data-bd-video-stage="failed"],[data-bd-settings-page="video"] [data-bd-video-stage="interrupted"],[data-bd-settings-page="video"] [data-bd-video-stage="stopped"]{background:#fff0ec;color:#a1483e;border:1px solid #f1c6bb;}
+[data-bd-settings-page="video"] [data-bd-empty]{padding:28px 18px;border:1px dashed #cad7e4;border-radius:12px;background:#fafcff;color:#76859a;}
+[data-bd-settings-page="video"] [data-bd-video-intro]{border-top:3px solid #ed6a57;}
+[data-bd-settings-page="video"] [data-bd-video-studio]>[data-bd-sec]:nth-child(2){background:linear-gradient(145deg,#fbfcff 0%,#f8f5ff 100%);}
+[data-bd-settings-page="video"] [data-bd-video-studio]>[data-bd-sec]:nth-child(3){background:linear-gradient(145deg,#fffdf9 0%,#fff8f3 100%);}
+[data-bd-settings-page="video"] [data-bd-video-studio]>[data-bd-sec]:nth-child(4){background:linear-gradient(145deg,#fffefd 0%,#f6f8ff 100%);}
+
+/* Shared sky palette and compact navigation; avoid blur in the host workspace. */
+[data-bd-pet-mask]{background:rgba(29,70,101,.17);}
+[data-bd-pet-modal]{background:#f7fbff;border:1px solid #cce3f3;border-radius:20px;box-shadow:0 24px 80px #205c8426;color:#24465f;}
+[data-bd-settings-head]{padding:18px 24px;border-color:#daeaf5;background:#ffffff;}
+[data-bd-settings-title] b{font:650 23px/1.2 'Bahnschrift','Segoe UI Variable Text',sans-serif;letter-spacing:.025em;color:#185981;}
+[data-bd-settings-title] p{margin-top:5px;color:#58768e;font-size:11px;}
+[data-bd-settings-layout]{grid-template-columns:174px minmax(0,1fr);}
+[data-bd-pet-tabs]{background:#eff7fe;border-color:#d6e9f7;padding:18px 12px;gap:8px;}
+[data-bd-nav-group]{color:#466b84;font-size:10px;letter-spacing:.06em;padding:8px 12px 2px;}
+[data-bd-pet-tab]{min-height:53px;padding:11px 12px;border:1px solid transparent;border-radius:11px;color:#41627b;transition:background .14s ease,border-color .14s ease;}
+[data-bd-pet-tab] small{color:#466b84;line-height:1.5;font-size:10px;}
+[data-bd-pet-tab]:hover{background:#e4f2ff;border-color:#d4e9f9;}
+[data-bd-pet-tab][data-on]{background:#fff;border-color:#bbddf5;color:#126a9a;box-shadow:0 3px 12px #3073a010;}
+[data-bd-pet-tab][data-on] small{color:#46718c;}
+[data-bd-nav-foot]{color:#55748d;letter-spacing:.08em;}
+[data-bd-settings-main]{background:#f7fbff;}
+[data-bd-pet-body]{padding:22px 26px 26px;scrollbar-color:#bedbef transparent;scroll-behavior:auto;}
+[data-bd-pghead] b{font:600 22px/1.45 'Microsoft YaHei UI','PingFang SC',sans-serif;letter-spacing:0;color:#24465f;}
+[data-bd-pghead] p{font-size:12px;color:#54738b;line-height:1.7;margin-top:5px;}
+[data-bd-page-content]{gap:18px;}
+[data-bd-workbench-subnav]{margin-bottom:20px;display:flex;gap:6px;width:fit-content;flex-wrap:wrap;}
+[data-bd-segments]{border-color:#d5e7f5;background:#edf6fd;padding:4px;border-radius:10px;}
+[data-bd-segments] button{color:#466b84;padding:8px 13px;min-height:34px;}
+[data-bd-segments] button[aria-pressed="true"]{background:#fff;color:#126a9a;box-shadow:0 1px 5px #1b639516;}
+[data-bd-pet-modal] [data-bd-sec]{background:#fff;border-color:#d7e8f4;border-radius:13px;box-shadow:0 3px 12px #24649204;padding:18px;gap:12px;}
+[data-bd-pet-modal] [data-bd-h] b{color:#2a4d65;}
+[data-bd-pet-modal] [data-bd-note]{color:#537289;line-height:1.7;}
+[data-bd-pet-modal] [data-bd-btn]{border-color:#c5dfef;border-radius:9px;background:#fff;color:#2d678b;box-shadow:none;}
+[data-bd-pet-modal] [data-bd-btn]:hover:not(:disabled){background:#eff7ff;border-color:#9fc9e4;box-shadow:none;}
+[data-bd-pet-modal] [data-bd-btn][data-primary]{background:#137eaf;border-color:#137eaf;color:#fff;box-shadow:0 4px 12px #177baa16;}
+[data-bd-pet-modal] [data-bd-btn][data-primary]:hover:not(:disabled){background:#096c9d;border-color:#096c9d;}
+[data-bd-pet-modal] [data-bd-input]{background:#fbfdff;border-color:#c8e0f0;color:#274a62;border-radius:9px;}
+[data-bd-pet-modal] [data-bd-input]:focus{outline:2px solid #8ec9ee;outline-offset:1px;border-color:#64afd9;}
+[data-bd-pet-modal] [data-bd-sw][data-on]{background:#2389bb;}
+[data-bd-pet-modal] [data-bd-msg][data-good]{background:#edf7ff;border-color:#bbdef5;color:#23678d;}
+[data-bd-pet-modal] [data-bd-badge][data-live]{background:#e7f4ff;color:#1b6a96;}
+[data-bd-run-launches]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+[data-bd-run-launch]{display:flex;flex-direction:column;gap:13px;padding:19px;border:1px solid #c2dff2;border-radius:15px;background:linear-gradient(140deg,#fff 25%,#edf7ff);min-width:0;box-shadow:0 5px 20px #286f9c08;}
+[data-bd-run-launch] h2{margin:0;color:#1a5c84;font-size:18px;font-weight:600;}
+[data-bd-pet-modal] [data-bd-run-launch] [data-bd-ico]{display:block;flex:none;width:21px;height:21px;color:#2387b8;}
+[data-bd-run-launch] p{margin:0;color:#526f85;font-size:12px;line-height:1.7;}
+[data-bd-launch-meta]{display:flex;flex-direction:column;gap:4px;margin-top:auto;color:#466b84;font-size:11px;}
+[data-bd-launch-meta] span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+[data-bd-run-launch] [data-bd-btn]{width:100%;min-height:39px;margin-top:2px;font-size:13px;}
+[data-bd-run-details]{border:1px solid #d7e8f4;border-radius:12px;background:#fff;padding:14px 16px;}
+[data-bd-run-details]>summary{cursor:pointer;color:#3b6681;font-size:12px;}
+[data-bd-run-details][open]>summary{margin-bottom:14px;}
+[data-bd-run-details]>[data-bd-sec]{margin-bottom:14px;}
+[data-bd-week-recovery]>div:only-child{grid-column:1/-1;}
+[data-bd-pet-modal] [data-bd-settings-page="video"] [data-bd-pet-grid]>[data-bd-sec]{background:#fff;border-color:#d7e8f4;box-shadow:0 3px 12px #24649204;}
+[data-bd-pet-modal] [data-bd-video-stage]:not([data-warn]){background:#e8f5ff;color:#216c94;border-color:#bfdff5;}
+[data-bd-settings-page="video"] [data-bd-video-intro]{border-top-color:#50aada;}
+[data-bd-settings-page="video"] [data-bd-segments]{background:#edf6fd;border-color:#d5e7f5;}
+[data-bd-settings-page="video"] [data-bd-segments] [aria-pressed="true"]{color:#126a9a;border-color:#b6d9ef;}
+[data-bd-settings-page="video"] [data-bd-video-progress]{background:#eef8ff;border-color:#b6d9ef;}
+[data-bd-settings-page="video"] [data-bd-video-progress]::before{background:#50aada;}
+[data-bd-pet-card][data-bd-menu]{box-sizing:border-box;background:#f5fbff;border-color:#b6dcf3;border-radius:17px;box-shadow:0 14px 40px #245c7e24;padding-top:3px;}
+[data-bd-menu] [data-bd-pet-cardhead]{padding:13px 16px 12px;border-color:#d5eaf8;background:#fff;}
+[data-bd-menu] [data-bd-pet-cardhead] b{font-size:14px;color:#225d81;}
+[data-bd-menu] [data-bd-pet-item]{border-radius:10px;color:#285f82;min-height:38px;}
+[data-bd-menu] [data-bd-pet-item]:hover:not(:disabled){background:#e3f2ff;}
+[data-bd-menu] [data-bd-menu-key="session"],[data-bd-menu] [data-bd-menu-key="background"]{width:calc(100% - 24px);margin:9px 12px;padding:11px 12px;background:#e7f4ff;border:1px solid #c3e1f5;}
+[data-bd-menu] [data-bd-menu-key="session"] span>div,[data-bd-menu] [data-bd-menu-key="background"] span>div{font-size:13px;font-weight:600;color:#176b9a;}
+[data-bd-menu] [data-bd-pet-item] i{font-size:10px;line-height:1.5;color:#4b718a;}
+[data-bd-menu-token]{background:#eaf5ff;border-color:#cce5f6;padding:11px 15px;}
+[data-bd-menu-token] span,[data-bd-menu-token] small{color:#466b84;}
+[data-bd-menu-token] b{font-size:16px;color:#226c98;}
+[data-bd-preview]{background:#f5fbff;border-color:#b6dcf3;box-shadow:0 12px 32px #245c7e1c;}
+@media(max-width:760px){[data-bd-settings-layout]{grid-template-columns:minmax(0,1fr);}[data-bd-settings-head]{padding:14px 18px;}[data-bd-pet-tabs]{padding:9px 12px;gap:6px;}[data-bd-pet-tab]{min-height:39px;white-space:nowrap;padding:8px 12px;}[data-bd-pghead] b{font-size:20px;}[data-bd-pet-body]{padding:18px;}[data-bd-run-launches]{gap:12px;}[data-bd-run-launch]{padding:14px;}[data-bd-run-launch] h2{font-size:15px;}}
+@media(max-width:480px){[data-bd-run-launches]{grid-template-columns:minmax(0,1fr);}[data-bd-run-launch]{gap:9px;}[data-bd-run-launch] p{font-size:11px;}}
+@media(prefers-reduced-motion:reduce){[data-bd-pet-tab],[data-bd-pet-modal] *{scroll-behavior:auto!important;transition:none!important;}}
 `
 
     /* ────────────── 小组件 ────────────── */
 
-    function Switch({ on, onChange, disabled }) {
+    function Switch({ on, onChange, disabled, label }) {
       return h('button', {
         'data-bd-sw': '',
         'data-on': on ? '' : undefined,
         disabled: Boolean(disabled),
         title: on ? '已开' : '已关',
+        'aria-label': label || (on ? '关闭此选项' : '打开此选项'),
+        'aria-pressed': Boolean(on),
         onClick: () => { if (!disabled) onChange(!on) },
       }, h('i'))
     }
@@ -804,14 +1023,14 @@ window.__ModuleLoader__.load({
         h('div', { 'data-bd-grow': '' },
           h('div', { 'data-bd-label': '' }, label),
           note ? h('div', { 'data-bd-note': '' }, note) : null),
-        h(Switch, { on, onChange, disabled }))
+        h(Switch, { on, onChange, disabled, label }))
     }
 
     /* ⭐ 2026-10-26：文本输入统一走「本地草稿 + 失焦/回车才提交」。
      * GPT-SoVITS 那四个输入框以前 value 直接绑 /pv 轮询值、每敲一键就 POST 一次 ——
      * 既违反本文件自己立的"输入框必须绑本地草稿"的规矩（轮询会把正在打的字冲掉），
      * 又让一条路径打 30 多个请求。草稿领先服务端时显示草稿；轮询带回同值后自动交回控制权。 */
-    function DraftInput({ value, onCommit, width, placeholder, type = 'text', inputMode }) {
+    function DraftInput({ value, onCommit, width, placeholder, label, type = 'text', inputMode }) {
       const [draft, setDraft] = React.useState(null)
       const server = String(value ?? '')
       const shown = draft !== null && draft !== server ? draft : server
@@ -821,7 +1040,7 @@ window.__ModuleLoader__.load({
         // 不清草稿：等轮询带回新值（draft === server）才交回控制权，避免提交瞬间闪回旧值
       }
       return h('input', {
-        'data-bd-input': '', style: { width }, type, placeholder,
+        'data-bd-input': '', 'aria-label': label || placeholder || '配置值', style: { width }, type, placeholder,
         ...(inputMode ? { inputMode } : {}),
         value: shown,
         onChange: (e) => setDraft(e.target.value),
@@ -835,6 +1054,11 @@ window.__ModuleLoader__.load({
       // ⭐ 2026-10-19（用户报"没有开关这一项，只能让 ai 帮我开"）：读不到配置时界面只显示"读设置中…"，
       //    用户会以为是开关坏了 ✗ ⇒ 数一下连续失败次数，交给界面把话说清楚（版本太旧 / 没重启 / 读不到）
       const [fails, setFails] = React.useState(0)
+      const localEpoch = React.useRef(0)
+      const requestSeq = React.useRef(0)
+      const inFlight = React.useRef(false)
+      const externalSet = React.useRef(null)
+      if (!externalSet.current) externalSet.current = (next) => { localEpoch.current += 1; setSt(next) }
       /* ⭐ rev 增量（2026-10-27）：服务端签名没变时只回一行 {unchanged:true} ——
          前端连 setState 都不做，5 秒轮询从"每趟全量 payload + 全树重渲染"变成几乎白嫖。
          ⚠️ 本地乐观更新（patch / petShow 切换）改的是 st、rev 没变 ⇒ 不会被 unchanged 那趟冲掉，
@@ -845,22 +1069,27 @@ window.__ModuleLoader__.load({
         if (paused) return undefined
         let alive = true
         const tick = async () => {
+          if (inFlight.current) return
+          inFlight.current = true
+          const seq = ++requestSeq.current
+          const epoch = localEpoch.current
           try {
             const d = await jget('/status' + (revRef.current ? '?rev=' + encodeURIComponent(revRef.current) : ''))
-            if (!alive) return
+            if (!alive || seq !== requestSeq.current || epoch !== localEpoch.current) return
             if (d && d.ok) {
               setFails(0)
               if (d.unchanged) return
               if (d.rev) revRef.current = String(d.rev)
               setSt(d)
             } else setFails((n) => n + 1)
-          } catch { if (alive) setFails((n) => n + 1) }
+          } catch { if (alive && seq === requestSeq.current && epoch === localEpoch.current) setFails((n) => n + 1) }
+          finally { if (seq === requestSeq.current) inFlight.current = false }
         }
         tick()
         const t = setInterval(tick, intervalMs || 5000)
-        return () => { alive = false; clearInterval(t) }
+        return () => { alive = false; requestSeq.current += 1; inFlight.current = false; clearInterval(t) }
       }, [intervalMs, paused])
-      return [st, setSt, fails]
+      return [st, externalSet.current, fails]
     }
 
     /* 🗑 旧的全页设置 Panel 已退役（2026-10-27）：它的配置项早已搬进 PetSettingsModal，
@@ -1038,9 +1267,10 @@ window.__ModuleLoader__.load({
      *    现在使用者指定了本体形象图，就走后端静态路由 `/api/bili-duty/pet/image`（白名单只给 pet）。
      *    图挂了（路由不在/文件丢了）自动退回 CSS 那条鱼 —— 失败点仍然是有的，但兜住了。
      * aura 由父级按 /status 算好传进来：idle 空闲 / run 鲸鱼摸鱼在刷 / bg 后台轮 / err 没登录或读不到状态 */
-    function PetFish({ aura, bubbles, title }) {
+    function PetFish({ aura, bubbles, title, reaction, reducedMotion }) {
       const [imgOk, setImgOk] = React.useState(true)
-      return h('div', { 'data-bd-pet-fish': '', 'data-aura': aura || 'idle', title: title || '' },
+      return h('div', { 'data-bd-pet-fish': '', 'data-aura': aura || 'idle', 'data-reaction': reaction?.kind,
+        'data-reduced-motion': reducedMotion ? '' : undefined, title: title || '' },
         imgOk
           ? h('img', {
             'data-bd-pet-img': '', src: PET_IMG_URL, alt: '鲸鱼摸鱼', draggable: false,
@@ -1056,7 +1286,8 @@ window.__ModuleLoader__.load({
             h('i', { key: 'eye', 'data-bd-pet-eye': '' }, h('i', null)),
             h('i', { key: 'mouth', 'data-bd-pet-mouth': '' }),
           ],
-        bubbles.map((b) => h('i', {
+        reaction ? h('span', { 'data-bd-pet-reaction': '', 'aria-hidden': true }, reaction.symbol, h('small', {}, reaction.label)) : null,
+        (reducedMotion ? [] : bubbles).map((b) => h('i', {
           'data-bd-pet-bubble': '', key: b.id,
           style: { '--dx': b.dx + 'px', '--s': b.s + 'px', '--t': b.t + 's', '--d': b.d + 's' },
         })))
@@ -1241,22 +1472,22 @@ window.__ModuleLoader__.load({
         : (budget > 0 ? Math.max(0, budget - used) : null)
       const fmtTok = (n) => (Number(n) || 0).toLocaleString()
       const rows = [
-        ['在刷与否', fy.active ? '在刷～' : '歇着'],
-        ['第几轮', fy.goal && fy.goal.rounds != null ? `${fy.goal.rounds} / ${fy.goal.maxRounds || '?'} 轮` : fy.source === 'manual' ? '手动刷站' : '—'],
-        ['今天挑了几条', `${Number(fy.pickedToday ?? (st && st.pickedToday) ?? 0)} / ${Number(st && st.config && st.config.perDay) || 0}`],
-        ['今天发了几条说说', `${Number(fy.momentsToday ?? 0)} / ${Number(fy.momentPerDay ?? 0)}`],
-        ['这轮烧的 token', !measured ? '未计量' : budget > 0
+        ['会话状态', fy.active ? '运行中' : '空闲'],
+        ['运行轮次', fy.goal && fy.goal.rounds != null ? `${fy.goal.rounds} / ${fy.goal.maxRounds || '?'} 轮` : fy.source === 'manual' ? '手动刷站' : '—'],
+        ['今日精选', `${Number(fy.pickedToday ?? (st && st.pickedToday) ?? 0)} / ${Number(st && st.config && st.config.perDay) || 0}`],
+        ['今日动态', `${Number(fy.momentsToday ?? 0)} / ${Number(fy.momentPerDay ?? 0)}`],
+        ['本次 token', !measured ? '未计量' : budget > 0
           ? `${used.toLocaleString()} / ${budget.toLocaleString()}${left != null ? `（剩 ${left.toLocaleString()}）` : ''}`
           : `${used.toLocaleString()} / 不限`],
-        ['今天烧的 token', fmtTok(st && st.tokensToday)],
-        ['一共烧的 token', fmtTok(st && st.tokensTotal) + (Number(st && st.tokensTotal) > 0 ? '（' + tokTitle(st && st.tokensTotal) + '）' : '')],
-        ['后台轮', st ? (st.bgBusy ? '跑着呢' : '闲着') : '—'],
-        ['登录', st ? (st.loggedIn ? '已登录' : '没登录') : (fails >= 3 ? '读不到状态' : '读取中…')],
-        ['在用模型', String(fy.modelActive || fy.model || (st && st.modelNow) || '—')],
+        ['今日 token', fmtTok(st && st.tokensToday)],
+        ['累计 token', fmtTok(st && st.tokensTotal)],
+        ['后台状态', st ? (st.bgBusy ? '运行中' : '空闲') : '—'],
+        ['登录状态', st ? (st.loggedIn ? '已登录' : '未登录') : (fails >= 3 ? '状态读取失败' : '读取中…')],
+        ['当前模型', String(fy.modelActive || fy.model || (st && st.modelNow) || '—')],
       ]
       return h('div', { 'data-bd-pet-card': '' },
-        h('div', { 'data-bd-pet-cardhead': '' }, h('b', {}, '状态卡'),
-          h('span', {}, '每 5 秒刷新' + (Number(st && st.activeDays) > 0 ? ' · 连着干活 ' + st.activeDays + ' 天' : ''))),
+        h('div', { 'data-bd-pet-cardhead': '' }, h('b', {}, '运行状态'),
+          h('span', {}, '每 5 秒刷新' + (Number(st && st.activeDays) > 0 ? ' · 连续运行 ' + st.activeDays + ' 天' : ''))),
         h('div', { 'data-bd-pet-status': '' },
           rows.map(([k, v]) => h('div', { 'data-bd-pet-kv': '', key: k }, h('span', {}, k), h('b', {}, v)))))
     }
@@ -1272,6 +1503,17 @@ window.__ModuleLoader__.load({
         const owner = sourceSessionId ? items.find((w) => Array.isArray(w.sessionIds) && w.sessionIds.includes(sourceSessionId)) : null
         return { ...(sourceSessionId ? { sourceSessionId } : {}), ...(owner?.workspaceId ? { workspaceId: owner.workspaceId } : {}) }
       } catch { return {} }
+    }
+    // The server exposes only verified studio packages; keep legacy date playback separate.
+    function pvGalleryRows(value) {
+      const productions = Array.isArray(value?.productions) ? value.productions : []
+      const videos = Array.isArray(value?.videos) ? value.videos : []
+      return [
+        ...productions.filter((item) => item?.id && item.file && (item.stage === 'done' || (!item.stage && item.status === 'done')) && item.verification !== false && item.verification?.ok !== false && item.verified !== false)
+          .map((item) => ({ ...item, key: 'studio:' + item.id })),
+        ...videos.filter((item) => item?.file && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')))
+          .map((item) => ({ ...item, key: 'legacy:' + item.date, legacy: true })),
+      ]
     }
     function PetIcon({ name }) {
       const paths = {
@@ -1295,12 +1537,109 @@ window.__ModuleLoader__.load({
         h('img', { 'data-bd-settings-avatar': '', src: PET_AVATAR_URL, alt: '', draggable: false, onError: () => setImgOk(false) }))
     }
 
+    function petTabStops(container) {
+      if (!container?.querySelectorAll) return []
+      return Array.from(container.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]')).filter((el) => {
+        if (el.tabIndex < 0 || !el.getClientRects().length) return false
+        for (let parent = el.parentElement; parent && parent !== container; parent = parent.parentElement) {
+          if (parent.tagName === 'DETAILS' && !parent.open) {
+            const summary = Array.from(parent.children).find((child) => child.tagName === 'SUMMARY')
+            if (!summary?.contains(el)) return false
+          }
+        }
+        return true
+      })
+    }
+
+    function PetCompanionSettings({ st, busy, patch }) {
+      const cfg = st?.config || {}
+      const initial = () => ({ chatterFrequency: cfg.chatterFrequency || 'normal', notificationLevel: cfg.notificationLevel || 'normal',
+        focusMode: cfg.focusMode === true, quietHoursEnabled: cfg.quietHoursEnabled === true,
+        quietHoursStart: cfg.quietHoursStart || '23:00', quietHoursEnd: cfg.quietHoursEnd || '08:00', petReducedMotion: cfg.petReducedMotion === true })
+      const [draft, setDraft] = React.useState(initial)
+      const update = (key, value) => setDraft(old => ({ ...old, [key]: value }))
+      const toggle = (key, title, note) => ToggleRow({ label: title, note, on: draft[key], disabled: Boolean(busy), onChange: value => update(key, value) })
+      return h('div', { 'data-bd-companion-settings': '' },
+        h('div', { 'data-bd-h': '' }, h('b', {}, '陪伴节奏')),
+        h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '主动闲聊频率'),
+          h('select', { 'data-bd-input': '', value: draft.chatterFrequency, disabled: Boolean(busy), onChange: e => update('chatterFrequency', e.target.value) },
+            ...[['rare', '低频 · 约 4–6 小时'], ['normal', '标准 · 约 2–3.5 小时'], ['lively', '高频 · 约 45–90 分钟']].map(([value, label]) => h('option', { key: value, value }, label)))),
+        h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '主动提醒范围'),
+          h('select', { 'data-bd-input': '', value: draft.notificationLevel, disabled: Boolean(busy), onChange: e => update('notificationLevel', e.target.value) },
+            ...[['minimal', '重要结果与待办'], ['normal', '标准 · 结果、学习与精选'], ['all', '全部 · 包含运行状态变化']].map(([value, label]) => h('option', { key: value, value }, label)))),
+        toggle('focusMode', '工作专注模式', '暂停闲聊与一般提醒。任务继续运行，结果和错误记录保留。'),
+        toggle('quietHoursEnabled', '夜间安静时段', '仅限制主动提醒，不影响会话、后台和定时任务。'),
+        draft.quietHoursEnabled ? h('div', { 'data-bd-row': '' },
+          h('label', { 'data-bd-field': '' }, '安静开始', h('input', { 'data-bd-input': '', type: 'time', value: draft.quietHoursStart, disabled: Boolean(busy), onChange: e => update('quietHoursStart', e.target.value) })),
+          h('label', { 'data-bd-field': '' }, '安静结束', h('input', { 'data-bd-input': '', type: 'time', value: draft.quietHoursEnd, disabled: Boolean(busy), onChange: e => update('quietHoursEnd', e.target.value) })),
+          h('span', { 'data-bd-note': '' }, draft.quietHoursStart === draft.quietHoursEnd ? '起止时间相同，安静时段不生效。' : '按本地时间执行，支持跨午夜。')) : null,
+        toggle('petReducedMotion', '减少桌宠动效', '停用浮动、泡泡和事件动画，并遵循系统的减少动态效果设置。'),
+        h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '当前：' + (st?.companion?.label || '自然陪伴')),
+          h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: () => patch(draft, '陪伴节奏') }, '保存陪伴节奏')))
+    }
+
     /* ⭐ 设置大弹窗（2026-10-26 桌宠化改造）：从桌宠 ⚙️ 进来的居中弹窗。
-     * 九项侧栏，运行方式与日志各有内部分段；图库、学习与视频按所在页读取；
+     * 六组主导航与组内子页，运行方式与日志各有内部分段；图库、学习与视频按所在页读取；
      * 端点与保存语义与旧设置页一致（/config、/feiyu、/pv、/login/*、/install*、/run）。
      * ⭐ 2026-10-27：旧的全页 Panel 已退役删掉 —— 它独有过的活动流水、出手节奏读数、
      *    判重账本概览、一键诊断都搬进了这张弹窗；弹窗现在是设置的**唯一**入口，
      *    回归断言由 devtools/render-modal.cjs 盯（debugParts 只剩 PetSettingsModal / PetRoot / PetFish）。 */
+    function PetSendReviewPanel({ st, patch, busy, say }) {
+      const [filter, setFilter] = React.useState('pending')
+      const [working, setWorking] = React.useState('')
+      const [error, setError] = React.useState('')
+      const [snapshot, setSnapshot] = React.useState(null)
+      const alive = React.useRef(true)
+      const lock = React.useRef(false)
+      React.useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+      React.useEffect(() => { refresh() }, [st?.sendReview?.rev])
+      const data = snapshot || st?.sendReview || {}
+      const rows = Array.isArray(data.items) ? data.items : []
+      const labels = { pending: '待审核', approving: '正在发送', sent: '已发送', rejected: '已拒绝', failed: '发送失败', unknown: '结果待核对' }
+      const refresh = async () => {
+        try { const result = await jget('/send-review'); if (result?.ok === false) throw new Error(result.error || '预览队列读取失败'); if (alive.current) { setSnapshot(result); setError('') } }
+        catch (e) { if (alive.current) setError(String(e?.message || e)) }
+      }
+      const decide = async (row, decision) => {
+        if (lock.current || row.state !== 'pending') return
+        lock.current = true; setWorking(row.id); setError('')
+        try {
+          const result = await jpost('/send-review', { id: row.id, decision, expectedHash: row.hash })
+          if (!alive.current) return
+          if (result.ok === false) throw new Error(result.error || '审核操作未完成')
+          setSnapshot(result)
+          say(decision === 'reject' ? '已拒绝，该内容未发送。' : '已发送，其余内容保持待审核状态。', 'good')
+        } catch (e) {
+          if (alive.current) { await refresh(); setError(String(e?.message || e)) }
+        } finally { lock.current = false; if (alive.current) setWorking('') }
+      }
+      const visible = rows.filter(row => filter === 'all' || row.state === 'pending')
+      return h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-send-review': '' },
+        h('div', { 'data-bd-h': '' }, h(PetIcon, { name: 'key' }), h('b', {}, '发送预览与审核'),
+          Number(data.pending) > 0 ? h('span', { 'data-bd-badge': '' }, data.pending + ' 条待审') : null),
+        ToggleRow({ label: '发送前审核', on: Boolean(st?.config?.sendReview), disabled: Boolean(busy || working),
+          note: '开启后，鲸鱼摸鱼模式的评论、回复、私信、动态和成果投递进入待审队列。每次批准仅发送所选内容，发送权限、判重、节奏和风控限制保持生效。',
+          onChange: value => patch({ sendReview: value }, '发送预览') }),
+        h('div', { 'data-bd-note': '' }, '默认关闭。关闭仅影响后续内容，已有待审内容仍需审核。发送结果不确定时标记为“待核对”，不自动重试。未指定配图的评论按纯文字审核；指定表情时，发送内容绑定预览图片的实际字节。'),
+        h('div', { 'data-bd-row': '' },
+          h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '发送预览筛选' },
+            ...[['pending', '待审核'], ['all', '全部记录']].map(([key, label]) => h('button', { key, type: 'button', 'aria-pressed': filter === key, onClick: () => setFilter(key) }, label))),
+          h('span', { 'data-bd-grow': '' }), h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(working), onClick: refresh }, '刷新预览')),
+        error || data.error ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, error || data.error) : null,
+        h('div', { 'data-bd-send-review-list': '', tabIndex: 0, 'aria-label': '发送预览内容', style: { maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' } },
+          visible.length ? visible.map(row => h('article', { key: row.id, 'data-bd-send-review-item': '', style: { padding: '12px', border: '1px solid #dbe5ef', borderRadius: '10px', background: '#f9fbfe' } },
+            h('div', { 'data-bd-row': '' }, h('b', { 'data-bd-grow': '' }, row.kind || '发送内容'), h('span', { 'data-bd-badge': '', 'data-warn': row.state === 'unknown' ? '' : undefined }, labels[row.state] || row.state)),
+            h('div', { 'data-bd-note': '' }, [row.args?.bvid, row.args?.opus_id && '动态 ' + row.args.opus_id, (row.args?.uid || row.targetUid) && '收件 UID ' + (row.args?.uid || row.targetUid), row.args?.rpid && row.args.rpid !== '0' && '回复 ' + row.args.rpid, row.createdAt && petFmtTime(row.createdAt)].filter(Boolean).join(' · ')),
+            h('p', { style: { margin: '8px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: '1.65', fontSize: '12px' } }, String(row.args?.text || '')),
+            Array.isArray(row.attachments) && row.attachments.length ? h('div', { 'data-bd-row': '' }, ...row.attachments.map(item => h('img', { key: item.hash, src: item.imageUrl, alt: '待发送表情：' + item.name, style: { width: '80px', height: '80px', objectFit: 'contain', border: '1px solid #dbe5ef', borderRadius: '8px' } }))) : null,
+            Array.isArray(row.args?.images) && row.args.images.length ? h('div', { 'data-bd-note': '' }, '动态附图：' + row.args.images.join('、')) : null,
+            row.result?.error || row.result?.hint || row.error ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, String(row.error || row.result?.hint || row.result?.error)) : null,
+            row.state === 'pending' ? h('div', { 'data-bd-row': '' },
+              h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(working), onClick: () => decide(row, 'approve'), 'aria-label': '批准并发送：' + row.id }, working === row.id ? '正在处理…' : '批准并发送'),
+              h('button', { 'data-bd-btn': '', disabled: Boolean(working), onClick: () => decide(row, 'reject'), 'aria-label': '拒绝发送：' + row.id }, '拒绝')) : row.state === 'unknown' ? h('div', { 'data-bd-note': '' }, '发送结果不确定。请在 B站核对；系统不自动重试。') : null))
+            : h('div', { 'data-bd-empty': '' }, filter === 'pending' ? '暂无待审核内容。启用发送前审核后，新内容将进入此队列。' : '暂无发送审核记录。')))
+    }
+
 function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say, patch, login, loginState, loginTone, onLoginStart, onInstall, onCheck, onInstallAsr, copyText, sw }) {
   const cfg = (st && st.config) || {}
   const [asrModelDraft, setAsrModelDraft] = React.useState(null)
@@ -1316,6 +1655,18 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   const [learnRefresh, setLearnRefresh] = React.useState(0)
   const [mirrorNote, setMirrorNote] = React.useState('')
   const [soulBusy, setSoulBusy] = React.useState('')
+  const [memoryQuery, setMemoryQuery] = React.useState('')
+  const [memorySource, setMemorySource] = React.useState('all')
+  const [memoryOffset, setMemoryOffset] = React.useState(0)
+  const [memoryData, setMemoryData] = React.useState(null)
+  const [memoryError, setMemoryError] = React.useState('')
+  const [memoryRefresh, setMemoryRefresh] = React.useState(0)
+  const [memoryWorking, setMemoryWorking] = React.useState('')
+  const memoryRequest = React.useRef(0)
+  const memoryActionLock = React.useRef(false)
+  const soulRef = React.useRef(null)
+  const tasteRef = React.useRef(null)
+  const learnQueueRef = React.useRef(null)
   const alive = React.useRef(true)
   const learnInFlight = React.useRef(new Set())
   const learnPulling = React.useRef(false)
@@ -1392,6 +1743,20 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     }
   }, [view, learnState, learnKind, learnFilter, learnOffset, learnRefresh])
 
+  React.useEffect(() => {
+    if (view !== 'learning') return
+    let dead = false
+    const seq = ++memoryRequest.current
+    const timer = setTimeout(async () => {
+      try {
+        const r = await jget('/memory?source=' + encodeURIComponent(memorySource) + '&filter=' + encodeURIComponent(memoryQuery) + '&offset=' + memoryOffset + '&limit=20')
+        if (!r || r.ok === false || !Array.isArray(r.items)) throw new Error(r?.error || '记忆中心接口尚未加载，完整重启 DSH 后重试')
+        if (!dead && alive.current && seq === memoryRequest.current) { setMemoryData(r); setMemoryError('') }
+      } catch (e) { if (!dead && alive.current && seq === memoryRequest.current) setMemoryError(String(e?.message || e)) }
+    }, memoryQuery ? 220 : 0)
+    return () => { dead = true; clearTimeout(timer); memoryRequest.current += 1 }
+  }, [view, memorySource, memoryQuery, memoryOffset, memoryRefresh, st?.rev])
+
   const icon = (name) => h(PetIcon, { name })
   const sectionHead = (_name, title, extra) => h('div', { 'data-bd-h': '' }, h('b', {}, title), extra || null)
   const safeSay = (text, tone) => { if (typeof say === 'function') say(String(text || ''), tone) }
@@ -1411,12 +1776,13 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   }
   const switchControl = (on, disabled, onChange) => h('button', {
     'data-bd-sw': '', 'data-on': on ? '' : undefined, disabled: Boolean(disabled),
+    'aria-label': view === 'learning' ? '自动审核待审内容' : '启用本地转写',
     type: 'button', 'aria-pressed': Boolean(on), onClick: () => onChange(!on),
   }, h('i', {}))
   const saveConfig = async (values, label) => {
     try {
       const result = await patch(values, label)
-      if (result === false) throw new Error(label + '没有保存成功')
+      if (result === false) throw new Error(label + '保存失败')
       return true
     } catch (e) {
       safeSay(String(e && e.message || e), 'warn')
@@ -1428,7 +1794,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     const label = (SOUL_SECTION_LABELS || []).find((x) => x[0] === section)
     const title = label ? label[1] : section
     if (typeof window !== 'undefined' && typeof window.confirm === 'function'
-      && !window.confirm(`清空「${title}」这一节？\n\n只清空这一节，其他内容保留。`)) return
+      && !window.confirm(`确认清空「${title}」？\n\n仅清空所选章节，其他内容保留。`)) return
     if (soulBusy) return
     setSoulBusy(section)
     setBusy('soul')
@@ -1461,8 +1827,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       if (!alive.current) return
       if (sameLearnView(view)) setLearnQ(r)
       setLearnError('')
-      const text = decision === 'approve' ? '已批准，这条内容会作为后续参考'
-        : decision === 'reject' ? '已拒绝，记录仍保留在审计历史中' : '已忘掉，这条学习已撤销'
+      const text = decision === 'approve' ? '已批准，该记录将作为后续参考'
+        : decision === 'reject' ? '已拒绝，审计记录保留' : '已移除该学习记录，审计记录保留'
       safeSay(text, 'good')
     } catch (e) {
       if (alive.current) { setLearnError(String(e && e.message || e)); safeSay(String(e && e.message || e), 'warn') }
@@ -1519,14 +1885,14 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   const onDiag = async () => {
     setBusy('diag')
     try {
-      const r = check(await jget('/diag'), '诊断包没取到')
+      const r = check(await jget('/diag'), '诊断信息读取失败')
       const text = String(r.text || '')
       try {
         await navigator.clipboard.writeText(text)
-        safeSay(`诊断包已复制到剪贴板（${text.length} 字）—— 直接去粘贴就行；凭证不在里面，可以放心贴`, 'good')
+        safeSay(`诊断信息已复制到剪贴板（${text.length} 字），不包含登录凭证。`, 'good')
       } catch {
         try { console.log('[dsh-deepmoyu] 诊断包\n' + text) } catch { /* 无所谓 */ }
-        safeSay(`剪贴板没复制上 —— 诊断包（${text.length} 字）已经打到浏览器控制台（F12）里，从那儿复制`, 'warn')
+        safeSay(`剪贴板写入失败。诊断信息（${text.length} 字）已输出至浏览器控制台（F12）。`, 'warn')
       }
     } catch (e) { safeSay(String(e && e.message || e), 'warn') }
     finally { setBusy('') }
@@ -1534,10 +1900,10 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
 
   const so = st && st.soul
   const filled = so && Array.isArray(so.filled) ? so.filled : []
-  const soulCard = h('details', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-memory': '' },
-    h('summary', {}, 'soul · 她自己的四节账'),
+  const soulCard = h('details', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-memory': '', ref: soulRef },
+    h('summary', {}, 'soul · 角色记忆'),
     h('div', { 'data-bd-note': '' }, so
-      ? (so.empty ? '这本账目前是空的，由鲸鱼摸鱼自己在冲浪过程中记录。这里只提供逐节清除。'
+      ? (so.empty ? '暂无角色记忆。记录由鲸鱼摸鱼模式生成，此处可按章节清除。'
         : `${Number(so.chars) || 0}/${Number(so.budget) || 900} 字${so.updatedAt ? '，上次更新 ' + formatTime(so.updatedAt) : ''}`)
       : '正在读取 soul 状态…'),
     so && so.text ? h('pre', { 'data-bd-pre': '', 'data-bd-soul': '' }, String(so.text)) : null,
@@ -1549,13 +1915,118 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         h('button', {
           'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy) || soulBusy === key || !filled.includes(key),
           onClick: () => clearSoul(key),
-        }, icon('spark'), soulBusy === key ? '清除中…' : '清除这一节')))),
+        }, icon('spark'), soulBusy === key ? '清除中…' : '清除章节')))),
     so && so.file ? h('div', { 'data-bd-note': '' }, '文件：' + String(so.file)) : null
   )
 
   const learnInfo = (st && st.learn) || {}
+  const tasteInfo = (st && st.taste) || {}
   const kinds = Array.isArray(learnInfo.kinds) ? learnInfo.kinds : []
   const labels = learnInfo.labels && typeof learnInfo.labels === 'object' ? learnInfo.labels : {}
+  const tasteRows = Array.isArray(tasteInfo.rows) ? tasteInfo.rows : []
+  const tasteTop = Array.isArray(tasteInfo.top) ? tasteInfo.top : []
+  const tasteLines = Array.isArray(tasteInfo.lines) ? tasteInfo.lines : []
+  const focusLearning = (state) => {
+    setLearnState(state); setLearnFilter(''); setLearnKind(''); setLearnOffset(0); setLearnQ(null)
+    learnQueueRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+  }
+  const memoryOverviewCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-memory-overview': '' },
+    h('div', { 'data-bd-row': '' },
+      sectionHead('spark', '记忆中心'),
+      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '记录概览')),
+    h('div', { 'data-bd-note': '' }, '学习经验经审核后作为参考；soul 保存角色记忆；口味统计基于已发送内容；判重历史用于识别重复操作。各类记录分别管理。'),
+    h('div', { 'data-bd-kpi': '' },
+      h('div', {}, h('b', {}, String(Number(learnInfo.approved) || 0)), h('span', {}, '已批准经验')),
+      h('div', {}, h('b', {}, String(Number(learnInfo.pending) || 0)), h('span', {}, '待审经验')),
+      h('div', {}, h('b', {}, String((so && so.filled || []).length)), h('span', {}, '已记录章节'))),
+    h('div', { 'data-bd-memory-grid': '' },
+      h('div', { 'data-bd-memory-tile': 'learning' },
+        h('strong', {}, '学习'),
+        h('span', {}, `共 ${Number(learnInfo.total) || 0} 条 · 批准 ${Number(learnInfo.approved) || 0} · 待审 ${Number(learnInfo.pending) || 0}`),
+        h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => focusLearning('pending') }, '待审记录')),
+      h('div', { 'data-bd-memory-tile': 'soul' },
+        h('strong', {}, 'soul'),
+        h('span', {}, so ? (so.empty ? '暂无记录' : `${Number(so.chars) || 0}/${Number(so.budget) || 900} 字 · ${String(so.updatedAt || '').trim() ? '已更新' : '暂无更新记录'}`) : '状态读取中'),
+        h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => { if (soulRef.current) { soulRef.current.open = true; soulRef.current.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }) } } }, '心情记录')),
+      h('div', { 'data-bd-memory-tile': 'taste' },
+        h('strong', {}, '口味'),
+        h('span', {}, `样本 ${Number(tasteInfo.sample) || 0} · 已核对赞数 ${Number(tasteInfo.checked) || 0}`),
+        h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => { if (tasteRef.current) tasteRef.current.open = !tasteRef.current.open } }, '口味统计')),
+      h('div', { 'data-bd-memory-tile': 'seen' },
+        h('strong', {}, '判重'),
+        h('span', {}, `已浏览 ${Number(st?.seen?.videos) || 0} 个视频 · 已回复 ${Number(st?.seen?.replied) || 0} 条评论`),
+        h('span', { 'data-bd-note': '' }, '用于识别重复操作'))),
+    h('details', { 'data-bd-memory-detail': '', 'data-bd-taste-detail': '', ref: tasteRef },
+      h('summary', {}, tasteInfo.enough ? '口味趋势' : '口味趋势（暂不满足分析条件）'),
+      tasteLines.length ? h('div', { 'data-bd-memory-lines': '' }, ...tasteLines.map((line, i) => h('div', { key: i, 'data-bd-note': '' }, line))) : null,
+      tasteRows.length ? h('div', { 'data-bd-memory-trends': '' }, ...tasteRows.slice(0, 5).map((row) => {
+        const marker = row.skew || row.low ? h('em', {}, row.skew ? '单条样本偏斜' : '赞数较少') : null
+        return h('div', { key: row.key, 'data-bd-memory-trend': '' },
+          h('span', {}, row.label || row.key), h('b', {}, `${row.n} 次 · 平均 ${row.avg} 赞`), marker)
+      })) : h('div', { 'data-bd-note': '' }, '暂无满足分析条件的样本。'),
+      tasteTop.length ? h('div', { 'data-bd-memory-quotes': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '已获赞的自身发言')), ...tasteTop.map((row) => h('blockquote', { key: row.rpid }, `“${String(row.text || '').slice(0, 100)}” · ${Number(row.likes) || 0} 赞`))) : null),
+    h('div', { 'data-bd-row': '' },
+      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, tasteInfo.updatedAt ? '口味统计更新时间：' + formatTime(tasteInfo.updatedAt) : '口味统计暂无更新记录。'),
+      h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => focusLearning('all') }, '查看完整学习记录')))
+  const changeMemory = async (row, action) => {
+    if (memoryActionLock.current || memoryWorking || busy) return
+    const note = action === 'revoke' ? '确认撤销该记录的批准？状态将改为拒绝，并从下一轮提示词中移除。'
+      : row.source === 'taste' ? '确认从口味统计中移除该样本？已发送的评论、判重记录和历史审计保留。'
+        : '确认从当前记忆中移除该记录？历史版本、审计、B站内容和判重记录保留。'
+    if (typeof window.confirm === 'function' && !window.confirm(note + '\n\n' + String(row.text || '').slice(0, 160))) return
+    const key = row.source + ':' + row.id
+    memoryActionLock.current = true
+    setMemoryWorking(key)
+    try {
+      const result = await jpost('/memory', { source: row.source, id: row.id, version: row.version, action })
+      if (!result || result.ok === false) throw new Error(result?.error || '记忆操作未完成')
+      if (!alive.current) return
+      safeSay(result.auditRetained === false ? (result.warning || '当前记忆已更新，但操作审计归档失败，请查看运行日志。')
+        : action === 'revoke' ? '已撤销批准，该记录不再注入后续提示词，审计保留。' : '已从当前记忆移除，历史审计保留。', result.auditRetained === false ? 'warn' : 'good')
+      setMemoryRefresh((n) => n + 1); setLearnRefresh((n) => n + 1)
+      const fresh = await jget('/status')
+      if (alive.current && fresh?.ok) setSt(fresh)
+    } catch (e) { if (alive.current) {
+      const text = String(e?.message || e)
+      safeSay(text.includes('MEMORY_CHANGED_REFRESH_REQUIRED') ? '记录已发生变化，正在重新读取。请核对更新后的内容。' : text, 'warn')
+      setMemoryError(text.includes('MEMORY_CHANGED_REFRESH_REQUIRED') ? '记录已变化，本次操作未执行。正在重新读取。' : text)
+      setMemoryRefresh((n) => n + 1)
+    } }
+    finally { memoryActionLock.current = false; if (alive.current) setMemoryWorking('') }
+  }
+  const memoryLabels = { all: '全部记忆', learning: '学习经验', soul: '心情记录', voice: '语气札记', taste: '口味样本', seen: '浏览历史', history: '版本与审计' }
+  const memoryItems = Array.isArray(memoryData?.items) ? memoryData.items : []
+  const memoryExplorerCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-memory-explorer': '' },
+    sectionHead('list', '记忆检索'),
+    h('div', { 'data-bd-note': '' }, '支持检索学习、心情、语气、口味、浏览记录和近期版本审计。浏览判重与历史版本为只读；撤销批准或移除记录均保留审计，公开内容保持不变。'),
+    h('div', { 'data-bd-row': '' },
+      h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '记忆搜索'),
+        h('input', { 'data-bd-input': '', 'aria-label': '搜索所有记忆', placeholder: '按正文、BV号、来源或决定理由搜索', value: memoryQuery, maxLength: 160,
+          onChange: (e) => { setMemoryQuery(e.target.value); setMemoryOffset(0); setMemoryData(null) } })),
+      h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '记忆来源'),
+        h('select', { 'data-bd-input': '', value: memorySource, 'aria-label': '记忆来源', onChange: (e) => { setMemorySource(e.target.value); setMemoryOffset(0); setMemoryData(null) } },
+          ...Object.entries(memoryLabels).map(([key, label]) => h('option', { key, value: key }, label))))),
+    memoryError ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, memoryError) : null,
+    h('div', { 'data-bd-memory-results': '', tabIndex: 0, 'aria-label': '统一记忆搜索结果' },
+      !memoryData ? h('div', { 'data-bd-empty': '', role: 'status' }, memoryError ? '记忆读取失败，可重新读取。' : '正在读取记忆记录…')
+        : !memoryItems.length ? h('div', { 'data-bd-empty': '' }, memoryQuery ? '无匹配的记忆记录。' : '该来源暂无记录。')
+          : memoryItems.map((row) => h('article', { key: row.source + ':' + row.id, 'data-bd-memory-result': '' },
+            h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-badge': '' }, memoryLabels[row.source] || row.source),
+              row.label ? h('strong', { 'data-bd-label': '', 'data-bd-grow': '' }, row.label) : null,
+              h('time', { 'data-bd-note': '' }, formatTime(row.at) || '时间未记录')),
+            h('p', {}, row.text),
+            row.from ? h('div', { 'data-bd-note': '' }, '来源：' + row.from) : null,
+            row.why ? h('div', { 'data-bd-note': '' }, '决定理由：' + row.why) : null,
+            row.state ? h('span', { 'data-bd-note': '' }, '当前状态：' + ({ pending: '待审', approved: '已批准', rejected: '已拒绝' }[row.state] || row.state)) : null,
+            Array.isArray(row.actions) && row.actions.length ? h('div', { 'data-bd-row': '' },
+              row.actions.includes('revoke') ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(memoryWorking) || Boolean(busy), onClick: () => changeMemory(row, 'revoke') }, '撤销批准') : null,
+              row.actions.includes('forget') ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(memoryWorking) || Boolean(busy), onClick: () => changeMemory(row, 'forget') }, memoryWorking === row.source + ':' + row.id ? '正在移除…' : '从当前记忆移除') : null)
+              : h('span', { 'data-bd-note': '' }, '只读历史记录')))),
+    h('div', { 'data-bd-row': '' },
+      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, memoryData ? `匹配 ${Number(memoryData.matched) || 0} 条 · 当前 ${memoryItems.length ? memoryOffset + 1 : 0}–${memoryOffset + memoryItems.length}；审计范围为最近 100 条` : '按需读取，离页停止'),
+      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: memoryOffset <= 0 || Boolean(memoryWorking), onClick: () => { setMemoryOffset(Math.max(0, memoryOffset - 20)); setMemoryData(null) } }, '前 20 条'),
+      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: !memoryData?.more || Boolean(memoryWorking), onClick: () => { setMemoryOffset(memoryOffset + 20); setMemoryData(null) } }, '后 20 条'),
+      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(memoryWorking), onClick: () => setMemoryRefresh((n) => n + 1) }, '重新读取记忆')))
   const q = learnQ && sameLearnView(learnView) ? learnQ : null
   const items = q && Array.isArray(q.items) ? q.items : []
   const sourceLinks = (one) => {
@@ -1591,9 +2062,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       h('div', { 'data-bd-row': '' },
         canApprove ? h('button', { 'data-bd-btn': '', 'data-sm': '', 'data-primary': '', disabled: pending, onClick: () => decideLearn(one.id, 'approve') }, icon('spark'), one.state === 'rejected' ? '重新批准' : '批准') : null,
         canReject ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: pending, onClick: () => decideLearn(one.id, 'reject') }, icon('dots'), one.state === 'approved' ? '改为拒绝' : '拒绝') : null,
-        h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: pending, onClick: () => decideLearn(one.id, 'forget') }, icon('gear'), '忘记')))
+        h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: pending, onClick: () => decideLearn(one.id, 'forget') }, icon('gear'), '移除记录')))
   }) : null
-  const learnCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
+  const learnCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-learning-queue': '', ref: learnQueueRef },
     h('div', { 'data-bd-row': '' }, sectionHead('list', '学习队列'),
       h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, `待审 ${Number(learnInfo.pending) || 0} · 已批准 ${Number(learnInfo.approved) || 0} · 已拒绝 ${Number(learnInfo.rejected) || 0}`)),
     /* 判重账本概览（2026-10-27 从旧设置页搬进来）：「刷过不再刷、回过不再回」记了多少得有地方看 */
@@ -1601,24 +2072,24 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const sn = st && st.seen
       if (!sn) return null
       return h('div', { 'data-bd-note': '' },
-        `判重账本：刷过 ${Number(sn.videos) || 0} 个视频（今天新记 ${Number(sn.videosToday) || 0} 个）· `
-        + `回过 ${Number(sn.replied) || 0} 条评论 —— 同一个不会再来一遍`)
+        `判重账本：已浏览 ${Number(sn.videos) || 0} 个视频（今日新增 ${Number(sn.videosToday) || 0} 个）· `
+        + `已回复 ${Number(sn.replied) || 0} 条评论`)
     })(),
-    h('div', { 'data-bd-note': '' }, '批准后才会注入后续行为；例句、来源、决定理由和版本都保留，忘记只撤销当前记录并留下审计痕迹。'),
+    h('div', { 'data-bd-note': '' }, '已批准内容可注入后续提示词。记录保留例句、来源、决定理由和版本；移除当前记录后仍保留审计。'),
     h('div', { 'data-bd-row': '' },
       ...[['pending', '待审'], ['approved', '已批准'], ['rejected', '已拒绝'], ['all', '全部']].map(([value, label]) => h('button', {
         key: value, 'data-bd-btn': '', 'data-sm': '', 'data-primary': learnState === value ? '' : undefined,
         onClick: () => { setLearnState(value); setLearnOffset(0); setLearnQ(null) },
       }, label)),
-      h('select', { 'data-bd-input': '', style: { width: '130px', flex: '0 1 130px' }, value: learnKind, onChange: (e) => { setLearnKind(e.target.value); setLearnOffset(0); setLearnQ(null) } },
+      h('select', { 'data-bd-input': '', 'aria-label': '学习记录类别', style: { width: '130px', flex: '0 1 130px' }, value: learnKind, onChange: (e) => { setLearnKind(e.target.value); setLearnOffset(0); setLearnQ(null) } },
         h('option', { value: '' }, '全部类别'), ...kinds.map((kind) => h('option', { key: kind, value: kind }, labels[kind] || kind)))),
     h('input', {
-      'data-bd-input': '', value: learnFilter, maxLength: 160, placeholder: '筛正文、例句、来源或决定理由',
+      'data-bd-input': '', value: learnFilter, maxLength: 160, placeholder: '按正文、例句、来源或决定理由筛选',
       'aria-label': '筛选学习记录', onChange: (e) => { setLearnFilter(e.target.value); setLearnOffset(0); setLearnQ(null) },
     }),
     learnError ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, '学习记录读取失败：' + learnError) : null,
     !q ? h('div', { 'data-bd-list-empty': '', role: 'status' }, '正在读取学习记录…')
-      : !items.length ? h('div', { 'data-bd-list-empty': '' }, learnFilter ? '没有匹配的学习记录' : '这个状态还没有学习记录')
+      : !items.length ? h('div', { 'data-bd-list-empty': '' }, learnFilter ? '无匹配的学习记录' : '该状态暂无学习记录')
         : h('div', { 'data-bd-learn-list': '', tabIndex: 0, 'aria-label': '学习记录列表' }, ...learnRows),
     q ? h('div', { 'data-bd-row' : '' },
       h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, `显示 ${items.length ? learnOffset + 1 : 0}–${learnOffset + items.length} / ${q.matched == null ? items.length : q.matched} 条`),
@@ -1633,16 +2104,16 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     h('div', { 'data-bd-row': '', 'data-bd-toggle': '' },
       h('div', { 'data-bd-grow': '' },
         h('div', { 'data-bd-label': '' }, '自动审核待审内容'),
-        h('div', { 'data-bd-note': '' }, '由模型逐条判断；证据不足会拒绝或保留待审，不会代替你发 B站 内容。')),
+        h('div', { 'data-bd-note': '' }, '模型逐条审核学习记录，证据不足时拒绝或保留待审。此过程不发送 B站内容。')),
       switchControl(readSwitch('learnAutoReview'), Boolean(busy), (v) => saveConfig({ learnAutoReview: v }, '自动审核学习队列'))),
     h('details', { 'data-bd-advanced': '' }, h('summary', {}, '模型与审核参数'), h('div', {},
     h('div', { 'data-bd-row': '' },
       h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '审核模型'),
-      reviewModels.length ? h('select', { 'data-bd-input': '', value: reviewModelDraft === null ? '' : reviewModelDraft, onChange: (e) => setReviewModelDraft(e.target.value) },
+      reviewModels.length ? h('select', { 'data-bd-input': '', 'aria-label': '审核模型', value: reviewModelDraft === null ? '' : reviewModelDraft, onChange: (e) => setReviewModelDraft(e.target.value) },
         h('option', { value: '' }, '跟随后台模型'),
         reviewModelDraft && !reviewModels.some((m) => m.id === reviewModelDraft) ? h('option', { value: reviewModelDraft }, reviewModelDraft + '（清单外）') : null,
         reviewModels.map((m) => h('option', { key: m.id, value: m.id }, m.label || m.id)))
-        : h('input', { 'data-bd-input': '', value: reviewModelDraft === null ? '' : reviewModelDraft, placeholder: '留空 = 跟随后台模型', onChange: (e) => setReviewModelDraft(e.target.value) })),
+        : h('input', { 'data-bd-input': '', 'aria-label': '审核模型', value: reviewModelDraft === null ? '' : reviewModelDraft, placeholder: '留空 = 跟随后台模型', onChange: (e) => setReviewModelDraft(e.target.value) })),
     h('div', { 'data-bd-row': '' },
       h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '每批最多'), h('input', { 'data-bd-input': '', type: 'number', min: 1, max: 50, value: reviewBatchDraft ?? '20', onChange: (e) => setReviewBatchDraft(e.target.value) })),
       h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '最长分钟'), h('input', { 'data-bd-input': '', type: 'number', min: 1, max: 60, value: reviewMinutesDraft ?? '10', onChange: (e) => setReviewMinutesDraft(e.target.value) })),
@@ -1662,14 +2133,14 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           safeSay(r.started ? '模型审核已开始，完成后会写入运行日志。' : (r.message || '当前没有待审核内容。'), r.started ? 'good' : '')
         } catch (e) { safeSay(String(e && e.message || e), 'warn') }
         finally { setBusy('') }
-      } }, reviewStatus.running ? '审核中…' : '现在审核一批'),
+      } }, reviewStatus.running ? '审核中…' : '开始批量审核'),
       reviewStatus.running ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: async () => {
         setBusy('learn-review-stop')
         try { const r = check(await jpost('/learn/review', { action: 'stop' }), '停止模型审核失败'); if (r.learnReview) setSt((old) => ({ ...old, learnReview: r.learnReview })); safeSay('模型审核已请求停止。', 'good') }
         catch (e) { safeSay(String(e && e.message || e), 'warn') } finally { setBusy('') }
       } }, '停止审核') : null),
     h('div', { 'data-bd-row': '' },
-      h('span', { 'data-bd-badge': '', 'data-live': reviewStatus.running ? '' : undefined }, reviewStatus.running ? '审核中' : reviewStatus.complete ? '本批完成' : reviewStatus.lastError ? '本批未完成' : '待命'),
+      h('span', { 'data-bd-badge': '', 'data-live': reviewStatus.running ? '' : undefined }, reviewStatus.running ? '审核中' : reviewStatus.complete ? '本批完成' : reviewStatus.lastError ? '本批未完成' : '未运行'),
       h('span', { 'data-bd-badge': '' }, '全部待审 ' + Number(reviewStatus.pending ?? learnInfo.pending ?? 0)),
       h('span', { 'data-bd-badge': '' }, '本批批准 ' + Number(reviewStatus.approved || 0)),
       h('span', { 'data-bd-badge': '' }, '本批拒绝 ' + Number(reviewStatus.rejected || 0)),
@@ -1677,23 +2148,23 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     reviewStatus.model ? h('div', { 'data-bd-note': '' }, (reviewStatus.running ? '正在使用：' : '最近使用：') + reviewStatus.model) : null,
     reviewStatus.lastError ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, '审核提示：' + reviewStatus.lastError) : null,
     !reviewStatus.running && Number(reviewStatus.nextRetryAt) > 0 ? h('div', { 'data-bd-note': '' }, '自动重试最早：' + formatTime(reviewStatus.nextRetryAt) + (reviewStatus.enabled ? '' : '（自动审核未开启）')) : null,
-    h('div', { 'data-bd-note': '' }, reviewStatus.lastFinishedAt ? '上次结束：' + formatTime(reviewStatus.lastFinishedAt) : '尚未运行；打开自动审核后，下一次检查会处理待审队列。'))
+    h('div', { 'data-bd-note': '' }, reviewStatus.lastFinishedAt ? '上次结束：' + formatTime(reviewStatus.lastFinishedAt) : '暂无审核记录。启用自动审核后，将在下次检查时处理待审队列。'))
 
   const mirror = (st && st.mirror) || {}
   const mirrorCard = h('section', { 'data-bd-sec': '' },
     sectionHead('dots', '记录镜像'),
     h('div', { 'data-bd-note': '' }, mirror.error ? '镜像出错：' + mirror.error
       : mirror.dir ? `复制到：${mirror.dir}${mirror.lastAt ? ' · 上次 ' + formatTime(mirror.lastAt) + '（' + ((mirror.lastCopied || []).length) + ' 个）' : ''}`
-        : '还没有可用镜像目录；可以填写目录，或让插件从 out/digest junction 自动推断。'),
+        : '镜像目录未配置。可指定目录，或根据 out/digest 目录联接自动推断。'),
     h('div', { 'data-bd-row': '' },
-      h('input', { 'data-bd-input': '', value: mirrorDirDraft === null ? '' : mirrorDirDraft, placeholder: '留空 = 自动推断镜像目录', onChange: (e) => setMirrorDirDraft(e.target.value) }),
+      h('input', { 'data-bd-input': '', 'aria-label': '记录镜像目录', value: mirrorDirDraft === null ? '' : mirrorDirDraft, placeholder: '留空 = 自动推断镜像目录', onChange: (e) => setMirrorDirDraft(e.target.value) }),
       h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy), onClick: () => saveConfig({ mirrorDir: String(mirrorDirDraft || '').trim() }, '镜像目录') }, '保存目录')),
     h('div', { 'data-bd-row': '' },
-      h('button', { 'data-bd-btn': '', disabled: Boolean(busy) || !mirror.dir, onClick: syncMirror }, icon('dots'), '现在同步'),
+      h('button', { 'data-bd-btn': '', disabled: Boolean(busy) || !mirror.dir, onClick: syncMirror }, icon('dots'), '同步记录'),
       h('button', { 'data-bd-btn': '', disabled: Boolean(busy) || !mirror.dir, onClick: openMirror }, icon('gear'), '打开目录'),
       mirror.dir ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy), onClick: () => copyText(mirror.dir) }, '复制路径') : null),
     mirrorNote ? h('div', { 'data-bd-msg': '' }, mirrorNote) : null,
-    h('div', { 'data-bd-note': '' }, '镜像是给人看的脱敏快照，不会复制登录凭证。'))
+    h('div', { 'data-bd-note': '' }, '镜像保存脱敏记录快照，不包含登录凭证。'))
 
   const accountCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
     sectionHead('key', '账号与环境'),
@@ -1702,16 +2173,19 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       h('span', { 'data-bd-badge': '', 'data-live': st && st.venvReady ? '' : undefined }, st && st.venvReady ? '主环境就绪' : '主环境未就绪'),
       h('span', { 'data-bd-badge': '', 'data-live': st && st.dshCli && st.dshCli.ok ? '' : undefined }, st && st.dshCli && st.dshCli.ok ? 'dsh命令正常' : 'dsh命令待检查'),
       h('span', { 'data-bd-badge': '' }, 'v' + String((st && st.version) || '?'))),
-    h('div', { 'data-bd-note': '' }, '首次使用先安装主依赖，再扫码登录；测一下会实际检查登录和搜索。'),
+    typeof st?.environment?.upgradeHint === 'string' && st.environment.upgradeHint.trim()
+      ? h('div', { 'data-bd-msg': '', 'data-warn': '', 'data-bd-environment-upgrade': '', role: 'status', 'aria-live': 'polite', 'aria-label': '环境升级说明' }, st.environment.upgradeHint)
+      : null,
+    h('div', { 'data-bd-note': '' }, '首次使用需安装主依赖并扫码登录。连接检查将验证登录状态和搜索接口。'),
     h('div', { 'data-bd-row': '' },
-      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: onInstall }, icon('gear'), '装主依赖'),
-      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: onCheck }, icon('pulse'), '测一下'),
+      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: onInstall }, icon('gear'), '安装主依赖'),
+      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: onCheck }, icon('pulse'), '检查连接'),
       h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: onLoginStart }, icon('key'), '扫码登录'),
-      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), title: '把版本/环境/最近错误/日志尾部拼成一段文本复制走 —— 出问题直接把剪贴板贴出来', onClick: onDiag }, icon('dots'), busy === 'diag' ? '打包中…' : '一键诊断')),
+      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), title: '复制版本、环境、近期错误和日志摘要，用于故障排查', onClick: onDiag }, icon('dots'), busy === 'diag' ? '正在生成…' : '生成诊断信息')),
     login ? h('div', { 'data-bd-qr': '' },
       login.qr ? h('img', { src: login.qr, alt: 'B站扫码登录二维码' }) : h('div', { 'data-bd-msg': '', 'data-warn': '' }, '二维码没有生成，请先安装主依赖。'),
       h('div', { 'data-bd-grow': '' },
-        h('div', { 'data-bd-note': '' }, '手机 B站打开扫一扫，确认时选择记住我或长期登录。'),
+        h('div', { 'data-bd-note': '' }, '使用手机 B站扫码，并确认登录；可选择记住登录状态。'),
         h('div', { 'data-bd-msg': '', 'data-warn': loginTone === 'warn' ? '' : undefined, 'data-good': loginTone === 'good' ? '' : undefined }, loginState || '等待扫码…'))) : null,
     loginState && !login ? h('div', { 'data-bd-msg': '', 'data-warn': loginTone === 'warn' ? '' : undefined, 'data-good': loginTone === 'good' ? '' : undefined }, loginState) : null,
     st && st.installLog ? h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '主依赖日志：' + st.installLog), h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => copyText(st.installLog) }, '复制路径')) : null,
@@ -1724,11 +2198,11 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       switchControl(readSwitch('transcribe'), Boolean(busy), (v) => saveConfig({ transcribe: v }, '本地转写'))),
     h('div', { 'data-bd-row': '' },
       h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, 'Whisper 模型'),
-      h('select', { 'data-bd-input': '', style: { width: '140px' }, value: asrModelDraft === null ? 'small' : asrModelDraft, onChange: (e) => setAsrModelDraft(e.target.value) },
+      h('select', { 'data-bd-input': '', 'aria-label': 'Whisper 模型', style: { width: '140px' }, value: asrModelDraft === null ? 'small' : asrModelDraft, onChange: (e) => setAsrModelDraft(e.target.value) },
         ...['tiny', 'base', 'small', 'medium'].map((name) => h('option', { key: name, value: name }, name)))),
     h('div', { 'data-bd-row': '' },
       h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '主 Python 路径'),
-      h('input', { 'data-bd-input': '', value: pythonPathDraft === null ? '' : pythonPathDraft, onChange: (e) => setPythonPathDraft(e.target.value), placeholder: 'python 或 venv/python.exe' })),
+      h('input', { 'data-bd-input': '', 'aria-label': '主 Python 路径', value: pythonPathDraft === null ? '' : pythonPathDraft, onChange: (e) => setPythonPathDraft(e.target.value), placeholder: 'python 或 venv/python.exe' })),
     h('div', { 'data-bd-row': '' },
       h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => saveConfig({ asrModel: String(asrModelDraft || 'small'), pythonPath: String(pythonPathDraft || '').trim() }, 'ASR参数') }, '保存 ASR 参数'),
       h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: onInstallAsr }, icon('gear'), st && st.asrReady ? '转写已安装' : '安装转写')),
@@ -1740,21 +2214,21 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     st && st.asrTail ? h('pre', { 'data-bd-pre': '' }, String(st.asrTail).slice(-1600)) : null)
 
   const groundCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
-    sectionHead('pulse', '它的地盘与发言复核'),
-    h('div', { 'data-bd-kv': '' }, '家目录：' + String((st && st.home) || '')), 
+    sectionHead('pulse', '本地数据'),
+    h('div', { 'data-bd-kv': '' }, '数据目录：' + String((st && st.home) || '')),
     h('div', { 'data-bd-kv': '' }, '报告路径：' + String((st && st.report) || '')), 
     h('div', { 'data-bd-row' : '' },
-      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => openFolder('home', '地盘') }, icon('pulse'), '打开地盘'),
+      h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => openFolder('home', '数据目录') }, icon('pulse'), '打开数据目录'),
       h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => openFolder('out', '产物目录') }, icon('gear'), '打开产物目录'),
-      st && st.home ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy), onClick: () => copyText(st.home) }, '复制地盘路径') : null,
+      st && st.home ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy), onClick: () => copyText(st.home) }, '复制数据目录路径') : null,
       st && st.report ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy), onClick: () => copyText(st.report) }, '复制报告路径') : null),
-    h('div', { 'data-bd-note': '' }, '这里保留的是插件运行地盘、输出路径和发言复核入口；不会打开或改写登录凭证。'))
+    h('div', { 'data-bd-note': '' }, '管理插件数据和输出目录。登录凭证保持独立存储。'))
 
   return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': view === 'learning' ? 'learning' : 'other' },
     h('div', { 'data-bd-pghead': '' }, h('div', {}, h('b', {}, view === 'learning' ? '学习与记忆' : '账号与环境'),
-      h('p', {}, view === 'learning' ? '审核在后台进行。这里查看进度、管理记录与她的小心事。' : '登录、依赖与本地记录。环境状态集中在这里。'))),
+      h('p', {}, view === 'learning' ? '管理学习审核、角色记忆、口味统计和历史记录。' : '管理账号登录、运行依赖和本地数据。'))),
     h('div', { 'data-bd-pet-grid': '', 'data-bd-other': '' },
-      ...(view === 'learning' ? [reviewCard, learnCard, soulCard] : [accountCard, asrCard, mirrorCard, groundCard])))
+      ...(view === 'learning' ? [memoryOverviewCard, memoryExplorerCard, reviewCard, learnCard, soulCard] : [accountCard, asrCard, mirrorCard, groundCard])))
 }
 
 
@@ -1774,8 +2248,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const partialCount = rounds.filter(partial).length
       const background = st.backgroundRun || {}
       const current = background.active ? background.usage?.total : st.feiyu?.active ? st.feiyu.tokens?.thisRun : undefined
-      const currentLabel = background.active ? (background.task === 'learn-review' ? '本趟审核' : '本趟后台') : st.feiyu?.active ? '本趟会话' : '当前任务'
-      const endLabels = { user: '手动结束', exit: '已结束', error: '错误退出', 'token-budget': '本趟预算用完', 'total-budget': '累计上限已到', 'time-limit': '到达时限', 'spawn-error': '启动失败' }
+      const currentLabel = background.active ? (background.task === 'learn-review' ? '本次审核' : '本次后台') : st.feiyu?.active ? '本次会话' : '当前任务'
+      const endLabels = { user: '手动结束', exit: '已结束', error: '错误退出', 'token-budget': '已达单次预算', 'total-budget': '已达累计上限', 'time-limit': '到达时限', 'spawn-error': '启动失败' }
       const warnEnds = ['error', 'token-budget', 'total-budget', 'time-limit', 'spawn-error']
       const cols = []
       const dayValues = st.tokenDays && typeof st.tokenDays === 'object' ? st.tokenDays : {}
@@ -1796,32 +2270,32 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'ledger', 'data-bd-ledger': '', 'data-bd-ledger-focus': focus ? '' : undefined },
         h('div', { 'data-bd-ledger-heading': '' },
           h('div', {}, h('span', { 'data-bd-eyebrow': '' }, 'DAFEIYU / TOKEN JOURNAL'),
-            h('h2', {}, 'token 账本'), h('p', {}, '每一趟认真摸鱼，都有据可查。')),
+            h('h2', {}, 'token 账本'), h('p', {}, '查看累计用量、每日趋势和任务明细。')),
           h('button', { 'data-bd-btn': '', type: 'button', 'aria-pressed': focus, onClick: () => setFocus((old) => !old) }, focus ? '退出截图视图' : '截图视图')),
         h('section', { 'data-bd-ledger-summary': '', 'aria-label': 'token 用量总览' },
           h('div', { 'data-bd-ledger-hero': '' },
             h('span', { 'data-bd-ledger-label': '' }, '累计用量'),
             h('div', { 'data-bd-ledger-number': '' }, h('b', { 'data-bd-ledger-total': '' }, fmt(total)), h('span', {}, 'tokens')),
             h('div', { 'data-bd-ledger-meta': '' },
-              known(total) ? h('span', { 'data-bd-tok-chip': '', title: '称号只是显示，不影响行为' }, '称号 · ' + tokTitle(total)) : null,
-              Number(st.activeDays) > 0 ? h('span', {}, '连着干活 ' + st.activeDays + ' 天') : null),
+              known(total) ? h('span', { 'data-bd-tok-chip': '', title: '称号仅用于显示，不影响运行行为' }, '称号 · ' + tokTitle(total)) : null,
+              Number(st.activeDays) > 0 ? h('span', {}, '连续运行 ' + st.activeDays + ' 天') : null),
             h('p', {}, '已记录的真实用量，不含未计量任务。')),
           h('div', { 'data-bd-tok-kpis': '' },
             h('div', {}, h('span', {}, '今日用量'), h('b', {}, fmt(today)), h('small', {}, '本地时间 00:00 起')),
             h('div', {}, h('span', {}, currentLabel), h('b', {}, fmt(current)), h('small', {}, background.active && Number(background.unknownRequests) > 0 ? '另有 ' + background.unknownRequests + ' 次响应用量缺失' : background.active || st.feiyu?.active ? '正在记录中' : '当前没有运行任务')),
-            h('div', {}, h('span', {}, '累计上限'), h('b', {}, cap > 0 ? fmt(cap) : '不限'), h('small', {}, '已保存的总闸额度'))),
+            h('div', {}, h('span', {}, '累计上限'), h('b', {}, cap > 0 ? fmt(cap) : '不限'), h('small', {}, '已保存的累计限额'))),
           cap > 0 ? h('div', { 'data-bd-ledger-budget': '' },
             h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-grow': '' }, '累计上限进度'), h('b', {}, ratio === null ? '—' : ratio + '%')),
             h('div', { 'data-bd-tok-bar': '', role: 'progressbar', 'aria-label': '累计 token 上限使用比例', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': ratio === null ? undefined : Math.min(100, ratio) },
               h('i', { style: { width: (ratio === null ? 0 : Math.min(100, ratio)) + '%' } })),
-            h('p', {}, '到顶会自动暂停会话刷；后台单轮预算在「后台刷」页单独设置。')) : null),
+            h('p', {}, '达到累计上限后暂停会话刷。后台单次预算在运行方式中单独设置。')) : null),
         h('section', { 'data-bd-ledger-trend': '', 'aria-label': '最近 14 天 token 用量' },
           h('div', { 'data-bd-ledger-sectionhead': '' }, h('h3', {}, '最近 14 天'), h('span', {}, '每日已计量用量 · tokens')),
           cols.some((c) => c.value > 0) ? h('div', { 'data-bd-tok-days': '' }, cols.map((c) => h('div', { key: c.key, 'data-zero': c.value > 0 ? undefined : '', title: `${c.key} · ${fmt(c.value)} tokens` },
             h('div', { 'data-bd-tok-daytrack': '' }, h('i', { style: { height: Math.max(3, Math.round(c.value / dayMax * 100)) + '%' } })),
             h('span', {}, c.label)))) : h('div', { 'data-bd-tok-empty': '' }, '最近 14 天还没有已计量用量。')),
-        h('section', { 'data-bd-ledger-tasks': '', 'aria-label': '每趟任务明细' },
-          h('div', { 'data-bd-ledger-sectionhead': '' }, h('h3', {}, '每趟任务'),
+        h('section', { 'data-bd-ledger-tasks': '', 'aria-label': '任务用量明细' },
+          h('div', { 'data-bd-ledger-sectionhead': '' }, h('h3', {}, '任务明细'),
             h('span', {}, `${rounds.length} 条记录${unknownCount ? ' · ' + unknownCount + ' 条未计量' : ''}${partialCount ? ' · ' + partialCount + ' 条部分计量' : ''}`)),
           h('div', { 'data-bd-tok-list': '' }, shownRounds.length ? shownRounds.map((r) => h('div', { 'data-bd-tokrow': '', key: r.id },
             h('time', { title: r.startedAt || '' }, petFmtTime(r.startedAt) || '—'),
@@ -1832,16 +2306,16 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               h('em', { 'data-unknown': unmetered(r) ? '' : undefined }, unmetered(r) ? '未计量' : fmt(r.tokens.total)),
               !unmetered(r) ? h('small', {}, partial(r) ? '部分计量 · 另有 ' + r.unknownRequests + ' 次缺失' : '输入 ' + fmt(r.tokens.input) + ' / 输出 ' + fmt(r.tokens.output)) : h('small', {}, '不按 0 计算')),
             r.stopReason ? h('i', { 'data-bd-tok-chip': '', 'data-warn': warnEnds.includes(String(r.stopReason)) ? '' : undefined, title: String(r.stopReason) }, endLabels[r.stopReason] || String(r.stopReason)) : null))
-            : h('div', { 'data-bd-tok-empty': '' }, '还没有任务记录 —— 开一次会话刷或后台刷，这里就会记下来。')),
+            : h('div', { 'data-bd-tok-empty': '' }, '暂无任务记录。会话和后台任务运行后将记录用量。')),
           focus && rounds.length > shownRounds.length ? h('p', { 'data-bd-note': '' }, '截图视图展示最近 4 条；退出后查看全部 ' + rounds.length + ' 条记录。') : null),
         h('p', { 'data-bd-ledger-footnote': '' }, '计量说明：累计数只含已知用量，任务明细独立记账。部分计量保留已知数及缺失次数；未计量不等于没有消耗。'),
         !focus ? h('section', { 'data-bd-ledger-controls': '' },
           h('div', { 'data-bd-ledger-sectionhead': '' }, h('h3', {}, '预算与计数'), h('span', {}, '仅保存后生效')),
           h('div', { 'data-bd-row': '' },
-            h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '累计最多用多少 token（0 = 不限）'),
+            h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '累计 token 上限（0 = 不限）'),
               h('input', { 'data-bd-input': '', type: 'number', min: 0, max: 50000000, step: 100000, value: budgetDraft ?? '0', onChange: (e) => setBudgetDraft(e.target.value) })),
             h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: saveBudget }, '保存上限'),
-            h('button', { 'data-bd-btn': '', 'data-bd-danger': '', disabled: Boolean(busy), title: '累计和任务明细一起清零，上限不动；操作前需确认', onClick: clear }, '清零计数'))) : null)
+            h('button', { 'data-bd-btn': '', 'data-bd-danger': '', disabled: Boolean(busy), title: '清零累计用量和任务明细，保留累计上限；操作需确认', onClick: clear }, '清零计数'))) : null)
     }
 
     function PetStickerThumb({ item, large = false }) {
@@ -1863,6 +2337,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [draft, setDraft] = React.useState({})
       const [query, setQuery] = React.useState('')
       const [source, setSource] = React.useState('all')
+      const [review, setReview] = React.useState('approved')
       const [name, setName] = React.useState('')
       const [url, setUrl] = React.useState('')
       const [description, setDescription] = React.useState('')
@@ -1887,8 +2362,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         if (reading.current || writing.current) return
         reading.current = true; setLoading(true)
         try {
-          const r = await jget('/stickers')
-          if (!r?.ok) throw new Error(r?.error || '图库暂时读不到')
+          const r = await jget('/stickers?status=all')
+          if (!r?.ok) throw new Error(r?.error || '图库读取失败')
           if (alive.current) { setData(r); setError(''); routeMissingRef.current = false; setRouteMissing(false) }
         } catch (e) {
           if (alive.current) {
@@ -1959,15 +2434,19 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         if (kind === 'upload') setUploadError('')
         try {
           const r = await jpost('/stickers/' + kind, body)
-          if (!r?.ok) throw new Error(r?.error || '没有完成')
+          if (!r?.ok) throw new Error(r?.error || '操作未完成')
           if (!alive.current) return
-          say(kind === 'collect' ? '已收进表情库。' : kind === 'upload' ? '已上传到表情库。' : '已从收集区移除。', 'good')
+          say(kind === 'approve' ? '已批准，表情已加入可用图库。' : kind === 'reject' ? '已拒绝并移除该待审表情。'
+            : r.status === 'pending' ? '已加入待审队列，批准后可使用。'
+              : kind === 'collect' ? '已加入表情库。' : kind === 'upload' ? '已上传至表情库。' : '已从收集区移除。', 'good')
           if (kind === 'collect') { setName(''); setUrl(''); setDescription('') }
-          if (kind === 'upload') { clearUpload(); setUploadName(''); setUploadDescription(''); setSource('collected'); setQuery(''); setSelected('collected:' + (r.name || body.name)) }
-          if (kind === 'forget' && selected === 'collected:' + body.name) setSelected('')
+          if (kind === 'upload') { clearUpload(); setUploadName(''); setUploadDescription('') }
+          if (kind === 'upload' || kind === 'collect') { setSource('collected'); setReview(r.status === 'pending' ? 'pending' : 'approved'); setQuery(''); setSelected('collected:' + (r.name || body.name)) }
+          if (kind === 'approve') setReview('approved')
+          if ((kind === 'forget' || kind === 'reject') && selected === 'collected:' + body.name) setSelected('')
         } catch (e) {
           if (alive.current) {
-            const message = e?.status === 404 ? '当前 DSH 后端尚未加载这个图库功能。请完全退出并重新打开 DSH 后重试。' : String(e?.message ?? e)
+            const message = e?.status === 404 && e?.code !== 'STICKER_NOT_FOUND' ? '当前 DSH 后端尚未加载对应的图库接口。请完全退出并重新打开 DSH 后重试。' : String(e?.message ?? e)
             if (kind === 'upload') setUploadError(message)
             say(message, 'warn')
           }
@@ -1977,12 +2456,12 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const upload = (event) => {
         event?.preventDefault?.()
         if (working || !uploadFile) return
-        if (!uploadName.trim()) { setUploadError('请给表情起一个名字。'); return }
+        if (!uploadName.trim()) { setUploadError('请输入表情名称。'); return }
         mutate('upload', { name: uploadName.trim(), filename: uploadFile.name, dataBase64: uploadFile.dataBase64, description: uploadDescription.trim() })
       }
       const collect = (event) => {
         event?.preventDefault?.()
-        if (!name.trim() || !/^https?:\/\//i.test(url.trim())) { say('填一个好叫的名字和 http(s) 图片链接。', 'warn'); return }
+        if (!name.trim() || !/^https?:\/\//i.test(url.trim())) { say('请输入表情名称和 http(s) 图片链接。', 'warn'); return }
         mutate('collect', { name: name.trim(), url: url.trim(), description: description.trim() })
       }
       const forget = (item) => {
@@ -1990,70 +2469,90 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         if (typeof window.confirm !== 'function' || !window.confirm('从收集区移除「' + item.name + '」？内置表情不会改变。')) return
         mutate('forget', { name: item.name })
       }
+      const decide = (kind, item) => {
+        if (item.source !== 'collected' || item.status !== 'pending' || !/^[a-f0-9]{64}$/.test(item.hash || '')) return
+        mutate(kind, { name: item.name, expectedHash: item.hash })
+      }
       const rows = Array.isArray(data?.stickers) ? data.stickers : []
+      const pendingCount = data?.counts?.pending ?? rows.filter((item) => item.status === 'pending').length
       const q = query.trim().toLowerCase()
-      const shown = rows.filter((item) => (source === 'all' || item.source === source) && (!q || [item.name, item.description, ...(Array.isArray(item.tags) ? item.tags : [])].some((v) => String(v || '').toLowerCase().includes(q))))
+      const shown = rows.filter((item) => (review === 'all' || (item.status || 'approved') === review) && (source === 'all' || item.source === source) && (!q || [item.name, item.description, ...(Array.isArray(item.tags) ? item.tags : [])].some((v) => String(v || '').toLowerCase().includes(q))))
       const current = rows.find((item) => item.source + ':' + item.name === selected)
       const disabled = Boolean(busy || working || loading)
       const input = (label, key, max, suffix, min = 0) => h('label', { 'data-bd-sticker-number': '' }, h('span', {}, label),
         h('span', {}, h('input', { 'data-bd-input': '', type: 'number', min, max, step: 1, 'aria-label': label, value: field(key), onChange: (e) => setDraft((old) => ({ ...old, [key]: e.target.value })) }), h('small', {}, suffix)))
+      const reviewActions = (item) => item.source === 'collected' && item.status === 'pending' ? h('div', { 'data-bd-sticker-reviewactions': '' },
+        h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: disabled || !/^[a-f0-9]{64}$/.test(item.hash || ''), 'aria-label': '批准表情：' + item.name, onClick: () => decide('approve', item) }, '批准使用'),
+        h('button', { 'data-bd-btn': '', disabled: disabled || !/^[a-f0-9]{64}$/.test(item.hash || ''), 'aria-label': '拒绝表情：' + item.name, onClick: () => decide('reject', item) }, '拒绝并移除')) : null
       return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'stickers' },
-        h('div', { 'data-bd-pghead': '' }, h('div', {}, h('b', {}, '表情收藏'), h('p', {}, '逛评论区，遇见喜欢的就收一张。让每次配图都有点自己的意思。'))),
+        h('div', { 'data-bd-pghead': '' }, h('div', {}, h('b', {}, '表情收藏'), h('p', {}, '管理表情收集、上传、审核和评论配图。'))),
         h('div', { 'data-bd-pet-grid': '', 'data-bd-sticker-controls': '' },
-          h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '自己收表情')),
-            ToggleRow({ label: '从评论区自动收集', on: Boolean(cfg.stickerAutoCollect), disabled, note: '翻评论时，按概率收取观众附带的图片；同图不重复，库满就停。', onChange: (v) => patch({ stickerAutoCollect: v }, '自动收表情') }),
+          h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '表情收集')),
+            ToggleRow({ label: '从评论区自动收集', on: Boolean(cfg.stickerAutoCollect), disabled, note: '读取评论时，按设定概率收集附图。相同图片不重复收集，达到容量后停止。', onChange: (v) => patch({ stickerAutoCollect: v }, '自动收集表情') }),
+            ToggleRow({ label: '新表情人工审核', on: Boolean(cfg.stickerReview), disabled, note: '新收集和上传的图片经批准后方可配图。关闭仅影响后续新增图片，已有待审图片仍需审核。', onChange: (v) => patch({ stickerReview: v }, '表情人工审核') }),
             input('收集概率', 'stickerCollectProbability', 100, '%'), input('收集冷却（秒）', 'stickerCollectCooldown', 86400, '秒'), input('收集容量', 'stickerCapacity', 60, '张', 1),
             h('button', { 'data-bd-btn': '', disabled, onClick: () => save('collect') }, '保存收集参数')),
-          h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '发言时配一张')),
-            ToggleRow({ label: '新评论自动配图', on: Boolean(cfg.stickerAutoSend), disabled, note: '有话想说并已允许评论时，从库里选一张。只对支持图片的新评论生效。', onChange: (v) => patch({ stickerAutoSend: v }, '自动配表情') }),
+          h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '评论配图')),
+            ToggleRow({ label: '新评论自动配图', on: Boolean(cfg.stickerAutoSend), disabled, note: '评论权限已开启时，从可用图库选择配图。仅适用于支持图片的新评论。', onChange: (v) => patch({ stickerAutoSend: v }, '自动配图') }),
             input('配图概率', 'stickerSendProbability', 100, '%'), input('配图冷却（秒）', 'stickerSendCooldown', 86400, '秒'),
-            h('p', { 'data-bd-note': '' }, '0% 不主动配图，100% 每次符合条件都尝试。指定了表情时优先使用指定项；不会开启评论或私信权限。'),
+            h('p', { 'data-bd-note': '' }, '0% 表示不自动配图，100% 表示每次符合条件时尝试配图。指定表情优先，评论和私信权限独立控制。'),
             h('button', { 'data-bd-btn': '', disabled, onClick: () => save('send') }, '保存配图参数'))),
         h('section', { 'data-bd-sec': '', 'data-bd-sticker-upload-card': '' },
           h('div', { 'data-bd-h': '' }, h('b', {}, '上传本地表情')),
-          h('p', { 'data-bd-note': '', style: { margin: 0 } }, '支持 PNG、JPEG、GIF、WebP，单张不超过 5 MB。上传后放进「自己收集」，可以预览、配图或移除。'),
+          h('p', { 'data-bd-note': '', style: { margin: 0 } }, '支持 PNG、JPEG、GIF、WebP，单张不超过 5 MB。上传后归入收集表情；启用人工审核时进入待审队列，批准后可配图。'),
           h('form', { 'data-bd-sticker-upload': '', onSubmit: upload },
             h('div', { 'data-bd-sticker-upload-preview': '', 'aria-label': '待上传图片预览' }, uploadPreview ? h('img', { src: uploadPreview, alt: uploadName || '待上传表情' }) : h('span', {}, '图片预览')),
             h('div', { 'data-bd-sticker-upload-fields': '' },
               h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '选择本地图片'),
                 h('input', { ref: fileInput, type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp', 'aria-label': '本地表情图片', disabled: Boolean(busy || working), onChange: chooseFile })),
-              routeMissing ? h('div', { 'data-bd-note': '', role: 'status' }, '图库接口尚未加载，重启 DSH 后即可上传；下面可以手动重试连接。') : null,
+              routeMissing ? h('div', { 'data-bd-note': '', role: 'status' }, '图库接口尚未加载。请重启 DSH 后重试连接。') : null,
               uploadFile ? h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-sticker-fileinfo': '', 'data-bd-grow': '' }, uploadFile.name + ' · ' + (uploadFile.size < 1024 * 1024 ? Math.max(1, Math.round(uploadFile.size / 1024)) + ' KB' : (uploadFile.size / 1024 / 1024).toFixed(2) + ' MB')),
                 h('button', { 'data-bd-btn': '', type: 'button', disabled: Boolean(working), onClick: clearUpload }, '取消选择')) : null,
-              h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '表情名称'), h('input', { 'data-bd-input': '', 'aria-label': '上传表情名称', value: uploadName, maxLength: 40, placeholder: '默认用文件名，可以改个好叫的', onChange: (e) => setUploadName(e.target.value) })),
-              h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '适合什么场景（可选）'), h('input', { 'data-bd-input': '', 'aria-label': '上传表情描述', value: uploadDescription, maxLength: 160, placeholder: '例：悄悄围观，或者开心得冒泡', onChange: (e) => setUploadDescription(e.target.value) })),
+              h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '表情名称'), h('input', { 'data-bd-input': '', 'aria-label': '上传表情名称', value: uploadName, maxLength: 40, placeholder: '默认使用文件名，可自定义', onChange: (e) => setUploadName(e.target.value) })),
+              h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '使用场景（可选）'), h('input', { 'data-bd-input': '', 'aria-label': '上传表情描述', value: uploadDescription, maxLength: 160, placeholder: '例如：表达好奇、赞同或祝贺', onChange: (e) => setUploadDescription(e.target.value) })),
               uploadError ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, uploadError) : null,
               h('div', { 'data-bd-row': '' }, h('button', { 'data-bd-btn': '', 'data-primary': '', type: 'submit', disabled: disabled || routeMissing || !uploadFile || !uploadName.trim() }, working === 'upload' ? '正在上传…' : working === 'read-file' ? '正在读取…' : '上传到表情库'))))),
         h('section', { 'data-bd-sec': '' },
-          h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, h('b', {}, '我的表情库')),
-            h('span', { 'data-bd-sticker-count': '' }, data ? '内置 ' + (data.counts?.builtin ?? rows.filter((x) => x.source === 'builtin').length) + ' · 收集 ' + (data.counts?.collected ?? rows.filter((x) => x.source === 'collected').length) + ' / ' + (data.capacity ?? field('stickerCapacity')) : error ? '未连接' : '读取中'),
+          h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, h('b', {}, '表情库')),
+            h('span', { 'data-bd-sticker-count': '' }, data ? '内置 ' + (data.counts?.builtin ?? rows.filter((x) => x.source === 'builtin').length) + ' · 收集 ' + (data.counts?.collected ?? rows.filter((x) => x.source === 'collected').length) + ' / ' + (data.capacity ?? field('stickerCapacity')) + ' · 待审 ' + pendingCount : error ? '未连接' : '读取中'),
             h('button', { 'data-bd-btn': '', disabled, onClick: pull }, '刷新图库')),
-          h('div', { 'data-bd-row': '' }, h('input', { 'data-bd-input': '', 'data-bd-grow': '', placeholder: '找名字、描述或标签', 'aria-label': '搜索表情', value: query, onChange: (e) => setQuery(e.target.value) }),
-            h('select', { 'data-bd-input': '', 'aria-label': '表情来源', value: source, onChange: (e) => setSource(e.target.value) }, h('option', { value: 'all' }, '全部来源'), h('option', { value: 'builtin' }, '内置表情'), h('option', { value: 'collected' }, '自己收集'))),
+          pendingCount ? h('div', { 'data-bd-sticker-reviewbar': '', role: 'status' }, h('span', {}, pendingCount + ' 张表情待审核。批准前不可用于发送，待审图片占用收集容量。'),
+            h('button', { 'data-bd-btn': '', disabled, onClick: () => { setReview('pending'); setSource('all'); setQuery(''); setSelected('') } }, '查看待审核')) : null,
+          h('div', { 'data-bd-row': '' }, h('input', { 'data-bd-input': '', 'data-bd-grow': '', placeholder: '按名称、描述或标签搜索', 'aria-label': '搜索表情', value: query, onChange: (e) => setQuery(e.target.value) }),
+            h('select', { 'data-bd-input': '', 'aria-label': '表情审核状态', value: review, onChange: (e) => { setReview(e.target.value); setSelected('') } }, h('option', { value: 'approved' }, '可用图库'), h('option', { value: 'pending' }, '待审核（' + pendingCount + '）'), h('option', { value: 'all' }, '全部状态')),
+            h('select', { 'data-bd-input': '', 'aria-label': '表情来源', value: source, onChange: (e) => setSource(e.target.value) }, h('option', { value: 'all' }, '全部来源'), h('option', { value: 'builtin' }, '内置表情'), h('option', { value: 'collected' }, '收集表情'))),
           error ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, '图库读取失败：' + error, h('button', { 'data-bd-btn': '', onClick: pull }, '重试')) : null,
           !data && error ? null : h('div', { 'data-bd-sticker-list': '', role: 'region', 'aria-label': '已有表情', tabIndex: 0 },
-            shown.length ? h('div', { 'data-bd-sticker-grid': '' }, shown.map((item) => h('article', { 'data-bd-sticker-item': item.source, key: item.source + ':' + item.name },
+            shown.length ? h('div', { 'data-bd-sticker-grid': '' }, shown.map((item) => h('article', { 'data-bd-sticker-item': item.source, 'data-pending': item.status === 'pending' ? '' : undefined, key: item.source + ':' + item.name },
               h('button', { 'data-bd-sticker-open': '', 'aria-label': '查看表情：' + item.name, onClick: () => setSelected(item.source + ':' + item.name) }, h(PetStickerThumb, { item })),
-              h('div', { 'data-bd-sticker-caption': '' }, h('b', { title: item.name }, item.name), h('small', {}, item.source === 'builtin' ? '内置 · 只读' : '自己收集')),
+              h('div', { 'data-bd-sticker-caption': '' }, h('b', { title: item.name }, item.name), h('small', { 'data-bd-sticker-status': item.status === 'pending' ? '' : undefined }, item.source === 'builtin' ? '内置 · 只读' : item.status === 'pending' ? '待审核 · 暂不发送' : '收集表情 · 可用')),
               h('div', { 'data-bd-sticker-itemfoot': '' }, h('span', {}, Array.isArray(item.tags) ? item.tags.slice(0, 2).join(' · ') : ''),
-                item.removable && item.source === 'collected' ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled, 'aria-label': '移除表情：' + item.name, onClick: () => forget(item) }, '移除') : null))))
-              : h('div', { 'data-bd-sticker-empty': '' }, data ? q || source !== 'all' ? '没有找到匹配的表情。' : '还没有表情。可以手动收一张，或开启自动收集后去逛评论区。' : '正在打开表情库…')),
+                item.removable && item.source === 'collected' && item.status !== 'pending' ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled, 'aria-label': '移除表情：' + item.name, onClick: () => forget(item) }, '移除') : null),
+              reviewActions(item))))
+              : h('div', { 'data-bd-sticker-empty': '' }, data ? q || source !== 'all' ? '无匹配的表情。' : review === 'pending' ? '暂无待审核表情。' : '暂无可用表情。可上传图片、手动收集或启用自动收集。' : '正在读取表情库…')),
           current ? h('div', { 'data-bd-sticker-detail': '' }, h(PetStickerThumb, { item: current, large: true }),
             h('div', {}, h('div', { 'data-bd-row': '' }, h('b', { 'data-bd-grow': '' }, current.name), h('button', { 'data-bd-btn': '', onClick: () => setSelected('') }, '收起预览')),
-              h('p', {}, current.description || '还没有描述'), h('p', {}, '来源：' + (current.from || (current.source === 'builtin' ? '内置表情库' : '手动收集'))),
-              current.addedAt ? h('p', {}, '收于 ' + petFmtTime(current.addedAt)) : null,
-              Array.isArray(current.tags) && current.tags.length ? h('p', {}, current.tags.join(' · ')) : null)) : null,
+              h('p', {}, current.description || '暂无描述'), h('p', {}, '来源：' + (current.from || (current.source === 'builtin' ? '内置表情库' : '手动收集'))),
+              current.addedAt ? h('p', {}, '收集时间：' + petFmtTime(current.addedAt)) : null,
+              Array.isArray(current.tags) && current.tags.length ? h('p', {}, current.tags.join(' · ')) : null,
+              current.status === 'pending' ? h('p', { 'data-bd-sticker-status': '' }, '待审核，批准后加入可用图库。') : null,
+              reviewActions(current))) : null,
           h('div', { 'data-bd-note': '' }, data?.automation?.collectPending ? '正在收取 ' + data.automation.collectPending + ' 张，稍后刷新可查看。' : '自动收集保留来源并按图片内容去重。内置区只读，移除只影响自己收集的表情。')),
-        h('details', { 'data-bd-sec': '', 'data-bd-advanced': '' }, h('summary', {}, '手动收一张'),
+        h('details', { 'data-bd-sec': '', 'data-bd-advanced': '' }, h('summary', {}, '手动收集'),
           h('form', { 'data-bd-sticker-form': '', onSubmit: collect },
-            h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '给它起个名字'), h('input', { 'data-bd-input': '', 'aria-label': '表情名称', value: name, maxLength: 40, placeholder: '例：悄悄探头', onChange: (e) => setName(e.target.value) })),
+            h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '表情名称'), h('input', { 'data-bd-input': '', 'aria-label': '表情名称', value: name, maxLength: 40, placeholder: '例如：好奇', onChange: (e) => setName(e.target.value) })),
             h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '图片链接'), h('input', { 'data-bd-input': '', 'aria-label': '图片链接', type: 'url', value: url, placeholder: 'https://…', onChange: (e) => setUrl(e.target.value) })),
-            h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '适合什么场景'), h('input', { 'data-bd-input': '', 'aria-label': '表情描述', value: description, maxLength: 160, placeholder: '例：发现有趣的小细节时', onChange: (e) => setDescription(e.target.value) })),
-            h('button', { 'data-bd-btn': '', 'data-primary': '', type: 'submit', disabled }, working === 'collect' ? '正在收…' : '收进表情库'))))
+            h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '使用场景'), h('input', { 'data-bd-input': '', 'aria-label': '表情描述', value: description, maxLength: 160, placeholder: '例如：表达对细节的兴趣', onChange: (e) => setDescription(e.target.value) })),
+            h('button', { 'data-bd-btn': '', 'data-primary': '', type: 'submit', disabled }, working === 'collect' ? '正在收集…' : '加入表情库'))))
     }
 
-    function PetSettingsModal({ onClose, toast, ctx, status, initialTab = 'basic' }) {
+    function PetSettingsModal({ onClose, toast, ctx, status, initialTab = 'run' }) {
       const [tab, setTab] = React.useState(initialTab)
+      const activeGroup = ({ stickers: 'learning', ledger: 'logs', review: 'logs', other: 'basic' })[tab] || tab
+      React.useEffect(() => {
+        const body = modalRef.current?.querySelector('[data-bd-pet-body]')
+        if (body) body.scrollTop = 0
+      }, [tab])
        const [runMode, setRunMode] = React.useState('session')
        const [logMode, setLogMode] = React.useState('events')
       const [runDrafts, setRunDrafts] = React.useState({})
@@ -2076,6 +2575,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [dmMode, setDmMode] = React.useState(null)
       const [persona, setPersona] = React.useState(null)
       const [momentStyle, setMomentStyle] = React.useState(null)
+      const [interactionStyle, setInteractionStyle] = React.useState(null)
       const [momentPerDay, setMomentPerDay] = React.useState(null)
       const [modelId, setModelId] = React.useState(null)
       const [tokenBudget, setTokenBudget] = React.useState(null)
@@ -2093,12 +2593,24 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [loginState, setLoginState] = React.useState('')
       const [loginTone, setLoginTone] = React.useState('')
       const loginTimer = React.useRef(null)
+      const loginGeneration = React.useRef(0)
+      const loginPolling = React.useRef(false)
       const alive = React.useRef(true)
       /* 🎬 视频那一卡的独立轮询：跑起来 3 秒、闲着 15 秒 */
       const [pv, setPv] = React.useState(null)
-      const [pvDown, setPvDown] = React.useState(false)
+      const [pvDown, setPvDown] = React.useState('')
       const [pvBusy, setPvBusy] = React.useState('')
       const [pvDay, setPvDay] = React.useState('')
+      const [pvMode, setPvMode] = React.useState('daily')
+      const [pvBrief, setPvBrief] = React.useState('')
+      const [pvError, setPvError] = React.useState('')
+      const [pvSelection, setPvSelection] = React.useState('')
+      const [pvTargetDurationSec, setPvTargetDurationSec] = React.useState(60)
+      const [videoModelId, setVideoModelId] = React.useState(null)
+      const [pvFailOpen, setPvFailOpen] = React.useState(false)
+      const [pvPollEpoch, setPvPollEpoch] = React.useState(0)
+      const pvRouteMissing = React.useRef(false)
+      const pvCreateLock = React.useRef(false)
       const [settingLogs, setSettingLogs] = React.useState(null)
       const [settingLogError, setSettingLogError] = React.useState('')
        const [settingLogFilter, setSettingLogFilter] = React.useState('')
@@ -2109,34 +2621,53 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [actLive, setActLive] = React.useState(null)
       const pvRunning = Boolean(pv && pv.running)
       React.useEffect(() => {
-        if (tab !== 'video') return
+        if (tab !== 'video' || pvRouteMissing.current) return
         let dead = false
         let timer = null
+        let failures = 0
         const pull = async () => {
+          let running = pvRunning
           try {
             const r = await jget('/pv')
-            if (!dead && r) {
-              if (r.ok === false) setPvDown(true)
-              else { setPvDown(false); setPv(r) }
-            }
-          } catch { /* 抖一下就算了，下次接着拉 */ }
-          if (dead) return
-          timer = setTimeout(pull, pvRunning ? 3000 : 15000)
+            if (dead) return
+            if (!r || r.ok === false) throw new Error(r?.error || '视频服务没有返回有效状态')
+            failures = 0
+            running = Boolean(r.running)
+            setPvDown('')
+            setPv(r)
+            setVideoModelId((old) => old === null ? String(r.modelId || '') : old)
+            setPvSelection((old) => old || pvGalleryRows(r)[0]?.key || '')
+          } catch (e) {
+            if (dead) return
+            failures++
+            if (Number(e?.status) === 404) {
+              pvRouteMissing.current = true
+              setPvDown('视频接口尚未加载。请完全重启 DSH 后点「重新读取」；已暂停自动重试。')
+            } else setPvDown(String(e?.message ?? e))
+          }
+          if (dead || pvRouteMissing.current) return
+          timer = setTimeout(pull, failures ? Math.min(60000, 5000 * 2 ** (failures - 1)) : running ? 3000 : 15000)
         }
         pull()
         return () => { dead = true; if (timer) clearTimeout(timer) }
-      }, [tab, pvRunning])
+      }, [tab, pvPollEpoch])
       /* ⭐ 活动流水轮询：只拉增量（sinceUid = 已收到的最后一条 uid），报文一直很小。
          同一次工具调用先 call 后 done（共用一个 id）⇒ 原地改写那一行，不是再追加一条。 */
       const activityCursor = React.useRef('')
+      const activityEpoch = React.useRef(0)
+      const activityRequest = React.useRef(null)
       React.useEffect(() => {
         if (tab !== 'logs') return
         let dead = false
         let sinceUid = activityCursor.current
         const pull = async () => {
+          if (dead || activityRequest.current) return
+          if (sinceUid !== activityCursor.current) sinceUid = activityCursor.current
+          const token = { epoch: activityEpoch.current }
+          activityRequest.current = token
           try {
             const r = await jget('/activity?sinceUid=' + encodeURIComponent(sinceUid))
-            if (dead || !r) return
+            if (dead || activityRequest.current !== token || token.epoch !== activityEpoch.current || !r) return
             // 「此刻在不在想」不跟增量走，是当场的状态 —— 每趟都要更新
             if (r.live) setActLive(r.live)
             if (Array.isArray(r.rows) && r.rows.length) {
@@ -2157,14 +2688,19 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               })
             }
           } catch { /* 抖一下就算了，下次接着拉 */ }
+          finally { if (activityRequest.current === token) activityRequest.current = null }
         }
         pull()
         const t = setInterval(pull, 2500)
-        return () => { dead = true; clearInterval(t) }
+        return () => { dead = true; activityEpoch.current += 1; activityRequest.current = null; clearInterval(t) }
       }, [tab])
 
       const onClearAct = async () => {
-        try { await jpost('/activity', { clear: true }); setActs([]); activityCursor.current = '' } catch (e) { say(String(e?.message ?? e), 'warn') }
+        try {
+          await jpost('/activity', { clear: true })
+          activityEpoch.current += 1; activityCursor.current = ''
+          setActs([]); setActLive(null)
+        } catch (e) { say(String(e?.message ?? e), 'warn') }
       }
 
       const logRev = React.useRef('')
@@ -2190,6 +2726,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       /* ⚠️ 扫码轮询的 timer 必须能停（切走/关弹窗后还跑会在已卸载组件上 setState） */
       React.useEffect(() => () => {
         alive.current = false
+        loginGeneration.current += 1
+        loginPolling.current = false
         if (loginTimer.current) { clearInterval(loginTimer.current); loginTimer.current = null }
       }, [])
 
@@ -2197,7 +2735,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       React.useEffect(() => {
         const previous = document.activeElement
         const node = modalRef.current
-        if (node?.querySelector) node.querySelector('[data-bd-pet-tab][data-on]')?.focus()
+        if (node?.querySelector) (node.querySelector('[data-bd-pet-tab][data-on]') || node.querySelector('[data-bd-pet-close]'))?.focus()
         return () => { if (previous?.isConnected && previous.focus) previous.focus() }
       }, [Boolean(cfg)])
       const lim = (st && st.limits) || {}
@@ -2219,7 +2757,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         if (dmUid === null) setDmUid(cfg.dmUid ? String(cfg.dmUid) : '')
         if (dmMode === null) setDmMode(cfg.dmMode || 'off')
         if (persona === null) setPersona(cfg.persona || '')
-        if (momentStyle === null) setMomentStyle(cfg.momentStyle || '感想')
+        if (momentStyle === null) setMomentStyle(cfg.momentStyle || '随心情')
+        if (interactionStyle === null) setInteractionStyle(cfg.interactionStyle || 'companion')
         if (momentPerDay === null) setMomentPerDay(String(cfg.momentPerDay ?? 1))
         if (modelId === null) setModelId(cfg.modelId || '')
         if (tokenBudget === null) setTokenBudget(String(cfg.tokenBudget ?? 0))
@@ -2264,23 +2803,29 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const sw = (k) => Boolean(cfg && cfg[k])
 
       const onLoginStart = async () => {
+        const generation = ++loginGeneration.current
+        loginPolling.current = false
+        if (loginTimer.current) { clearInterval(loginTimer.current); loginTimer.current = null }
         setBusy('login')
         setLoginTone('')
         setLoginState('正在出码…')
         try {
           const r = await jpost('/login/start', {})
+          if (!alive.current || generation !== loginGeneration.current) return
           if (!r?.ok) { setLoginTone('warn'); setLoginState(r?.error || '出码失败'); return }
           setLogin({ key: r.key, qr: r.qr })
           if (!r.qr) { setLoginTone('warn'); setLoginState('没画出二维码 —— 先点上面的「装主依赖」（venv 里要有 qrcode）') }
           else setLoginState('用手机 B站 扫这张码')
-          if (loginTimer.current) { clearInterval(loginTimer.current); loginTimer.current = null }
           let n = 0
-          const stop = () => { clearInterval(timer); if (loginTimer.current === timer) loginTimer.current = null }
+          const stop = () => { clearInterval(timer); if (loginTimer.current === timer) loginTimer.current = null; loginPolling.current = false }
           const timer = setInterval(async () => {
-            if (!alive.current) { stop(); return }
+            if (!alive.current || generation !== loginGeneration.current || loginTimer.current !== timer) { stop(); return }
+            if (loginPolling.current) return
+            loginPolling.current = true
             n += 1
             try {
               const p = await jpost('/login/poll', { key: r.key })
+              if (!alive.current || generation !== loginGeneration.current || loginTimer.current !== timer) return
               if (p?.state === 'ok') {
                 stop(); setLogin(null); setLoginTone('good'); setLoginState('登录成功')
                 setSt((old) => ({ ...old, loggedIn: true }))
@@ -2291,17 +2836,19 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 setLoginState('没登上：' + (p?.message || '响应里没有 SESSDATA —— 再点一次「扫码登录」'))
               } else { setLoginTone(''); setLoginState('等扫码…') }
             } catch { /* 抖动就下次再问 */ }
+            finally { if (generation === loginGeneration.current && loginTimer.current === timer) loginPolling.current = false }
             if (n > 90) { stop(); setLogin(null); setLoginTone('warn'); setLoginState('超时了，再点一次「扫码登录」') }
           }, 2000)
           loginTimer.current = timer
-        } catch (e) { setLoginTone('warn'); setLoginState(String(e?.message ?? e)) }
-        finally { setBusy('') }
+        } catch (e) { if (alive.current && generation === loginGeneration.current) { setLoginTone('warn'); setLoginState(String(e?.message ?? e)) } }
+        finally { if (generation === loginGeneration.current) setBusy('') }
       }
       const onInstall = async () => {
         setBusy('install'); say('')
         try {
           const r = await jpost('/install', {})
-          say(r?.hint || '已经在后台开始装了', '')
+          if (!r || r.ok === false) throw new Error(r?.error || '依赖安装请求失败')
+          say(r.hint || '依赖安装请求已接受。', 'good')
         } catch (e) { say(String(e?.message ?? e), 'warn') }
         finally { setBusy('') }
       }
@@ -2309,217 +2856,297 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         setBusy('check'); say('')
         try {
           const r = await jpost('/check', {})
-          if (r && r.ok) say('能用！' + (r.steps || []).join('、'))
-          else say('还不能用：' + (r && r.error ? r.error : '没拿到结果'))
+          if (!r?.ok) throw new Error(r?.error || '连接检查未返回有效结果')
+          say('连接检查通过。' + (r.steps || []).join('、'), 'good')
         } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') }
       }
       const onInstallAsr = async () => {
         setBusy('asr'); say('')
         try {
           const r = await jpost('/install-asr', {})
-          say(r?.started ? '开始装转写依赖 —— 进度显示在下面（要下模型，慢一点正常）' : (r?.hint || '没起来'),
+          if (!r || r.ok === false) throw new Error(r?.error || '转写依赖安装请求失败')
+          say(r.started ? '转写依赖安装已开始，进度显示在环境日志中。' : (r.hint || '转写依赖未启动安装。'),
             r?.started ? 'good' : 'warn')
         } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') }
       }
-      /* 🎬 视频动作：先拦日期格式，再 POST /pv */
-      const onPvMake = async (force) => {
-        const day = (pvDay || (pv && pv.yesterday) || '').trim()
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { say('先选一天（YYYY-MM-DD）', 'warn'); return }
-        setPvBusy('make')
+      const openPvSession = async (sessionId) => {
+        if (!alive.current) return false
         try {
-          const r = await jpost('/pv', { action: 'make', date: day, force: force === true })
-          if (!r || r.ok === false) { say('没做成：' + ((r && r.error) || '未知原因'), 'warn'); return }
-          if (r.skipped) { say(`这天已经有视频了：${r.file}（要重做就再点一次「重做」）`, 'warn'); return }
-          say(`开始做 ${r.date} 的视频了 —— 一条约 2–6 分钟，做完这张卡会自己变成播放器。`, 'good')
-          setPv((old) => ({ ...(old || {}), running: true, stage: 'plan', date: r.date }))
-        } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setPvBusy('') }
+          const workspace = ctx && typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : null
+          if (!workspace || typeof workspace.openSession !== 'function') throw new Error('当前 DSH 没有可用的会话工作区')
+          await workspace.openSession(sessionId)
+          return alive.current
+        } catch (e) {
+          if (!alive.current) return false
+          setPvError('制作会话已创建（' + sessionId + '），但无法自动打开：' + String(e?.message ?? e))
+          return false
+        }
       }
-      const onPvStop = async () => {
-        setPvBusy('stop')
+      const onPvMake = async () => {
+        if (pvCreateLock.current) return
+        const date = (pvDay || (pv && pv.yesterday) || '').trim()
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { setPvError('请选择有效日期（YYYY-MM-DD）'); return }
+        pvCreateLock.current = true
+        setPvBusy('make')
+        setPvError('')
         try {
-          const r = await jpost('/pv', { action: 'stop' })
-          say(r && r.stopped ? '停下了。' : '它本来就没在做。', r && r.stopped ? 'warn' : '')
-        } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setPvBusy('') }
+          const r = await jpost('/pv/session-new', {
+            ...newSessionContext(ctx), date, mode: pvMode, brief: pvBrief.trim(),
+            targetDurationSec: Number(pvTargetDurationSec), model: String(videoModelId ?? pv?.modelId ?? cfg?.videoModelId ?? '').trim(),
+          })
+          if (!alive.current) return
+          if (!r?.ok || !r.sessionId) {
+            const error = String(r?.error || '制作会话创建失败')
+            if (r?.sessionId) {
+              setPvError(error + '。正在打开已部分创建的会话。')
+              toast(error, 'warn')
+              if (await openPvSession(r.sessionId)) onClose()
+            } else setPvError(error)
+            return
+          }
+          const createdSession = { date, mode: pvMode, brief: pvBrief.trim(), createdAt: new Date().toISOString(), stage: 'authoring', ...r }
+          setPv((old) => ({ ...(old || {}), sessions: [createdSession, ...(old?.sessions || []).filter((item) => item.sessionId !== r.sessionId)] }))
+          if (await openPvSession(r.sessionId)) onClose()
+        } catch (e) {
+          if (!alive.current) return
+          const error = String(e?.message ?? e)
+          if (e?.sessionId) {
+            setPvError(error + '。正在打开已部分创建的会话。')
+            toast(error, 'warn')
+            if (await openPvSession(e.sessionId)) onClose()
+          } else setPvError(error)
+        } finally { pvCreateLock.current = false; if (alive.current) setPvBusy('') }
+      }
+      const onPvStop = async (sessionId) => {
+        if (!sessionId || pvCreateLock.current) return
+        setPvBusy('stop')
+        setPvError('')
+        try {
+          const r = await jpost('/pv', { action: 'stop', sessionId })
+          if (!alive.current) return
+          if (!r?.ok) throw new Error(r?.error || '没能停止制作')
+          if (r.stopped) setPv((old) => ({ ...(old || {}), sessions: (old?.sessions || []).map((item) => item.sessionId === sessionId ? { ...item, stage: 'stopped', error: '' } : item) }))
+          say(r.stopped ? '已停止这条制作会话。' : (r.hint || '这条会话当前没有运行中的制作。'), r.stopped ? 'warn' : '')
+        } catch (e) { if (alive.current) setPvError(String(e?.message ?? e)) } finally { if (alive.current) setPvBusy('') }
       }
       const onPvRefresh = async () => {
-        try { const r = await jget('/pv'); if (r) setPv(r) } catch { /* 下次轮询会补 */ }
+        try {
+          const result = await jget('/pv')
+          if (!alive.current) return
+          if (!result || result.ok === false) throw new Error(result?.error || '视频服务没有返回有效状态')
+          setPv(result)
+          setPvDown('')
+          setVideoModelId((old) => old === null ? String(result.modelId || '') : old)
+          setPvSelection((old) => old || pvGalleryRows(result)[0]?.key || '')
+          if (pvRouteMissing.current) {
+            pvRouteMissing.current = false
+            setPvPollEpoch((old) => old + 1)
+          }
+        } catch (e) {
+          if (!alive.current) return
+          if (Number(e?.status) === 404) {
+            pvRouteMissing.current = true
+            setPvDown('视频接口尚未加载。请完全重启 DSH 后点「重新读取」；已暂停自动重试。')
+          } else setPvDown(String(e?.message ?? e))
+        }
       }
-      const onPvRedo = () => onPvMake(true)
+      const onPvOpenFolder = async () => {
+        try {
+          const r = await jpost('/open', { what: 'pv' })
+          if (!alive.current) return
+          say(r?.ok === false ? (r.error || '打开成片目录失败') : '已请求系统打开成片目录。', r?.ok === false ? 'warn' : 'good')
+        } catch (e) { if (alive.current) say(String(e?.message ?? e), 'warn') }
+      }
       const copyText = async (text) => {
         const v = String(text || '')
         try { await navigator.clipboard.writeText(v); toast('已复制：' + v, 'good') }
         catch { toast('复制失败 —— 路径是：' + v) }
       }
 
-      const tabDefs = [['basic', '偏好与桌宠', '口吻 / 选片 / 报告'], ['run', '运行方式', '会话 / 后台 / 定时'], ['speech', '互动与投递', '发言 / 私信 / 节奏'],
-        ['stickers', '表情收藏', '图库 / 收集 / 配图'], ['learning', '学习与记忆', '自动审核 / 记录'], ['ledger', 'token 账本', '用量 / 预算'], ['logs', '运行日志', '实时动态 / 事件'], ['video', '日报视频', '制作 / 配音'], ['other', '账号与环境', '登录 / 依赖 / 镜像']]
+      const tabDefs = [['run', '运行方式', '会话 / 后台 / 定时'], ['speech', '互动与投递', '权限 / 发送审核'],
+        ['learning', '记忆与素材', '学习记忆 / 表情收藏'], ['video', '视频工作室', '制作 / 成片'],
+        ['logs', '记录与用量', '日志 / 用量 / 回顾'], ['basic', '偏好与设置', '桌宠 / 账号 / 环境']]
+      const subTabs = {
+        learning: [['learning', '学习与记忆'], ['stickers', '表情收藏']],
+        logs: [['logs', '运行日志'], ['ledger', 'token 账本'], ['review', '数据回顾']],
+        basic: [['basic', '偏好与桌宠'], ['other', '账号与环境']],
+      }
       const modalShell = (body) => h('div', { 'data-bd-pet-mask': '', onPointerDown: (e) => { if (e.target === e.currentTarget) onClose() } },
         h('div', { 'data-bd-pet-modal': '', role: 'dialog', 'aria-modal': true, 'aria-label': '鲸鱼摸鱼设置', ref: modalRef,
           onKeyDown: (e) => {
             if (e.key === 'Escape') { e.stopPropagation(); onClose() }
             if (e.key === 'Tab' && e.currentTarget.querySelectorAll) {
-              const nodes = Array.from(e.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]')).filter((el) => el.getClientRects().length)
+              const nodes = petTabStops(e.currentTarget)
               const first = nodes[0], last = nodes[nodes.length - 1]
               if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
               else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
             }
           } },
           h('header', { 'data-bd-settings-head': '' }, h(SettingsAvatar),
-            h('div', { 'data-bd-settings-title': '' }, h('b', {}, '鲸鱼摸鱼 · 设置'), h('p', {}, '慢慢逛，调成你喜欢的样子。')),
+            h('div', { 'data-bd-settings-title': '' }, h('b', {}, 'DeepMoYu'), h('p', {}, '鲸鱼摸鱼工作台')),
             h('button', { 'data-bd-pet-close': '', onClick: onClose, title: '关闭（ESC）', 'aria-label': '关闭设置' }, '×')),
           h('div', { 'data-bd-settings-layout': '' },
             h('nav', { 'data-bd-pet-tabs': '', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': '设置分类', onKeyDown: (e) => {
               if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return
               e.preventDefault()
-              const current = tabDefs.findIndex(([key]) => key === tab)
+              const current = tabDefs.findIndex(([key]) => key === activeGroup)
               const forward = e.key === 'ArrowRight' || e.key === 'ArrowDown'
               const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabDefs.length - 1 : (current + (forward ? 1 : -1) + tabDefs.length) % tabDefs.length
               setTab(tabDefs[next][0]); e.currentTarget.querySelectorAll('[role="tab"]')[next]?.focus()
             } }, ...tabDefs.flatMap(([key, label, note], i) => [
-              i === 0 || i === 4 || i === 7 ? h('div', { key: 'group-' + key, 'data-bd-nav-group': '', role: 'presentation' }, i === 0 ? '日常使用' : i === 4 ? '记录与成长' : '制作与维护') : null,
-              h('button', { key, id: 'bd-tab-' + key, 'data-bd-pet-tab': '', role: 'tab', 'aria-selected': tab === key, 'aria-controls': 'bd-settings-content', tabIndex: tab === key ? 0 : -1,
-                'data-on': tab === key ? '' : undefined, onClick: () => setTab(key) }, label, h('small', {}, note)),
-            ]), h('div', { 'data-bd-nav-foot': '' }, 'DAFEIYU', h('br'), '小小控制室 / LOCAL')),
+              i === 0 || i === 2 || i === 4 ? h('div', { key: 'group-' + key, 'data-bd-nav-group': '', role: 'presentation' }, i === 0 ? '运行与互动' : i === 2 ? '内容管理' : '记录与配置') : null,
+              h('button', { key, id: 'bd-tab-' + key, 'data-bd-pet-tab': '', role: 'tab', 'aria-selected': activeGroup === key, 'aria-controls': 'bd-settings-content', tabIndex: activeGroup === key ? 0 : -1,
+                'data-on': activeGroup === key ? '' : undefined, onClick: () => setTab(key) }, label, h('small', {}, note)),
+            ]), h('div', { 'data-bd-nav-foot': '' }, 'DEEP MOYU', h('br'), 'LOCAL WORKSPACE')),
             h('main', { 'data-bd-settings-main': '' },
               msg ? h('div', { style: { margin: '14px 26px 0' }, role: msgTone === 'warn' ? 'alert' : 'status' },
                 h('div', { 'data-bd-msg': '', 'data-warn': msgTone === 'warn' ? '' : undefined, 'data-good': msgTone === 'good' ? '' : undefined }, msg)) : null,
-              h('div', { 'data-bd-pet-body': '', id: 'bd-settings-content', role: 'tabpanel', 'aria-labelledby': 'bd-tab-' + tab }, body)))))
+              h('div', { 'data-bd-pet-body': '', id: 'bd-settings-content', role: 'tabpanel', 'aria-labelledby': 'bd-tab-' + activeGroup },
+                subTabs[activeGroup] ? h('div', { 'data-bd-workbench-subnav': '', 'data-bd-segments': '', role: 'group', 'aria-label': tabDefs.find(([key]) => key === activeGroup)?.[1] + '分类' },
+                  ...subTabs[activeGroup].map(([key, label]) => h('button', { key, type: 'button', 'data-bd-page-target': key, 'aria-pressed': tab === key, onClick: () => setTab(key) }, label))) : null,
+                body)))))
 
       if (!cfg) {
         return h('div', { 'data-bd-pet-mask': '' },
-          h('div', { 'data-bd-pet-modal': '' },
+          h('div', { 'data-bd-pet-modal': '', role: 'dialog', 'aria-modal': true, 'aria-label': '鲸鱼摸鱼设置', ref: modalRef,
+            onKeyDown: (e) => {
+              if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+              if (e.key === 'Tab') { e.preventDefault(); e.currentTarget.querySelector('[data-bd-pet-close]')?.focus() }
+            } },
             h('div', { 'data-bd-pet-tabs': '' },
               h('span', { 'data-bd-pet-tab': '', style: { cursor: 'default' } }, '鲸鱼摸鱼设置'),
-              h('button', { 'data-bd-pet-close': '', onClick: onClose }, '✕')),
+              h('button', { 'data-bd-pet-close': '', 'aria-label': '关闭设置', onClick: onClose }, '✕')),
             h('div', { 'data-bd-pet-body': '' },
-              h('div', { 'data-bd-note': '' }, fails >= 3
-                ? '读不到插件配置（已经试了 ' + fails + ' 次）—— 完全退出 DSH Desktop 再打开试试。'
-                : '读设置中…'))))
+              h('div', { 'data-bd-note': '', role: fails >= 3 ? 'alert' : 'status' }, fails >= 3
+                ? '插件配置读取失败（重试 ' + fails + ' 次）。请检查 DSH 运行状态。'
+                : '正在读取配置…'))))
       }
 
       /* 每项只在一页出现；旧 Panel 仅供历史回归工具使用，不挂入弹窗。 */
       const icon = (name) => h(PetIcon, { name })
       const heading = (_name, title) => h('div', { 'data-bd-h': '' }, h('b', {}, title))
       const pvCard = () => {
-        if (pvDown) return h('section', { 'data-bd-sec': '' }, heading('film', '视频暂时不可用'),
-          h('div', { 'data-bd-msg': '', 'data-warn': '' }, '读不到视频服务，请稍后重试。'),
-          h('button', { 'data-bd-btn': '', onClick: onPvRefresh }, '重新读取'))
-        const videos = Array.isArray(pv && pv.videos) ? pv.videos : []
-        const latest = videos.length ? videos[0] : null
-        const shown = (pv && pv.file && pv.stage === 'done') ? pv.file : (latest ? latest.file : '')
-        const shownDay = (pv && pv.stage === 'done' && pv.date) ? pv.date : (latest ? latest.date : '')
-        const deps = pv ? pv.deps : null
-        const stageTxt = pv && pv.running
-          ? (pv.stage === 'plan' ? '正在整理分镜…' : '正在渲染画面…')
-          : ''
-        return h('div', { 'data-bd-sec': '' },
-          h('div', { 'data-bd-h': '' }, icon('film'), h('b', {}, '冲浪日报视频'),
-            pv && pv.running ? h('span', { 'data-bd-badge': '', 'data-live': '' }, stageTxt) : null,
-            deps === false ? h('span', { 'data-bd-badge': '', 'data-warn': '' }, '依赖没装') : null,
-            videos.length ? h('span', { 'data-bd-badge': '' }, `${videos.length} 条成品`) : null),
-          h('div', { 'data-bd-note': '' },
-            '把某一天的冲浪情况做成一条由鲸鱼摸鱼讲解配音的短片，存进当天文件夹。做在本地，不发布。'),
-          deps === false ? h('div', { 'data-bd-msg': '', 'data-warn': '' },
-            '渲染要的三样东西没装齐（edge-tts / imageio-ffmpeg / Pillow）—— 到「账号与环境」点一次「装主依赖」即可。') : null,
-          h('div', { 'data-bd-row': '' },
-            h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '做哪一天'),
-            h('input', {
-              'data-bd-input': '', style: { width: '150px' }, type: 'date',
-              value: pvDay || (pv && pv.yesterday) || '', onChange: (e) => setPvDay(e.target.value),
-            })),
-          h('div', { 'data-bd-row': '' },
-            h('button', {
-              'data-bd-btn': '', 'data-primary': '', disabled: Boolean(pvBusy) || pvRunning || deps === false,
-              onClick: () => onPvMake(false),
-            }, pvRunning ? '正在做…' : '做这一天的视频'),
-            pvRunning ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(pvBusy), onClick: onPvStop }, '停下') : null,
-            shown ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(pvBusy) || pvRunning, onClick: onPvRedo }, '重做这天') : null,
-            h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(pvBusy), onClick: onPvRefresh }, '刷新')),
-          pv && pv.running ? h('div', { 'data-bd-msg': '' },
-            `${pv.date}：${stageTxt}已 ${Math.round((Number(pv.ms) || 0) / 1000)} 秒。这一步要占几分钟 CPU，可以先干别的，做完这里会自己出画面。`) : null,
-          pv && !pv.running && pv.stage === 'failed' ? h('div', { 'data-bd-msg': '', 'data-warn': '' },
-            `上一次没做成：${pv.error || '未知原因'}` + (pv.log ? `（日志：${pv.log}）` : '')) : null,
-          pv && !pv.running && pv.stage === 'stopped' ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, '上一次是手动停下的。') : null,
-          shown
-            ? h('div', { 'data-bd-field': '' },
-              h('video', {
-                src: `/api/bili-duty/pv/video?day=${encodeURIComponent(shownDay)}&t=${Number(latest && latest.at ? Date.parse(latest.at) : 0) || 0}`,
-                controls: true, preload: 'metadata',
-                style: { width: '100%', borderRadius: '10px', background: '#000', display: 'block' },
-              }),
-              h('div', { 'data-bd-row': '' },
-                h('span', { 'data-bd-note': '', 'data-bd-grow': '' },
-                  `${shownDay} · ${latest && latest.mb != null ? `${latest.mb} MB` : ''} · ${shown}`),
-                h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => copyText(shown) }, '复制路径')))
-            : h('div', { 'data-bd-empty': '' },
-              pvRunning ? '第一条正在做，做完会出现在这里' : '还没有成品 —— 选个日期点「做这一天的视频」'),
-          videos.length > 1 ? h('div', { 'data-bd-kv': '' },
-            '以前做的：' + videos.slice(0, 6).map((v) => `${v.date}${v.mb != null ? `（${v.mb}MB）` : ''}`).join(' · ')) : null,
-          h('div', { 'data-bd-field': '' },
+        const deps = pv?.deps
+        const sessions = Array.isArray(pv?.sessions) ? pv.sessions : []
+        const gallery = pvGalleryRows(pv)
+        const selected = gallery.find((item) => item.key === pvSelection)
+        const modeLabels = { daily: '冲浪日报', rant: '有话想说', highlights: '精选安利', custom: '自定主题' }
+        const stageLabels = { starting: '正在创建会话', authoring: '正在编排视频', plan: '整理分镜', cover: '制作封面', render: '渲染画面', verify: '校验音视频', publish: '整理成片', done: '制作完成', failed: '制作失败', interrupted: '制作中断', stopped: '已停止' }
+        const stageName = (stage) => stageLabels[stage] || '等待制作'
+        const currentModel = videoModelId === null ? String(pv?.modelId || cfg.videoModelId || '') : videoModelId
+        const models = Array.isArray(st?.models) ? st.models : []
+        const saveModel = async (value) => {
+          const previous = currentModel
+          setVideoModelId(value)
+          if (!(await patch({ videoModelId: value }, '制作模型'))) setVideoModelId(previous)
+        }
+        const selectedSession = selected && (selected.sessionId || sessions.find((item) => item.productionId === selected.id)?.sessionId)
+        return h('div', { 'data-bd-pet-grid': '', 'data-bd-video-studio': '' },
+          h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-video-intro': '' },
+            heading('film', '开始一条新视频'),
+            h('div', { 'data-bd-note': '' }, '基于主题或日报素材生成本地视频，包含配音、字幕与角色口型动画。'),
+            pvDown ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, '视频状态读取失败：' + (typeof pvDown === 'string' ? pvDown : '服务暂时不可用') + '。可点「刷新」重试。') : null,
+            pvError ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, pvError) : null,
+            deps === false ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, '渲染依赖尚未装齐（edge-tts / imageio-ffmpeg / Pillow）。到「账号与环境」点「装主依赖」，完成后回来刷新。') : null,
+            h('div', { 'data-bd-field': '' },
+              h('span', { 'data-bd-label': '', id: 'bd-video-mode-label' }, '视频形式'),
+              h('div', { 'data-bd-segments': '', role: 'group', 'aria-labelledby': 'bd-video-mode-label', style: { flexWrap: 'wrap' } },
+                ...Object.entries(modeLabels).map(([value, label]) => h('button', { key: value, type: 'button', 'aria-pressed': pvMode === value, disabled: pvBusy === 'make', onClick: () => setPvMode(value) }, label)))),
+            h('label', { 'data-bd-field': '' },
+              h('span', { 'data-bd-label': '' }, '创作要求'),
+              h('textarea', { 'data-bd-input': '', rows: 3, maxLength: 2000, value: pvBrief, placeholder: pvMode === 'daily' ? '留空会从当天公开素材里挑一条主线；也可以指定重点和偏好的画风…' : '例如：为什么收藏了那么多教程，还是没学会？用30秒做个反差小实验，纸张朱红风…', onChange: (e) => setPvBrief(e.target.value), style: { width: '100%', resize: 'vertical', minHeight: '82px' } })),
+            h('div', { 'data-bd-row': '', style: { flexWrap: 'wrap' } },
+              h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '日期'),
+                h('input', { 'data-bd-input': '', type: 'date', value: pvDay || pv?.yesterday || '', onChange: (e) => setPvDay(e.target.value) })),
+              h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '目标时长'),
+                h('select', { 'data-bd-input': '', value: pvTargetDurationSec, onChange: (e) => setPvTargetDurationSec(Number(e.target.value)) },
+                  ...[30, 60, 90, 150].map((seconds) => h('option', { key: seconds, value: seconds }, seconds + ' 秒')))),
+              h('label', { 'data-bd-field': '', 'data-bd-grow': '', style: { minWidth: '200px' } }, h('span', { 'data-bd-label': '' }, '制作模型'),
+                models.length ? h('select', { 'data-bd-input': '', value: currentModel, disabled: pvBusy === 'make', onChange: (e) => saveModel(e.target.value) },
+                  h('option', { value: '' }, '使用当前会话 / 宿主默认模型'),
+                  currentModel && !models.some((model) => model.id === currentModel) ? h('option', { value: currentModel }, currentModel + '（当前清单外）') : null,
+                  ...models.map((model) => h('option', { key: model.id, value: model.id }, model.label || model.id)))
+                  : h('input', { 'data-bd-input': '', value: currentModel, disabled: pvBusy === 'make', placeholder: 'provider/model；留空使用默认模型', onChange: (e) => setVideoModelId(e.target.value), onBlur: (e) => saveModel(e.target.value.trim()) }))),
+            h('div', { 'data-bd-note': '' }, '制作模型会保存为下次默认值。制作由当前会话中的模型调用工具异步完成；提交后会保持可见并等待封面、画面和音视频校验全部完成，再在原会话里反馈结果。'),
+            h('div', { 'data-bd-row': '' },
+              h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(pvBusy) || !pv || Boolean(pvDown) || deps === false, onClick: onPvMake }, pvBusy === 'make' ? '正在创建制作会话…' : '新开会话制作'),
+              h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(pvBusy), onClick: onPvRefresh }, '刷新'))),
+          h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
+            h('div', { 'data-bd-h': '' }, icon('film'), h('b', {}, '成片放映室'), gallery.length ? h('span', { 'data-bd-badge': '' }, gallery.length + ' 条成品') : null),
+            gallery.length ? h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '选择成片'),
+              h('select', { 'data-bd-input': '', value: pvSelection, onChange: (e) => setPvSelection(e.target.value) },
+                !selected ? h('option', { value: pvSelection }, '请选择一条成片') : null,
+                ...gallery.map((item) => h('option', { key: item.key, value: item.key }, item.date + ' · ' + (item.title || (item.legacy ? '历史日报' : modeLabels[item.mode] || '视频')))))) : null,
+            selected ? h('div', { 'data-bd-field': '' },
+              h('video', { key: selected.key, src: selected.legacy ? API + '/pv/video?day=' + encodeURIComponent(selected.date) : API + '/pv/video?id=' + encodeURIComponent(selected.id), controls: true, preload: 'metadata', style: { width: '100%', borderRadius: '12px', background: '#f3f6fb', border: '1px solid #d7e1eb', display: 'block' } }),
+              h('div', { 'data-bd-row': '', style: { flexWrap: 'wrap' } },
+                h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, selected.date + ' · ' + (selected.legacy ? '历史成片' : '校验通过') + (selected.size ? ' · ' + (selected.size / 1048576).toFixed(1) + ' MB' : '')),
+                selectedSession ? h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: async () => { if (await openPvSession(selectedSession)) onClose() } }, '回到制作会话') : null,
+                h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => copyText(selected.file) }, '复制成片路径'),
+                h('a', { 'data-bd-btn': '', 'data-sm': '', href: selected.legacy ? API + '/pv/video?day=' + encodeURIComponent(selected.date) : API + '/pv/video?id=' + encodeURIComponent(selected.id) + '&download=1', download: 'DeepMoYu-' + selected.date + '.mp4', style: { textDecoration: 'none' } }, '下载成片'),
+                pv?.out ? h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: onPvOpenFolder }, '打开成片目录') : null))
+              : h('div', { 'data-bd-empty': '' }, gallery.length ? '尚未选择成片。' : '暂无已通过音视频校验的成片。')),
+          h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
+            heading('film', '最近的制作会话'),
+            pvRunning ? h('div', { 'data-bd-msg': '', 'data-bd-video-progress': '', role: 'status' }, '制作进行中 · ' + (pv?.date || '') + ' · ' + stageName(pv?.stage) + ' · 已运行 ' + Math.round((Number(pv?.ms) || 0) / 1000) + ' 秒。完成并通过校验后，会回到当前制作会话反馈；对话不会提前结束。') : null,
+            sessions.length ? h('div', { 'data-bd-field': '', style: { maxHeight: '320px', overflowY: 'auto' } },
+              ...sessions.slice(0, 12).map((session) => h('div', { key: session.sessionId, 'data-bd-field': '', style: { padding: '10px 0', borderBottom: '1px solid #e1e9e8' } },
+                h('div', { 'data-bd-row': '' },
+                  h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, session.date + ' · ' + (modeLabels[session.mode] || '视频')),
+                  h('span', { 'data-bd-badge': '', 'data-bd-video-stage': session.stage, 'data-warn': ['failed', 'interrupted'].includes(session.stage) ? '' : undefined }, stageName(session.stage)),
+                  ['starting', 'authoring', 'plan', 'cover', 'render', 'verify', 'publish'].includes(session.stage) ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(pvBusy), 'aria-label': '停止制作会话：' + session.sessionId, onClick: () => onPvStop(session.sessionId) }, '停止制作') : null,
+                  h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(pvBusy), 'aria-label': '沿用制作参数：' + session.sessionId, onClick: () => {
+                    if (session.date) setPvDay(String(session.date))
+                    if (session.mode) setPvMode(String(session.mode))
+                    setPvBrief(String(session.brief || ''))
+                    setPvTargetDurationSec(Number(session.targetDurationSec) || 60)
+                    say('已把这条的日期、形式、要求和时长填回上面的草稿。', 'good')
+                  } }, '沿用参数'),
+                  h('button', { 'data-bd-btn': '', 'data-sm': '', 'aria-label': '回到制作会话：' + session.sessionId, onClick: async () => { if (await openPvSession(session.sessionId)) onClose() } }, '回到会话')),
+                h('div', { 'data-bd-note': '' }, (session.brief ? session.brief + ' · ' : '') + (session.model || '默认模型') + (session.createdAt ? ' · ' + petFmtTime(session.createdAt) : '')),
+                session.error ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, String(session.error)) : null)))
+              : h('div', { 'data-bd-empty': '' }, '开始制作后，新会话会记在这里，随时可以回去接着聊。'),
+            !pvRunning && pv?.stage === 'failed' ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, '上一次制作失败：' + (pv.error || '未知原因')) : null,
+            (() => {
+              const failures = Array.isArray(pv?.failures) ? pv.failures : []
+              if (!failures.length) return null
+              return h('div', { 'data-bd-field': '' },
+                h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '未完成的记录（' + failures.length + '）'),
+                  h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setPvFailOpen(!pvFailOpen) }, pvFailOpen ? '收起' : '看详情')),
+                pvFailOpen ? failures.slice(0, 12).map((item, i) => h('div', { key: String(item.at || '') + ':' + i, 'data-bd-field': '' },
+                  h('div', { 'data-bd-note': '' }, (item.date || '—') + ' · ' + stageName(item.stage) + ' · ' + String(item.error || '未知原因')),
+                  item.log ? h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => copyText(item.log) }, '复制日志路径') : null)) : null)
+            })()),
+          h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
+            heading('clock', '每天的制作安排'),
             h('div', { 'data-bd-row': '', 'data-bd-toggle': '' },
-              h('div', { 'data-bd-grow': '' },
-                h('div', { 'data-bd-label': '' }, '每天自动做「昨天」的'),
-                h('div', { 'data-bd-note': '' }, '到了下面的时间点，如果昨天的成品还没有，就自己补一条。')),
-              h(Switch, {
-                on: Boolean(pv && pv.auto), disabled: Boolean(pvBusy),
-                onChange: async (v) => {
-                  // 乐观更新 + 失败回滚（同 Panel 那套：等轮询回来才动，人会以为没点上）
-                  setPv((old) => ({ ...(old || {}), auto: v }))
-                  const okSaved = await patch({ pvAuto: v }, '每天自动做视频')
-                  if (!okSaved) setPv((old) => ({ ...(old || {}), auto: !v }))
-                },
-              })),
-            h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '每天几点做'),
-              h('input', {
-                'data-bd-input': '', 'data-bd-num': '', style: { width: '96px' }, type: 'time',
-                value: (pv && pv.at) || '10:30',
-                onChange: (e) => {
-                  const v = e.target.value
-                  if (!/^\d{2}:\d{2}$/.test(v)) return
-                  setPv((old) => ({ ...(old || {}), at: v }))
-                  patch({ pvAt: v }, '自动做视频的时间')
-                },
-              })),
-            h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '配音音色'),
-              h('select', {
-                'data-bd-input': '', style: { width: '230px' },
-                value: (pv && pv.voice) || 'zh-CN-XiaoyiNeural',
-                onChange: (e) => patch({ pvVoice: e.target.value }, '配音音色'),
-              },
-              h('option', { value: 'zh-CN-XiaoyiNeural' }, '晓伊（默认 · 偏软）'),
-              h('option', { value: 'zh-CN-XiaoxiaoNeural' }, '晓晓（更清亮）'),
-              h('option', { value: 'zh-CN-XiaochenNeural' }, '晓辰（偏成熟）'))),
-            /* 参考音色三件套：DraftInput（本地草稿、失焦/回车才提交），语义与 Panel 相同 */
-            h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, 'GPT-SoVITS 目录'),
-              h(DraftInput, {
-                width: '300px', type: 'text', placeholder: 'D:\\...\\GPT-SoVITS',
-                value: (pv && pv.gsvRepo) || '', onCommit: (v) => patch({ pvGsvRepo: v }, 'GPT-SoVITS 目录'),
-              })),
-            h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '参考音频（3~10 秒）'),
-              h(DraftInput, {
-                width: '300px', type: 'text', placeholder: 'D:\\...\\voice-ds\\ref\\dwg_0031_ref.wav',
-                value: (pv && pv.gsvRef) || '', onCommit: (v) => patch({ pvGsvRef: v }, '参考音频'),
-              })),
-            h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '参考音频的原话'),
-              h(DraftInput, {
-                width: '300px', type: 'text', placeholder: '那段音频里说的那句话（逐字）',
-                value: (pv && pv.gsvPrompt) || '', onCommit: (v) => patch({ pvGsvPrompt: v }, '参考音频原话'),
-              })),
-            h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '跑 GPT-SoVITS 的 Python'),
-              h(DraftInput, {
-                width: '300px', type: 'text', placeholder: '留空 = 用上面那个 python',
-                value: (pv && pv.gsvPython) || '', onCommit: (v) => patch({ pvGsvPython: v }, 'GPT-SoVITS 的 Python'),
-              })),
-            h('div', { 'data-bd-note': '' },
-              '默认走 edge-tts（需联网）；参考音色配置齐全后使用本地 GPT-SoVITS，速度取决于设备。')))
+              h('div', { 'data-bd-grow': '' }, h('div', { 'data-bd-label': '' }, '每天自动做「昨天」的'),
+                h('div', { 'data-bd-note': '' }, '到点后，使用所选制作模型创建可见的制作会话，整理昨天的公开记录并完成视频；已有成品时跳过。')),
+              h(Switch, { on: Boolean(pv?.auto), label: '每天自动制作视频', disabled: Boolean(pvBusy), onChange: async (value) => {
+                setPv((old) => ({ ...(old || {}), auto: value }))
+                if (!(await patch({ pvAuto: value }, '每天自动做视频'))) setPv((old) => ({ ...(old || {}), auto: !value }))
+              } })),
+            h('label', { 'data-bd-row': '' }, h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '每天几点做'),
+              h('input', { 'data-bd-input': '', type: 'time', style: { width: '110px' }, value: pv?.at || '10:30', onChange: (e) => {
+                const value = e.target.value
+                if (!/^\d{2}:\d{2}$/.test(value)) return
+                setPv((old) => ({ ...(old || {}), at: value }))
+                patch({ pvAt: value }, '自动做视频的时间')
+              } }))),
+          h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
+            heading('film', '配音与本地环境'),
+            h('label', { 'data-bd-row': '' }, h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '配音音色'),
+              h('select', { 'data-bd-input': '', style: { width: '230px' }, value: pv?.voice || 'zh-CN-XiaoyiNeural', onChange: (e) => patch({ pvVoice: e.target.value }, '配音音色') },
+                h('option', { value: 'zh-CN-XiaoyiNeural' }, '晓伊（默认 · 偏软）'), h('option', { value: 'zh-CN-XiaoxiaoNeural' }, '晓晓（更清亮）'), h('option', { value: 'zh-CN-XiaochenNeural' }, '晓辰（偏成熟）'))),
+            ...[
+              ['GPT-SoVITS 目录', 'gsvRepo', 'pvGsvRepo', 'D:\\...\\GPT-SoVITS'],
+              ['参考音频（3~10 秒）', 'gsvRef', 'pvGsvRef', 'D:\\...\\voice-ds\\ref\\dwg_0031_ref.wav'],
+              ['参考音频的原话', 'gsvPrompt', 'pvGsvPrompt', '那段音频里说的那句话（逐字）'],
+              ['跑 GPT-SoVITS 的 Python', 'gsvPython', 'pvGsvPython', '留空 = 使用账号与环境中的 Python'],
+            ].map(([label, key, configKey, placeholder]) => h('div', { key, 'data-bd-row': '' }, h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, label),
+              h(DraftInput, { width: '300px', type: 'text', label, placeholder, value: pv?.[key] || '', onCommit: (value) => patch({ [configKey]: value }, label) }))),
+            h('div', { 'data-bd-note': '' }, '默认走 edge-tts（需联网）；参考音色配置齐全后使用本地 GPT-SoVITS，速度取决于设备。')))
       }
-
       const settingLogRows = tab === 'logs' && logMode === 'events' && Array.isArray(settingLogs) ? settingLogs.filter((e) => {
         const q = String(settingLogFilter || '').trim().toLowerCase()
         if (!q) return true
@@ -2615,6 +3242,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       }
       const startRun = async (mode) => {
         if (runLock.current) return
+        if (mode === 'session' && st.toolScope?.checked && !st.toolScope.supported) { say('当前 DSH 不支持会话工具隔离，无法启动会话运行。', 'warn'); return }
         let options
         try { options = readRun(mode) } catch (e) { say(String(e?.message ?? e), 'warn'); return }
         runLock.current = true
@@ -2638,8 +3266,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               const workspace = ctx && typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : null
               if (workspace && typeof workspace.openSession === 'function') await workspace.openSession(sessionId)
             } catch { /* 已启动的会话仍可从侧栏打开 */ }
-            say('已在新会话开始刷，可以从会话列表查看过程。', 'good')
-          } else say('后台已开始，运行进度会显示在这里。', 'good')
+            say('会话任务已启动。', 'good')
+          } else say('后台任务已启动。', 'good')
           try { const fresh = await jget('/status'); if (fresh?.ok) setSt(fresh) } catch { /* 下次轮询补上 */ }
         } catch (e) { say(String(e?.message ?? e), 'warn') }
         finally { runLock.current = false; setBusy('') }
@@ -2651,7 +3279,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         try {
           const r = await jpost('/feiyu', { action, ...(st.feiyu?.sessionId ? { sessionId: st.feiyu.sessionId } : {}) })
           if (!r?.ok) throw new Error(r?.error || r?.hint || '操作没有完成')
-          say(action === 'stop' ? '已暂停。' : action === 'resume' ? '已接着刷。' : '已收台。', 'good')
+          say(action === 'stop' ? '任务已暂停。' : action === 'resume' ? '任务已继续。' : '任务已清除。', 'good')
           const fresh = await jget('/status')
           if (fresh?.ok) setSt(fresh)
         } catch (e) { say(String(e?.message ?? e), 'warn') }
@@ -2675,7 +3303,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         const tokens = fy.tokens || {}
         return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': mode },
           h('div', { 'data-bd-pet-grid': '' },
-            h('section', { 'data-bd-sec': '' }, heading('sliders', '下次怎么刷'),
+            h('section', { 'data-bd-sec': '' }, heading('sliders', '运行参数'),
               h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '使用的模型'), modelField(mode)),
               /* ⭐ 后台「时段」任务（2026-10-28 使用者要求）：填了 start–end，段内就**一直刷**——
                *    一轮接一轮接力到时段结束；DSH 重启 / 提前收工 / 崩溃都会被每分钟的调度钩子
@@ -2698,16 +3326,13 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 h('input', { 'data-bd-input': '', type: 'number', min: 0, max: 5000000, step: 1000,
                   value: options.tokenBudget, onChange: (e) => updateRun(mode, 'tokenBudget', e.target.value) })),
               h('div', { 'data-bd-note': '' }, session
-                ? '轮数与 token 在每轮结束后检查，可能略超预算；到达时限会暂停续轮，当前轮可能继续到结束。'
-                + '⭐ 它刷着的时候你随时插一句话，当前那轮就会作废重来 —— 想下指令（挑点别的、停下、换个口味）就大方打字，不用等它问。'
+                ? '轮数与 token 预算在每轮结束后检查；到达时限后暂停续轮。会话内的新消息按宿主中断规则处理。'
                 : (String(options.windowStart || '') && String(options.windowEnd || '')
                   ? `时段任务：${options.windowStart}–${options.windowEnd} 内一直刷，一轮接一轮到时段结束；中途关掉 DSH，重新打开也会在时段内自动接着刷。手动「停止」后本时段不再自动拉起。token 预算是软目标，不能精确截断。`
-                  : '填上「从几点刷到几点」就是常设时段任务（推荐）；留空则按下面的分钟数刷一轮，提前做完会自动接着刷到点。token 预算交给后台代理作任务目标，不能按精确用量自动截断。')),
+                  : '后台时段为空时，按单次运行时长执行；提前结束会在剩余时长内续接。后台 token 预算为软目标，不能按精确用量自动截断。')),
               h('div', { 'data-bd-row': '' },
-                h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => saveRun(mode) }, '保存默认设置'),
-                h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy) || live, onClick: () => startRun(mode) },
-                  icon(session ? 'play' : 'moon'), busy === 'start-' + mode ? '启动中…' : session ? '新开会话，开始刷' : '开始后台刷')),
-              h('div', { 'data-bd-note': '' }, '两个模式分别保存。修改参数不会改变正在运行的任务。')),
+                h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => saveRun(mode) }, '保存默认设置')),
+              h('div', { 'data-bd-note': '' }, '两种方式分别保存。模型、时长与预算用于下一次启动；后台时段保存后生效。运行中任务不受草稿影响。')),
             h('section', { 'data-bd-sec': '' }, heading('pulse', '运行状态'),
               h('span', { 'data-bd-badge': '', 'data-live': live ? '' : undefined },
                 live ? '运行中' : session && (fy.goal?.phase === 'paused' || fy.goal?.phase === 'blocked') ? '已暂停' : '空闲'),
@@ -2730,15 +3355,15 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               session && fy.source === 'manual' && live ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('stop') }, '停止手动刷站') : null,
               session && fy.goal ? h('div', { 'data-bd-row': '' },
                 live ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('stop') }, '暂停')
-                  : h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('resume') }, '接着刷'),
-                h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('clear') }, '收台')) : null,
+                  : h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('resume') }, '继续运行'),
+                h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('clear') }, '清除任务')) : null,
               !session && live ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: async () => {
                 setBusy('stop-bg')
                 try { const r = await jpost('/pet/stop', {}); if (!r?.ok) throw new Error(r?.error || '没有停下'); say('已停止后台任务。', 'good') }
                 catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') }
               } }, '停止后台任务') : null,
               !session && st.lastRunAt ? h('div', { 'data-bd-note': '' }, '上次运行：' + petFmtTime(st.lastRunAt)) : null,
-              h('div', { 'data-bd-note': '' }, '详细过程可在左侧「运行日志」中查看。'),
+              h('div', { 'data-bd-note': '' }, '执行明细保存在「记录与用量」中。'),
               /* ⏸️ 免跑牌期间如实说（st.bgWindow.holdUntil 由宿主 /status 提供） */
               !session && st.bgWindow && Number(st.bgWindow.holdUntil) > Date.now()
                 ? h('div', { 'data-bd-note': '' }, `本时段已停止自动拉起（到 ${new Date(st.bgWindow.holdUntil).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}）；点「开始后台刷」可立刻恢复。`)
@@ -2784,16 +3409,27 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             onChange: (v) => patch({ petShow: v }, '显示桌宠'),
           }),
           ToggleRow({
-            label: '空闲时自言自语', on: !(st && st.config && st.config.idleChatter === false), disabled: Boolean(busy),
-            note: '闲着的时候偶尔冒一句观察（两三个小时一条）——嫌吵就关成安静模式。',
+            label: '闲聊提示', on: !(st && st.config && st.config.idleChatter === false), disabled: Boolean(busy),
+            note: '按已配置频率显示闲聊，频率由陪伴节奏控制。',
             onChange: (v) => patch({ idleChatter: v }, '闲聊泡泡'),
-          })),
+          }), h(PetCompanionSettings, { st, busy, patch })),
         () => h('div', { 'data-bd-sec': '' },
-          heading('spark', '刷什么 · 用什么口气'),
-          h('div', { 'data-bd-note': '' }, '只在「鲸鱼摸鱼模式」预设里生效，留空用预设自带的那套口吻。'),
+          heading('spark', '角色与表达'),
+          h('div', { 'data-bd-note': '' }, '人格与陪伴设置仅用于鲸鱼摸鱼模式。留空使用默认设定。'),
+          h('div', { 'data-bd-field': '' },
+            h('span', { 'data-bd-label': '' }, '陪伴档位'),
+            h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '陪伴档位' },
+              ...[['quiet', '安静陪伴'], ['companion', '一起冲浪'], ['creator', '创作者'], ['steward', '自动管家']].map(([key, label]) => h('button', {
+                key, type: 'button', 'aria-pressed': (interactionStyle === null ? 'companion' : interactionStyle) === key,
+                disabled: Boolean(busy), onClick: () => setInteractionStyle(key),
+              }, label)))),
+          h('div', { 'data-bd-note': '' }, ({ quiet: '少打断，多观察；适合把鱼放在旁边一起待着。', companion: '有趣的就拉你一起看，偶尔吐槽，不抢你的注意力。', creator: '主动找反差、细节和能留下来的判断，适合做内容。', steward: '更在意连续性、收尾和下一步，适合让它替你照看日常。' }[(interactionStyle === null ? 'companion' : interactionStyle)])),
+          h('div', { 'data-bd-row': '' },
+            h('span', { 'data-bd-grow': '' }),
+            h('button', { 'data-bd-btn': '', 'data-sm': '', 'data-primary': '', disabled: Boolean(busy), onClick: () => patch({ interactionStyle: interactionStyle || 'companion' }, '陪伴档位') }, '保存档位')),
           h('textarea', {
-            'data-bd-input': '', rows: 4, value: persona === null ? '' : persona,
-            placeholder: '例：像个爱折腾的技术宅，说人话，看到夸大宣传会忍不住吐槽。',
+            'data-bd-input': '', rows: 4, 'aria-label': '大肥鱼的人格设定', value: persona === null ? '' : persona,
+            placeholder: '例如：关注技术内容，表达简洁，保留个人观点。',
             onChange: (e) => setPersona(e.target.value),
           }),
           h('div', { 'data-bd-row': '' },
@@ -2808,14 +3444,14 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           h('div', { 'data-bd-row': '' },
             h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '一天最多挑几条'),
             h('input', {
-              'data-bd-input': '', 'data-bd-num': '', type: 'number',
+              'data-bd-input': '', 'data-bd-num': '', type: 'number', 'aria-label': '一天最多挑几条',
               min: numLim('perDay', 0, 50)[0], max: numLim('perDay', 0, 50)[1],
               value: perDay === null ? '5' : perDay, onChange: (e) => setPerDay(e.target.value),
             })),
           h('div', { 'data-bd-row': '' },
             h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '报告详细程度'),
             h('select', {
-              'data-bd-input': '', style: { width: '140px' },
+              'data-bd-input': '', 'aria-label': '报告详细程度', style: { width: '140px' },
               value: rl === null ? 'full' : rl, onChange: (e) => setRl(e.target.value),
             },
             h('option', { value: 'full' }, '完整'),
@@ -2830,7 +3466,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           heading('dots', '长期偏好'),
           h('div', { 'data-bd-note': '' }, '关键词与参考文件提供长期背景，不限制她刷什么。参考路径不改变新会话所属工作区。'),
           h('textarea', {
-            'data-bd-input': '', rows: 3, placeholder: '一行一个',
+            'data-bd-input': '', 'aria-label': '长期偏好关键词', rows: 3, placeholder: '一行一个',
             value: kws === null ? '' : kws, onChange: (e) => setKws(e.target.value),
           }),
           h('input', {
@@ -2845,22 +3481,58 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 await patch({ keywords: list, workspace: String(wsDir || '').trim() }, '长期偏好')
               },
             }, '保存'))),
-        () => h('div', { 'data-bd-sec': '' },
-          heading('pulse', '出手的节奏'),
-          h('div', { 'data-bd-row': '' },
-            h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '节奏倍数（0.3 快 / 1 正常 / 3 慢三倍）'),
-            h('input', {
-              'data-bd-input': '', 'data-bd-num': '', type: 'number', step: 0.1,
-              min: numLim('paceFactor', 0.3, 3)[0], max: numLim('paceFactor', 0.3, 3)[1],
-              value: paceFactor === null ? '1' : paceFactor, onChange: (e) => setPaceFactor(e.target.value),
-            })),
-          h('div', { 'data-bd-note': '' },
-            '倍数只影响「下次该等多久」，不会把已经钉下的间隔缩短 —— 想让它立刻变快，等手上这一条发完再调。'),
-          h('div', { 'data-bd-row': '' },
-            h('button', {
-              'data-bd-btn': '', disabled: Boolean(busy),
-              onClick: () => patch({ paceFactor: clampField('paceFactor', paceFactor, 0.3, 3) }, '出手节奏'),
-            }, '保存'))),
+        () => {
+          const info = st && st.pace && st.pace.explanation
+          const saved = Number(cfg.paceFactor ?? info?.factor ?? 1)
+          const draftText = paceFactor === null ? String(saved) : paceFactor
+          const draft = Number(draftText)
+          const [lo, hi] = numLim('paceFactor', 0.3, 3)
+          const valid = String(draftText).trim() !== '' && Number.isFinite(draft) && draft >= lo && draft <= hi
+          const changed = valid && draft !== saved
+          const presets = info?.presets || { normal: 1, responsive: 0.5, cautious: 1.5 }
+          // 规则与基础秒数来自 paceExplain；本地只预览草稿，不另起请求、不改发送账。
+          const range = (v, factor) => `${Math.round(v.baseMinSec * 1000 * factor) / 1000}–${Math.round(v.baseMaxSec * 1000 * factor) / 1000} 秒`
+          const rules = info ? [
+            ['小时上限', info.notes.hour + ' 防止一小时的出手集中在一小会儿。'],
+            ['连发刹车', `所有发送合计 ${info.burst.windowSec / 60} 分钟最多 ${info.burst.max} 次；达到 ${info.burst.extraAfterCount} 次还会额外等 ${info.burst.extraWaitSec / 60} 分钟。` + info.notes.burst],
+            ['额度停牌', info.notes.quota + ` 再撞按 ${info.quota.parkSec.map((sec) => sec / 60).join(' → ')} 分钟递增，最晚只停到本地下一个 00:05；额度不是手速问题。`],
+            ['风控冷却', Object.entries(info.risk.cooldownSecByCode).map(([code, sec]) => `${code}：${sec / 60} 分钟`).join('；') + '。' + info.notes.risk + ' 避免硬试续封。'],
+          ] : []
+          return h('section', { 'data-bd-sec': '', 'data-bd-pace-editor': '' },
+          heading('pulse', '发送节奏'),
+            h('div', { 'data-bd-note': '' }, `已保存 ${saved} 倍。预设只填草稿，按「保存节奏」才生效；不会自动改掉原设置。`),
+            h('div', { 'data-bd-row': '', 'aria-label': '节奏快捷预设' },
+              ...[['normal', '标准'], ['responsive', '轻快'], ['cautious', '谨慎']].map(([key, label]) => h('button', {
+                key, 'data-bd-btn': '', 'data-sm': '', 'data-bd-pace-preset': key,
+                'aria-pressed': valid && draft === presets[key], disabled: Boolean(busy),
+                onClick: () => setPaceFactor(String(presets[key])),
+              }, `${label} ${presets[key]}`))),
+            h('div', { 'data-bd-row': '' },
+              h('label', { 'data-bd-label': '', 'data-bd-grow': '', htmlFor: 'bd-pace-factor' }, `自定倍数（${lo}–${hi}；越小间隔越短）`),
+              h('input', {
+                id: 'bd-pace-factor', 'aria-label': '节奏倍数', 'aria-invalid': !valid || undefined,
+                'data-bd-input': '', 'data-bd-num': '', type: 'number', step: 'any', min: lo, max: hi,
+                value: draftText, onChange: (e) => setPaceFactor(e.target.value),
+              })),
+            !valid ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, `请填 ${lo}–${hi} 之间的数字；空白或越界草稿不会保存。`) : null,
+            h('div', { 'data-bd-note': '' }, info?.notes.interval || '保存只影响下一次成功发送后新钉下的间隔与随机抖动；已钉下的等待不会重算。'),
+            info ? h('div', { 'data-bd-sub': '', 'data-bd-pace-preview': '' },
+              h('div', { 'data-bd-h': '' }, changed ? '未保存草稿预览（不是当前倒计时）' : '间隔范围（不是当前倒计时）'),
+              ...Object.entries(info.kinds).map(([key, v]) => h('div', { key, 'data-bd-note': '', 'data-bd-pace-range': key },
+                h('b', {}, v.label),
+                `：基础 ${range(v, 1)} · 已保存 ${range(v, saved)}`,
+                changed ? ` · 草稿 ${range(v, draft)}` : '',
+                ` · 每滚动小时最多 ${v.hourCap} 条`)))
+              : h('div', { 'data-bd-note': '' }, '节奏说明尚未就绪；不会猜基础范围，完整重启 DSH 后重试。'),
+            h('div', { 'data-bd-row': '' },
+              h('button', {
+                'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy) || !valid,
+                onClick: () => valid && patch({ paceFactor: draft }, '出手节奏'),
+              }, '保存节奏')),
+            info ? h('details', {}, h('summary', { 'data-bd-label': '' }, '保留的刹车：小时 / 连发 / 额度 / 风控'),
+              h('div', { 'data-bd-sub': '' }, ...rules.map(([label, note]) => h('div', { key: label, 'data-bd-note': '' }, h('b', {}, label + '：'), note)))) : null,
+            h('div', { 'data-bd-note': '' }, info?.notes.safety || '预设是本地节奏偏好，不是 B站 承诺的安全频率；不会缩短小时、连发、额度或风控闸。'))
+        },
 
         /* ── 📡 它刚才在干嘛（2026-10-27 从旧设置页搬进来）：实时流水是桌宠化时唯一没跟进弹窗的
          *    主力功能，这里补上。2.5 秒增量轮询 + 「正在想」呼吸条（模型读字幕的几十秒里流水
@@ -2874,177 +3546,366 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             ? h('div', { 'data-bd-thinking': '' },
               h('i', { 'data-bd-dot': '' }),
               h('span', { 'data-bd-grow': '' }, actLive.round
-                ? `第 ${actLive.round}${actLive.maxRounds ? '/' + actLive.maxRounds : ''} 轮 · 正在想（翻字幕、挑片子、琢磨怎么冒泡）`
-                : '正在想（翻字幕、挑片子、琢磨怎么冒泡）'),
+                ? `第 ${actLive.round}${actLive.maxRounds ? '/' + actLive.maxRounds : ''} 轮 · 模型处理中`
+                : '模型处理中'),
               actLive.since
                 ? h('time', {}, '已跑 ' + fmtSpanMs(actLive.since))
                 : null)
             : null,
           h('div', { 'data-bd-act': '' },
             acts.length === 0
-              ? h('div', { 'data-bd-empty': '' }, '还没动静～开冲之后这儿会一条条冒出来：搜了啥、挑了哪条、读到第几秒')
+              ? h('div', { 'data-bd-empty': '' }, '暂无活动记录。')
               : acts.map((a) => h('div', { 'data-bd-actline': '', 'data-kind': a.kind || 'info', key: a.id || a.seq },
                 h('time', {}, petFmtTime(a.t)),
                 h('span', {}, a.text),
                 a.kind === 'call' ? h('em', { 'data-bd-running': '' }, '进行中') : null))),
-          h('div', { 'data-bd-note': '' }, '它每做一件事都会在这里说一句人话；更完整的来龙去脉看下面的「近期运行日志」。'))
+          h('div', { 'data-bd-note': '' }, '活动列表显示最近的工具调用与执行结果。'))
       ]
       const pageHead = (title, note) => h('div', { 'data-bd-pghead': '' }, h('div', {}, h('b', {}, title), h('p', {}, note)))
+      const todayPage = () => {
+        const cfgNow = st?.config || {}
+        const fyNow = st?.feiyu || {}
+        const bgNow = st?.backgroundRun || {}
+        const learning = st?.learn || {}
+        const soul = st?.soul || {}
+        const activityRows = (Array.isArray(st?.activity) ? st.activity : []).filter(Boolean)
+        const latest = activityRows[activityRows.length - 1]
+        const active = Boolean(fyNow.active || st?.bgBusy)
+        const modeLabel = fyNow.active ? '会话运行中' : st?.bgBusy ? (bgNow.task === 'learn-review' ? '学习审核中' : '后台运行中') : '空闲'
+        const modeTone = active ? 'live' : undefined
+        const publicAllowed = cfgNow.dmMode !== 'only'
+        const sent = [cfgNow.autoComment && publicAllowed, cfgNow.replyToComments && publicAllowed, cfgNow.autoReplyDm, cfgNow.autoMoment,
+          cfgNow.dmMode !== 'off' && Number(cfgNow.dmUid) > 0].filter(Boolean).length
+        const trustLabel = cfgNow.sendReview ? '发送前预览' : sent === 0 ? '只观察' : '按通道授权'
+        const next = !st?.venvReady
+          ? { label: '主依赖未安装', note: '视频读取依赖 Python 环境与 B站工具链。', tab: 'other' }
+          : !st?.loggedIn
+            ? { label: 'B站未登录', note: '登录凭证仅保存在本机。', tab: 'other' }
+            : active
+              ? { label: '任务运行中', note: '活动与运行事件已记录。', tab: 'logs' }
+            : Number(st?.sendReview?.unknown) > 0
+              ? { label: '核对待确认的发送', note: `${st.sendReview.unknown} 条发送结果不确定，请先去 B站核对，避免重复发送。`, tab: 'speech' }
+            : Number(st?.sendReview?.pending) > 0
+              ? { label: '待审核发送内容', note: `${st.sendReview.pending} 条内容待审。审批按单条内容执行。`, tab: 'speech' }
+            : st?.attention?.reasons?.length
+              ? { label: '待处理事项', note: String(st.attention.reasons[0]), tab: String(st.attention.reasons[0]).includes('学习') ? 'learning' : 'speech' }
+              : !st?.ranToday && !st?.lastRunAt
+                ? { label: '尚无运行记录', note: '运行参数与启动入口位于「运行方式」。', tab: 'run' }
+                : learning.pending > 0
+                  ? { label: '待审核学习记录', note: `${learning.pending} 条经验待审。`, tab: 'learning' }
+                  : { label: '无待处理事项', note: '当前配置与运行记录均可查看。', tab: 'basic' }
+        const recentText = latest ? String(latest.text || latest.summary || '').replace(/\s+/g, ' ').trim() : ''
+        const summary = active
+          ? `任务正在运行。${recentText ? '最近动静：' + recentText.slice(0, 80) : '还没有收到新的活动记录，可打开日志查看。'}`
+          : st?.lastRunAt
+            ? `最近运行：${petFmtTime(st.lastRunAt)}。今日精选 ${Number(st.pickedToday) || 0} 条。`
+            : '暂无今日运行记录。'
+        const soulTotal = Array.isArray(soul.filled) ? soul.filled.length : 0
+        return h('div', { 'data-bd-today': '' },
+          h('section', { 'data-bd-today-hero': '' },
+            h('div', { 'data-bd-today-hero-copy': '' },
+              h('span', { 'data-bd-eyebrow': '' }, 'DEEP MOYU · DAILY DESK'),
+              h('h1', {}, '运行概览'),
+              h('p', {}, summary),
+              h('div', { 'data-bd-row': '' },
+                h('span', { 'data-bd-badge': '', 'data-live': modeTone }, modeLabel),
+                h('span', { 'data-bd-note': '' }, '陪伴档位：' + ({ quiet: '安静陪伴', companion: '一起冲浪', creator: '创作者', steward: '自动管家' }[cfgNow.interactionStyle] || '一起冲浪')),
+            )),
+            h('div', { 'data-bd-today-fish': '', 'aria-hidden': true }, h('img', { src: PET_IMG_URL, alt: '', draggable: false }))),
+          h('div', { 'data-bd-today-grid': '' },
+            h('section', { 'data-bd-today-card': '', 'data-bd-today-status': '' },
+              h('div', { 'data-bd-h': '' }, icon('pulse'), h('b', {}, '今日运行统计')),
+              h('div', { 'data-bd-kpi': '' },
+                h('div', {}, h('b', {}, String(st?.ranToday ?? 0)), h('span', {}, '今日轮次')),
+                h('div', {}, h('b', {}, String(st?.pickedToday ?? 0)), h('span', {}, '今日精选')),
+                h('div', {}, h('b', {}, st?.tokensToday === null || st?.tokensToday === undefined ? '—' : Number(st.tokensToday).toLocaleString()), h('span', {}, '今日 token'))),
+              h('div', { 'data-bd-today-current': '' }, latest ? h('span', {}, recentText || '刚刚有一条新动静') : h('span', {}, '还没有新的活动记录')),
+              h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab(active ? 'logs' : 'run') }, active ? '打开实时流水' : '安排一轮冲浪')),
+            h('section', { 'data-bd-today-card': '', 'data-bd-today-next': '' },
+              h('div', { 'data-bd-h': '' }, icon('spark'), h('b', {}, '相关事项')),
+              h('strong', {}, next.label), h('div', { 'data-bd-note': '' }, next.note),
+              h('button', { 'data-bd-btn': '', 'data-primary': '', onClick: () => {
+                if (next.tab === 'basic') modalRef.current?.querySelector('[data-bd-basic-grid]')?.scrollIntoView?.({ block: 'start', behavior: cfgNow.petReducedMotion ? 'auto' : 'smooth' })
+                else setTab(next.tab)
+              } }, '查看详情')),
+            h('section', { 'data-bd-today-card': '' },
+              h('div', { 'data-bd-h': '' }, icon('key'), h('b', {}, '发送安全档位')),
+              h('div', { 'data-bd-today-trust': '' }, h('strong', {}, trustLabel), h('span', {}, sent ? `已授权 ${sent} 个投递通道` : '自动投递开关保持关闭')),
+              st?.sendReview ? h('div', { 'data-bd-note': '' }, st.sendReview.ok === false ? '预览队列暂时读不到，请到互动与投递页重试。' : `${Number(st.sendReview.pending) || 0} 条待审 · ${Number(st.sendReview.unknown) || 0} 条结果待核对`) : null,
+              h('div', { 'data-bd-note': '' }, '节奏、判重、冷却和额度闸始终生效。需要改变权限时，去互动与投递页逐项确认。'),
+              h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab('speech') }, '检查投递权限')),
+            h('section', { 'data-bd-today-card': '' },
+              h('div', { 'data-bd-h': '' }, icon('spark'), h('b', {}, '记忆统计')),
+              h('div', { 'data-bd-kpi': '' },
+                h('div', {}, h('b', {}, String(learning.approved || 0)), h('span', {}, '已批准经验')),
+                h('div', {}, h('b', {}, String(learning.pending || 0)), h('span', {}, '待审经验')),
+                h('div', {}, h('b', {}, String(soulTotal)), h('span', {}, '有内容的心情节'))),
+              h('div', { 'data-bd-note': '' }, soul.empty ? '暂无角色记忆。' : (soul.updatedAt ? '最近更新：' + petFmtTime(soul.updatedAt) : '角色记忆已读取。')),
+              h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab('learning') }, '打开记忆中心')),
+          h('section', { 'data-bd-today-card': '', 'data-bd-today-wide': '' },
+            h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('list'), h('b', {}, '今天的节奏')),
+              h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, active ? '进行中' : st?.schedule?.inWindow ? '定时窗口内' : '未运行')),
+            h('div', { 'data-bd-timeline': '' },
+              h('div', { 'data-bd-timeline-item': '', 'data-on': st?.loggedIn ? '' : undefined }, h('i', {}), h('span', {}, st?.loggedIn ? '账号已连接' : '等待登录')),
+              h('div', { 'data-bd-timeline-item': '', 'data-on': st?.ranToday || st?.lastRunAt ? '' : undefined }, h('i', {}), h('span', {}, st?.ranToday || st?.lastRunAt ? `今天已留下 ${st?.ranToday || 0} 轮记录` : '还没有今天的冲浪记录')),
+              h('div', { 'data-bd-timeline-item': '', 'data-on': active ? '' : undefined }, h('i', {}), h('span', {}, active ? '任务执行中' : '当前未运行')))))
+        )
+      }
       const basicPage = () => {
         /* 🧭 新手三步（2026-10-28）：齐了这张卡自己消失 —— 不用任何人去关它 */
         const steps = [
-          { done: Boolean(st && st.venvReady), label: '装主依赖（Python 环境）', view: 'other' },
+          { done: Boolean(st && st.venvReady), label: '安装主依赖（Python 环境）', view: 'other' },
           { done: Boolean(st && st.loggedIn), label: '扫码登录 B站', view: 'other' },
-          { done: Boolean(Number(st && st.ranToday) || (st && st.lastRunAt)), label: '开第一把刷', view: 'run' },
+          { done: Boolean(Number(st && st.ranToday) || (st && st.lastRunAt)), label: '首次运行', view: 'run' },
         ]
         const todo = steps.filter((s) => !s.done)
         return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'basic' },
-          pageHead('偏好与桌宠', '选什么，怎么说，记录多少。每张卡独立保存。'),
+          pageHead('偏好与桌宠', '角色偏好、桌宠显示与报告设置。'),
           todo.length ? h('section', { 'data-bd-sec': '', 'data-bd-onboard': '' },
-            h('div', { 'data-bd-h': '' }, icon('spark'), h('b', {}, '先把鱼安顿好（三步，齐了这张卡自己消失）')),
+            h('div', { 'data-bd-h': '' }, icon('spark'), h('b', {}, '初始化状态')),
             ...steps.map((s) => h('div', { 'data-bd-row': '', key: s.label },
               h('span', { 'data-bd-badge': '', 'data-live': s.done ? '' : undefined }, s.done ? '✓ 已完成' : '待办'),
               h('span', { 'data-bd-grow': '', style: { fontWeight: s.done ? 400 : 600 } }, s.label),
-              s.done ? null : h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab(s.view) }, '去处理')))) : null,
+              s.done ? null : h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab(s.view) }, '配置')))) : null,
           h('div', { 'data-bd-pet-grid': '', 'data-bd-basic-grid': '' }, basicCards[1](), basicCards[3](), basicCards[0](), basicCards[2]()))
       }
       const speechPage = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'speech' },
-        pageHead('互动与投递', '公开冒泡和私信往来，各有自己的开关。'),
+        pageHead('互动与投递', '管理公开发言、私信投递、自动回复和发送限制。'),
+        h(PetSendReviewPanel, { st, patch, busy, say }),
         h('div', { 'data-bd-pet-grid': '' },
           h('section', { 'data-bd-sec': '' }, heading('spark', '公开发言'), ToggleRow({
-            label: '自动发说说', on: sw('autoMoment'), disabled: Boolean(busy),
-            note: '把这一轮的想法发成 B站 动态。默认关；关着的时候它一次都不会发。',
-            onChange: (v) => patch({ autoMoment: v }, '自动发说说'),
+            label: '自动发布动态', on: sw('autoMoment'), disabled: Boolean(busy),
+            note: '允许根据当前内容发布 B站动态。默认关闭，是否发布由角色自主判断。',
+            onChange: (v) => patch({ autoMoment: v }, '自动发布动态'),
           }),
           sw('autoMoment') ? h('div', { 'data-bd-sub': '' },
             h('div', { 'data-bd-row': '' },
               h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '口吻'),
               h('select', {
-                'data-bd-input': '', 'data-bd-num': '', style: { width: '104px' },
-                value: momentStyle === null ? '感想' : momentStyle, onChange: (e) => setMomentStyle(e.target.value),
+                'data-bd-input': '', 'data-bd-num': '', 'aria-label': '动态口吻', style: { width: '104px' },
+                value: momentStyle === null ? '随心情' : momentStyle, onChange: (e) => setMomentStyle(e.target.value),
               },
-              ['感想', '吐槽', '安利', '冷知识'].map((s) => h('option', { key: s, value: s }, s)))),
+              ['随心情', '感想', '吐槽', '安利', '冷知识'].map((s) => h('option', { key: s, value: s }, s)))),
             h('div', { 'data-bd-row': '' },
-              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '每天动态目标'),
+              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '每天上限'),
               h('input', {
-                'data-bd-input': '', 'data-bd-num': '', type: 'number',
+                'data-bd-input': '', 'data-bd-num': '', 'aria-label': '每日动态上限', type: 'number',
                 min: numLim('momentPerDay', 0, 50)[0], max: numLim('momentPerDay', 0, 50)[1],
                 value: momentPerDay === null ? '1' : momentPerDay, onChange: (e) => setMomentPerDay(e.target.value),
               })),
-            h('div', { 'data-bd-note': '' }, '每天要发够这个量（不是"最多"——是当日目标；0 = 永远不发；后端上限 50）。')) : null,
+            h('div', { 'data-bd-note': '' }, '每日发布上限不代表任务量。0 表示不发布，最大 50；无合适内容时可不发布。')) : null,
           ToggleRow({
             label: '自动评论视频', on: sw('autoComment'), disabled: Boolean(busy),
-            note: '看完有具体想说的话时再评论，也可以安静看完。按自己的口气说，不用 @ 任何人。',
+            note: '读取视频后，根据内容判断是否评论。评论遵循角色设定，不要求 @ 用户。',
             onChange: (v) => patch({ autoComment: v }, '自动评论'),
           }),
           sw('autoComment') ? h('div', { 'data-bd-sub': '' },
-            h('div', { 'data-bd-note': '' }, '没有每日条数上限；是否评论由她自己决定。同一个视频只评一次，发送仍按节奏闸执行。'),
+            h('div', { 'data-bd-note': '' }, '无固定每日条数上限；是否评论由角色自主判断。同一个视频只评论一次，发送受节奏、冷却和判重限制。'),
             dmMode === 'only' ? h('div', { 'data-bd-msg': '', 'data-warn': '' },
-              '评论开关开着但不生效：投递方式是「只发私信」，公开评论整个关掉了～') : null) : null,
+              '当前选择「仅私信」，公开评论已停用；自动评论开关保持开启但不执行。') : null) : null,
           ToggleRow({
             label: '自动回复评论', on: sw('replyToComments'), disabled: Boolean(busy),
-            note: '有人回了你的评论，它想回就回 —— 不必每条都搭话。每轮先看一眼有没有人回你。',
+            note: '每轮检查收到的回复，由角色判断是否回复，无需逐条回复。',
             onChange: (v) => patch({ replyToComments: v }, '自动回复评论'),
           }),
           sw('replyToComments') ? h('div', { 'data-bd-sub': '' },
-            h('div', { 'data-bd-note': '' }, '想回就回，没有条数上限，也可以不理。同一条只回一次 —— 它记着账本，不会对着一个人刷屏。')) : null,
-            h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => patch({ momentStyle: momentStyle || '感想', momentPerDay: clampField('momentPerDay', momentPerDay, 0, 50) }, '动态设置') }, '保存动态设置')),
+            h('div', { 'data-bd-note': '' }, '无固定条数上限；是否回复由角色自主判断。同一条评论只回复一次，避免对同一对象连续重复回复。')) : null,
+            h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => patch({ momentStyle: momentStyle || '随心情', momentPerDay: clampField('momentPerDay', momentPerDay, 0, 50) }, '动态设置') }, '保存动态设置')),
           h('section', { 'data-bd-sec': '' }, heading('key', '私信与投递'), ToggleRow({
             label: '私信投递', on: dmMode !== 'off' && dmMode !== null, disabled: Boolean(busy),
-            note: '可选择私信或同时投递；填写你的收件 UID 后保存。',
+            note: '将精选结果发送到指定 UID，可选择仅私信或同时投递。',
             onChange: (v) => setDmMode(v ? 'both' : 'off'),
           }),
           dmMode !== 'off' && dmMode !== null ? h('div', { 'data-bd-sub': '' },
             h('div', { 'data-bd-row': '' },
               h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '收件人 UID'),
               h('input', {
-                'data-bd-input': '', style: { width: '150px' }, placeholder: '数字 UID',
+                'data-bd-input': '', 'aria-label': '收件人 UID', type: 'text', inputMode: 'numeric', pattern: '[0-9]*', style: { width: '150px' }, placeholder: '数字 UID',
                 value: dmUid === null ? '' : dmUid, onChange: (e) => setDmUid(e.target.value),
               })),
             h('div', { 'data-bd-row': '' },
               h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '方式'),
               h('select', {
-                'data-bd-input': '', style: { width: '150px' },
+                'data-bd-input': '', 'aria-label': '投递方式', style: { width: '150px' },
                 value: dmMode || 'off', onChange: (e) => setDmMode(e.target.value),
               },
-              h('option', { value: 'off' }, '只发评论区'),
-              h('option', { value: 'only' }, '只发私信'),
-              h('option', { value: 'both' }, '两边都发')))) : null,
+              h('option', { value: 'off' }, '仅评论区'),
+              h('option', { value: 'only' }, '仅私信'),
+              h('option', { value: 'both' }, '评论区与私信')))) : null,
           /* 自动回复私信：跟「私信投递」是两件事（那是往外发成果，这是回别人发来的） */
           ToggleRow({
             label: '自动回复私信', on: sw('autoReplyDm'), disabled: Boolean(busy),
-            note: '别人私信你，它就按自己那套脾气回一句。想回就回，不回也不算欠着。',
+            note: '根据新收到的私信判断是否回复，遵循角色设定，允许不回复。',
             onChange: (v) => patch({ autoReplyDm: v }, '自动回复私信'),
           }),
           sw('autoReplyDm') ? h('div', { 'data-bd-sub': '' },
             h('div', { 'data-bd-note': '' },
-              `没有每日条数上限 —— 想回就回。同一条私信只回一次；新鲜事只回 ${DM_STALE_DAYS} 天内的，晾着的旧消息不去翻。`),
+              `无固定每日条数上限；是否回复由角色自主判断。同一条私信只回复一次，仅处理 ${DM_STALE_DAYS} 天内的消息。`),
             h('div', { 'data-bd-row': '' },
               h('div', { 'data-bd-grow': '' },
-                h('div', { 'data-bd-label': '' }, '只回我关注的人'),
-                h('div', { 'data-bd-note': '' }, '开着更安全：陌生人私信多半是广告引流，一律不回；关掉就是谁都回。')),
+                h('div', { 'data-bd-label': '' }, '仅回复已关注的用户'),
+                h('div', { 'data-bd-note': '' }, '开启后，仅回复账号已关注的用户；关闭后可处理其他用户的新私信。是否回复仍由角色判断。')),
               h(Switch, {
-                on: Boolean(sw('dmReplyFollowedOnly')), disabled: Boolean(busy),
-                onChange: (v) => patch({ dmReplyFollowedOnly: v }, '只回我关注的人'),
+                on: Boolean(sw('dmReplyFollowedOnly')), label: '仅回复已关注的用户', disabled: Boolean(busy),
+                onChange: (v) => patch({ dmReplyFollowedOnly: v }, '仅回复已关注的用户'),
               }))) : null,
             h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => patch({ dmMode: dmMode || 'off', dmUid: String(dmUid || '').trim() }, '私信投递设置') }, '保存投递设置')),
-          basicCards[4](), h('section', { 'data-bd-sec': '' }, heading('pulse', '此刻能不能发'), (() => {
+          basicCards[4](), h('section', { 'data-bd-sec': '' }, heading('pulse', '发送状态'), (() => {
             const pc = st && st.pace
-            if (!pc || pc.ok === false) return h('div', { 'data-bd-note': '' }, '节奏读不到（可能要重启一次让新版生效）')
+            if (!pc || pc.ok === false) return h('div', { 'data-bd-note': '' }, '发送节奏读取失败。可重启 DSH 后重新加载。')
             const cd = pc.cooldown
             const qt = pc.quota
-            const ks = pc.kinds || {}
-            /* 🗨️ 先说人话（2026-10-28）：把节奏账翻译成一句有期待感的总结，技术读数放后面 */
-            const waits = Object.values(ks).map((v) => Number(v.waitSec) || 0)
-            const maxWait = waits.length ? Math.max(0, ...waits) : 0
+            const ks = pc.explanation?.kinds || pc.kinds || {}
+            const ready = Object.entries(ks).filter(([, v]) => Number(v.waitSec) <= 0).map(([, v]) => v.label)
+            /* 当前可发送时间只取后端账本；草稿预览不能把已钉下的等待重算。 */
+            const waits = Object.values(ks).map((v) => Number(v.waitSec) || 0).filter((sec) => sec > 0)
+            const firstWait = waits.length ? Math.min(...waits) : 0
             const summary = cd
-              ? `她在小黑屋冷静，约 ${Math.ceil((Number(cd.waitSec) || 0) / 60)} 分钟后回来 —— 这段时间别催。`
+              ? `风控冷却中，预计 ${Math.ceil((Number(cd.waitSec) || 0) / 60)} 分钟后可重新评估发送。`
               : qt && Object.keys(qt).length
-                ? '评论额度用完了，她先安静看片，到点自己再探。'
-                : maxWait > 0
-                  ? `下一次出手大约 ${Math.ceil(maxWait / 60)} 分钟后 —— 现在她在安静看片。`
-                  : '现在出手很顺，她想发就发。'
+                ? '视频评论额度暂满，其他通道按各自限制独立判断。'
+                : ready.length > 0 && ready.length === Object.keys(ks).length
+                  ? '当前各通道均满足时间与额度条件，实际发送仍需相应权限。'
+                  : ready.length
+                    ? '部分通道满足发送条件，其余通道的等待时间见下方。'
+                    : firstWait > 0
+                      ? `预计最早 ${Math.ceil(firstWait / 60)} 分钟后有通道可用，具体限制按通道执行。`
+                      : '正在读取发送状态。'
             const qRow = qt && Object.keys(qt).length
               ? (() => {
                 const q = Object.values(qt)[0] || {}
                 const m = Math.max(1, Math.ceil((Number(q.waitSec) || 0) / 60))
                 const strike = Number(q.strikes) || 1
                 return h('div', { 'data-bd-msg': '', 'data-warn': '' },
-                  `📉 评论额度满了（12014）：先歇 ${m} 分钟，到点自动再探一次`
-                  + `（第 ${strike} 次，再撞会停更久：45 分 → 90 分 → 180 分封顶）。`
-                  + '这不是风控，是账号的评论额度用完了（越撞停得越久）—— 回私信、回动态评论、发动态都不受影响。')
+                  `视频评论额度已满（12014），本次暂停 ${m} 分钟后允许重新评估`
+                  + `（第 ${strike} 次触发，连续触发的暂停时长为 45 分 → 90 分 → 180 分）。`
+                  + '该额度仅限制视频评论及其回复；私信、动态评论回复和动态发布不受此项额度影响。')
               })()
               : null
             const rows = Object.entries(ks).map(([k, v]) => {
               const wait = Number(v.waitSec) || 0
-              return h('div', { 'data-bd-kv': '', key: k },
-                `${v.label || k}：${wait > 0 ? '还要等 ' + (wait >= 90 ? Math.ceil(wait / 60) + ' 分钟' : wait + ' 秒') : '现在可以'}`
-                + ` · 间隔 ${v.gapSec}~${Number(v.gapSec) + Number(v.jitterSec)} 秒 · 每小时最多 ${v.hourCap} 条`)
+              const reason = { cooldown: '风控冷却', quota: '视频评论额度限制', burst: '连续发送限制', hour: '滚动小时上限', gap: '已保存的发送间隔' }[v.blockedBy]
+              return h('div', { 'data-bd-kv': '', 'data-bd-pace-current': k, key: k },
+                `${v.label || k}：${wait > 0 ? '需等待 ' + (wait >= 90 ? Math.ceil(wait / 60) + ' 分钟' : wait + ' 秒') : '当前可发送'}`
+                + (wait > 0 && reason ? `（${reason}）` : '')
+                + ` · 滚动小时已用 ${v.usedThisHour || 0}/${v.hourCap} 条`)
             })
             const burst = pc.burst || {}
             return h('div', { 'data-bd-sub': '' },
               h('div', { 'data-bd-msg': '', 'data-good': !cd && !(qt && Object.keys(qt).length) ? '' : undefined }, summary),
               cd ? h('div', { 'data-bd-msg': '', 'data-warn': '' },
-                `🚧 正在冷却：${cd.why || '被风控拦了'}`
-                + `（${cd.code || '?'}）—— 还要等 ${Math.ceil((Number(cd.waitSec) || 0) / 60)} 分钟。`
-                + '这段别让它试探性再发，风控是越试越久的。') : null,
+                `风控冷却：${cd.why || '触发平台风控'}`
+                + `（${cd.code || '?'}），剩余约 ${Math.ceil((Number(cd.waitSec) || 0) / 60)} 分钟。`
+                + '冷却期间暂停发送，不进行试探性重试。') : null,
               qRow,
               h('div', { 'data-bd-msg': '', 'data-good': '' },
-                `现在可以发：${Object.entries(ks).filter(([, v]) => Number(v.waitSec) <= 0).map(([, v]) => v.label).join('、') || '都还得等等'}`),
+                `可发送通道：${ready.join('、') || '暂无可发送通道'}`),
               ...rows,
               h('div', { 'data-bd-note': '' },
-                `连发刹车：${burst.windowMin || 10} 分钟里最多 ${burst.max || 10} 次出手（不管哪一类，已经用了 ${burst.used || 0} 次）—— `
-                + '风控看的是"这个号在动"，不看动的是哪一种。'))
+                `连续发送限制：每 ${burst.windowMin || 10} 分钟，各通道合计最多 ${burst.max || 10} 次（已使用 ${burst.used || 0} 次）。`
+                + '此限制按账号合并计算。发送结果未知时应先核对，不重复发送。'))
           })(),
             h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: async () => {
               setBusy('verify'); try { const r = await jpost('/verify', {}); if (!r?.ok) throw new Error(r?.error || '复核失败'); const rows = Array.isArray(r.checked) ? r.checked : []; say(rows.length ? '复核 ' + rows.length + ' 条，公开可见 ' + rows.filter(x => x.visible === true).length + ' 条。' : r.text || '没有需要复核的发言', 'good') } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') }
             } }, '复核发言'))))
+      const weeklyRecoveryCard = ({ showReview = true, showRecovery = true } = {}) => {
+        const retro = st?.retrospective || {}
+        const days = Array.isArray(retro.days) ? retro.days : []
+        const totals = retro.totals || {}
+        const themes = Array.isArray(retro.themes) ? retro.themes : []
+        const changes = retro.changes || {}
+        const recovery = st?.recovery || {}
+        const rows = Array.isArray(recovery.rows) ? recovery.rows : []
+        const maxPicks = Math.max(1, ...days.map((row) => row.picks == null ? 0 : Number(row.picks) || 0))
+        const changeGroups = changes.available
+          ? [['新增', changes.new], ['延续', changes.continued], ['减少', changes.decreased]].map(([label, items]) => h('div', { key: label, 'data-bd-week-change-row': '' },
+            h('b', {}, label),
+            h('div', { 'data-bd-week-change-chips': '' }, ...(Array.isArray(items) && items.length ? items : [{ clue: '无', current: 0, previous: 0, sources: [] }]).map((item) => h('span', {
+              key: item.clue, title: (item.sources || []).map((source) => `${source.day} ${source.bvid} ${source.title}`).join('\n'),
+            }, item.clue === '无' ? '无' : `${item.clue} ${item.previous}→${item.current}`)))))
+          : [h('div', { key: 'unavailable', 'data-bd-note': '' }, '两个 7 天窗口没有同时具备日报证据，暂不生成变化判断。')]
+        return h('section', { 'data-bd-week-recovery': '', 'aria-label': '七天回顾与任务恢复' },
+          showReview ? h('div', { 'data-bd-week-card': '' },
+            h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('list'), h('b', {}, '最近 7 天')), h('span', { 'data-bd-badge': '' }, `${Number(totals.activeDays) || 0}/7 天有记录`)),
+            h('div', { 'data-bd-kpi': '' },
+              h('div', {}, h('b', {}, Number(totals.reportDays) > 0 ? String(Number(totals.picks) || 0) : '—'), h('span', {}, '精选')),
+              h('div', {}, h('b', {}, String(Number(totals.runs) || 0)), h('span', {}, '已记任务')),
+              h('div', {}, h('b', {}, Number(totals.tokenDays) > 0 ? Number(totals.tokens || 0).toLocaleString() : '—'), h('span', {}, 'token'))),
+            days.length ? h('div', { 'data-bd-week-days': '', 'aria-label': '七天精选数量' }, ...days.map((row) => h('div', { key: row.day, 'data-bd-week-day': '', 'data-on': row.report || (row.tokens ?? 0) > 0 || row.runs ? '' : undefined, 'data-missing': row.picks == null ? '' : undefined, title: `${row.day} · 精选 ${row.picks == null ? '无日报记录' : row.picks} · 任务 ${row.runs || 0} · token ${row.tokenKnown ? row.tokens : '无计量记录'}` },
+              h('b', {}, row.picks == null ? '—' : String(row.picks)), h('i', { style: { height: row.picks == null ? '8px' : Math.max(4, Math.round((Number(row.picks) || 0) / maxPicks * 42)) + 'px' } }), h('span', {}, String(row.day || '').slice(5))))) : h('div', { 'data-bd-note': '' }, '还没有七天记录。'),
+            themes.length ? h('div', { 'data-bd-week-themes': '' }, ...themes.map((theme) => h('span', { key: theme.title, title: `${theme.title} · ${(theme.sources || []).map((source) => source.day + ' ' + source.bvid).join('、')}` }, theme.title + (theme.count > 1 ? ` ×${theme.count}` : '')))) : h('div', { 'data-bd-note': '' }, retro.note || '有日报后，这里会按真实精选标题显示最近主题。'),
+            h('div', { 'data-bd-week-change': '' },
+              h('div', { 'data-bd-row': '' }, h('b', { 'data-bd-grow': '' }, '主题变化'), h('span', { 'data-bd-note': '' }, `${changes.label || '标题线索 / 非兴趣结论'} · 本周日报 ${Number(changes.coverage?.currentReportDays) || 0} 天 / 上周 ${Number(changes.coverage?.previousReportDays) || 0} 天`)),
+              ...changeGroups),
+            h('div', { 'data-bd-note': '' }, '数据来自本地日报、当前任务账及 token 日账；不含已轮转任务。')) : null,
+          showRecovery ? h('div', { 'data-bd-recovery-card': '' },
+            h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('pulse'), h('b', {}, '恢复中心')), recovery.needsAction ? h('span', { 'data-bd-badge': '', 'data-warn': '' }, '需要处理') : h('span', { 'data-bd-badge': '', 'data-live': '' }, '状态清楚')),
+            h('div', { 'data-bd-recovery-list': '' }, ...(rows.length ? rows : [{ id: 'loading', state: 'scheduled', label: '正在读取任务状态', detail: '稍后自动刷新', action: 'run', actionLabel: '查看运行方式' }]).map((row) => h('div', { key: row.id, 'data-bd-recovery-row': '', 'data-state': row.state || '' },
+              h('i', {}), h('div', { 'data-bd-recovery-copy': '' }, h('strong', {}, row.label || '任务状态'), h('span', {}, row.detail || '')),
+              h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => {
+                if (row.action === 'background') { setRunMode('background'); setTab('run'); return }
+                setTab(row.action === 'video' ? 'video' : row.action === 'logs' ? 'logs' : 'run')
+              } }, row.actionLabel || '查看')))),
+            h('div', { 'data-bd-note': '' }, '运行状态由宿主确认。视频仅在音视频校验通过后标记完成。')) : null)
+      }
+      const runPlan = () => {
+        const c = cfg || {}
+        const f = st?.feiyu || {}
+        const bg = st?.backgroundRun || {}
+        const sessionOn = Boolean(f.active)
+        const backgroundOn = Boolean(st?.bgBusy)
+        const windowOn = Boolean(st?.bgWindow?.start && st?.bgWindow?.end)
+        const active = sessionOn || backgroundOn
+        const mode = sessionOn ? '当前会话' : backgroundOn ? (bg.task === 'learn-review' ? '后台学习审核' : '后台连续冲浪') : windowOn ? '定时窗口' : '未安排'
+        const schedule = c.scheduleEnabled ? (c.scheduleAllDay ? '全天检查' : `${c.scheduleStart || '18:00'}–${c.scheduleEnd || '09:00'}`) : '未开启'
+        const selectedBackground = backgroundOn || (!sessionOn && runMode === 'background')
+        const budgetValue = sessionOn ? f.tokens?.budget : backgroundOn ? bg.tokenBudget : selectedBackground ? c.backgroundTokenBudget : c.sessionTokenBudget
+        const budget = Number(budgetValue) > 0 ? Number(budgetValue).toLocaleString() + ' token / 趟' : '本趟不限（受总闸约束）'
+        return h('section', { 'data-bd-sec': '', 'data-bd-run-plan': '' },
+          h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('pulse'), h('b', {}, '运行计划')), h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, active ? '正在执行' : '待命')),
+          h('div', { 'data-bd-run-plan-grid': '' },
+            h('div', {}, h('span', {}, '现在'), h('strong', {}, mode)),
+            h('div', {}, h('span', {}, '下一步'), h('strong', {}, sessionOn ? '按当前目标续轮' : backgroundOn ? '按时段或本趟时限运行' : Number(st?.bgWindow?.holdUntil) > Date.now() ? '本时段已手动停止自动拉起' : windowOn ? '到窗口时自动接力' : '等待手动开始')),
+            h('div', {}, h('span', {}, '模型'), h('strong', {}, sessionOn ? f.modelActive || f.model || '当前会话模型' : backgroundOn ? bg.model || '后台模型' : (selectedBackground ? c.backgroundModelId : c.sessionModelId) || '沿用宿主默认')),
+            h('div', {}, h('span', {}, '预算'), h('strong', {}, budget)),
+            h('div', {}, h('span', {}, '定时'), h('strong', {}, schedule)),
+            h('div', {}, h('span', {}, '完成反馈'), h('strong', {}, selectedBackground ? '桌宠提醒 + 运行日志' : '当前会话 + 运行日志'))),
+          h('div', { 'data-bd-note': '' }, active ? '这项任务不会因为切换设置页而停止；后台任务完成或失败后会回写结果。' : '当前会话、后台连续刷、定时窗口分别保存，互相不会覆盖参数。'))
+      }
       const runView = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'run' },
-        pageHead('运行方式', '会话、后台分开保存。定时规则归在后台方式里。'),
-        h('div', { 'data-bd-segments': '', 'aria-label': '运行方式' }, ...[['session','新开会话刷'], ['background','后台与定时']].map(([mode, label]) => h('button', { key: mode, 'aria-pressed': runMode === mode, onClick: () => setRunMode(mode) }, label))),
-        runPage(runMode), runMode === 'background' ? scheduleCard() : null)
+        pageHead('运行方式', '会话运行、后台运行与定时计划。'),
+        st.toolScope?.checked && !st.toolScope.supported ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, '当前 DSH 不支持会话工具隔离。会话运行不可用，后台运行和本地管理仍可使用。') : null,
+        h('div', { 'data-bd-run-launches': '' }, ...['session', 'background'].map(mode => {
+          const isSession = mode === 'session', options = runSettings(mode)
+          const active = isSession ? Boolean(st.feiyu?.active) : Boolean(st.bgBusy)
+          const title = isSession ? '新开会话刷' : '后台刷'
+          return h('section', { key: mode, 'data-bd-run-launch': mode },
+            h('div', { 'data-bd-row': '' }, icon(isSession ? 'play' : 'moon'), h('h2', { 'data-bd-grow': '' }, title), h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, active ? '运行中' : '未运行')),
+            h('p', {}, isSession ? '在独立会话中运行，保留对话与执行进度。' : '在后台执行，支持连续时段与每日定时计划。'),
+            h('div', { 'data-bd-launch-meta': '' }, h('span', { title: options.model || '' }, options.model || (isSession ? '当前会话模型' : '宿主默认模型')), h('span', {}, Number(options.tokenBudget) > 0 ? Number(options.tokenBudget).toLocaleString() + ' token' : '不设单次 token 上限')),
+            h('button', { 'data-bd-btn': '', 'data-primary': '', 'data-bd-launch-action': mode, disabled: Boolean(busy) || active || (isSession && st.toolScope?.checked && !st.toolScope.supported),
+              onClick: () => startRun(mode) }, busy === 'start-' + mode ? '正在启动…' : isSession ? '新开会话刷' : '开始后台刷'))
+        })),
+        h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '运行方式' }, ...[['session','会话参数'], ['background','后台与定时']].map(([mode, label]) => h('button', { key: mode, 'aria-pressed': runMode === mode, onClick: () => setRunMode(mode) }, label))),
+        runPage(runMode), runMode === 'background' ? scheduleCard() : null,
+        h('details', { 'data-bd-run-details': '', open: Boolean(st.recovery?.needsAction) }, h('summary', {}, '运行计划与恢复'), runPlan(), weeklyRecoveryCard({ showReview: false })))
       const logsPage = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'logs' },
-        pageHead('运行日志', '实时动态与运行事件，保留完整上下文。列表内滚动查看。'),
+        pageHead('运行日志', '近期活动、工具调用与运行事件。'),
+        h('section', { 'data-bd-sec': '', 'data-bd-log-summary': '' },
+          h('div', { 'data-bd-h': '' }, icon('pulse'), h('b', {}, '近期活动摘要')),
+          h('p', {}, (() => {
+            const rows = Array.isArray(acts) ? acts : []
+            if (!rows.length) return '暂无近期活动记录。'
+            const tools = new Map()
+            for (const row of rows) if (['call', 'done', 'fail'].includes(row.kind)) tools.set(row.id || row.uid || row.seq, row)
+            const latest = [...tools.values()]
+            const done = latest.filter(row => row.kind === 'done').length
+            const running = latest.filter(row => row.kind === 'call').length
+            const failed = latest.filter(row => row.kind === 'fail').length
+            return `最近 ${rows.length} 条可见记录中，工具动作已完成 ${done} 次、进行中 ${running} 次、失败 ${failed} 次。`
+              + (st.feiyu?.active || st.bgBusy ? '任务仍在运行。' : '当前没有运行中的刷站任务。') + '这里是最近片段，不是全天合计。'
+          })()),
+          h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, st.petEvent?.text || '暂无任务结果。'), h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab('review') }, '数据回顾'))),
         h('div', { 'data-bd-row': '' },
           h('div', { 'data-bd-segments': '', 'aria-label': '日志类型' }, ...[['events','运行事件'], ['activity','实时动态']].map(([mode, label]) => h('button', { key: mode, 'aria-pressed': logMode === mode, onClick: () => setLogMode(mode) }, label))),
           h('span', { 'data-bd-grow': '' }),
@@ -3052,8 +3913,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           st.bgBusy ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: async () => { setBusy('stop-bg'); try { const r = await jpost('/pet/stop', {}); if (!r?.ok) throw new Error(r?.error || '停止失败'); say('已请求停止后台任务', 'good') } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') } } }, '停止后台任务') : null),
         logMode === 'events' ? settingLogCard() : basicCards[5]())
       const videoPage = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'video' },
-        h('div', { 'data-bd-pghead': '' }, icon('film'), h('div', {}, h('b', {}, '视频'),
-          h('p', {}, '制作日报、查看成品和配置配音。'))), pvCard())
+        h('div', { 'data-bd-pghead': '' }, icon('film'), h('div', {}, h('b', {}, '视频工作室'),
+          h('p', {}, '视频制作、制作记录与本地成片。'))), pvCard())
       const otherPage = () => h(PetOtherSettings, { view: tab === 'learning' ? 'learning' : 'environment', st, setSt, busy, setBusy, say, patch, login, loginState,
         loginTone, onLoginStart, onInstall, onCheck, onInstallAsr, copyText, sw })
       const ledgerPage = () => h(PetTokenLedger, {
@@ -3064,7 +3925,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           try { const fresh = await jget('/status'); if (fresh?.ok) setSt(fresh) } catch { /* 下次状态轮询会补上 */ }
         },
       })
-      return modalShell(tab === 'basic' ? basicPage() : tab === 'run' ? runView() : tab === 'speech' ? speechPage() : tab === 'logs' ? logsPage()
+      return modalShell(tab === 'review' ? h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'review' }, pageHead('数据回顾', '近期精选、用量与主题记录。'), todayPage(), weeklyRecoveryCard({ showRecovery: false })) : tab === 'basic' ? basicPage() : tab === 'run' ? runView() : tab === 'speech' ? speechPage() : tab === 'logs' ? logsPage()
         : tab === 'stickers' ? h(PetStickersPanel, { st, patch, busy, say }) : tab === 'video' ? videoPage() : tab === 'ledger' ? ledgerPage() : otherPage())
 
     }
@@ -3100,25 +3961,25 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const row = (label, text) => h('div', { 'data-bd-preview-row': '', key: label }, h('span', {}, label), h('b', {}, text))
       const enabled = (v) => v ? '已开' : '已关'
       const activity = (Array.isArray(st?.activity) ? st.activity : []).slice(-3)
-      const title = { session: '新开会话刷', background: '后台刷一轮', logs: '最近的动静', status: '鲸鱼摸鱼状态', settings: '设置工作台', hide: '藏一会儿' }[kind]
+      const title = { session: '新开会话刷', background: '后台刷', logs: '运行记录', status: '运行状态', settings: '工作台', hide: '隐藏桌宠' }[kind]
       const body = kind === 'session' ? [
         row('模型', cfg.sessionModelId || cfg.modelId || '沿用当前会话模型'), row('本趟预算', petFmtWan(cfg.sessionTokenBudget ?? cfg.tokenBudget)), row('最多轮数', value(cfg.sessionMaxRounds ?? cfg.maxRounds, ' 轮')),
-        h('p', { key: 'note' }, '点击后新开会话，沿用当前工作区与权限。双击鱼也能开始。'),
+        h('p', { key: 'note' }, '继承来源工作区与权限，采用已保存的会话参数。'),
       ] : kind === 'background' ? [
         row('现在', st?.bgBusy ? bg.task === 'learn-review' ? '正在审核学习队列' : '后台运行中' : '空闲'), row('模型', bg.active ? bg.model : cfg.backgroundModelId || '沿用宿主默认模型'),
         row('刷多久', (cfg.backgroundWindowStart && cfg.backgroundWindowEnd) ? cfg.backgroundWindowStart + '–' + cfg.backgroundWindowEnd + ' 内一直刷' : value(cfg.backgroundMinutes, ' 分钟')), row('本轮 token', st?.bgBusy ? tokenValue : '尚未运行'),
-        h('p', { key: 'note' }, '点击展开后台参数与启动按钮。运行过程可在日志中查看。'),
+        h('p', { key: 'note' }, '后台参数与启动控制；执行过程保存在运行日志中。'),
       ] : kind === 'logs' ? [
         ...(activity.length ? activity.map((item, i) => h('p', { key: i, 'data-bd-preview-line': '' }, String(item.text || item.summary || '活动记录').slice(0, 180))) : [h('p', { key: 'empty' }, '状态快照里还没有近期动态。点击可看完整运行日志。')]),
-        h('p', { key: 'note' }, '进入后可切换运行事件与实时动态。悬停预览沿用已有状态。'),
+        h('p', { key: 'note' }, '包含运行事件与实时活动。预览使用已有状态快照。'),
       ] : kind === 'status' ? [
         row('登录', !st ? fails >= 3 ? '暂时读不到' : '读取中' : st.loggedIn ? '已登录' : '未登录'), row('当前', fy.active ? '会话里刷着呢' : st?.bgBusy ? '后台跑着呢' : '歇着'), row('今天精选', value(st?.pickedToday ?? fy.pickedToday, ' 条')),
         row('本轮 token', tokenValue), h('p', { key: 'note' }, tokenNote),
       ] : kind === 'settings' ? [
-        h('p', { key: 'pages' }, '偏好与桌宠、运行方式、互动与投递、表情收藏、学习与记忆、token 账本、运行日志、日报视频、账号与环境 九个页签 —— 左侧栏按「日常使用 / 记录与成长 / 制作与维护」分组。'),
+        h('p', { key: 'pages' }, '运行方式、互动与投递、记忆与素材、视频工作室、记录与用量、偏好与设置，共六组。'),
         row('自动评论', enabled(cfg.autoComment)), row('自动收表情', enabled(cfg.stickerAutoCollect)), row('自动配图', enabled(cfg.stickerAutoSend)),
-        h('p', { key: 'note' }, '点击打开工作台，每张卡独立保存。'),
-      ] : [h('p', { key: 'hide' }, '把鱼暂时藏起来，运行中的任务会继续。'), h('p', { key: 'return' }, '右下角会留下一个小圆点，点一下就能叫回来。')]
+        h('p', { key: 'note' }, '各配置项独立保存。'),
+      ] : [h('p', { key: 'hide' }, '隐藏桌宠不影响正在运行的任务。'), h('p', { key: 'return' }, '右下角保留桌宠恢复入口。')]
       return h('aside', { ref: box, id: 'bd-menu-preview-' + kind, 'data-bd-preview': kind, role: 'note', 'aria-label': title + '预览', style: placement ? { position: 'fixed', ...placement } : { position: 'fixed', visibility: 'hidden', width: 296 }, onMouseEnter: onEnter, onMouseLeave: onLeave },
         h('small', { 'data-bd-preview-eyebrow': '' }, '鲸鱼摸鱼 · 速览'), h('b', { 'data-bd-preview-title': '' }, title), ...body)
     }
@@ -3136,7 +3997,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [panel, setPanel] = React.useState(null)    // null | menu | bg | log | status | settings（互斥）
       const [dragging, setDragging] = React.useState(false)
       const [sessBusy, setSessBusy] = React.useState(false)
-       const [settingsTab, setSettingsTab] = React.useState('basic')
+       const [settingsTab, setSettingsTab] = React.useState('run')
       const [bubbles, setBubbles] = React.useState([])
       const [toasts, toast] = useToasts()
       const drag = React.useRef(null)
@@ -3144,6 +4005,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const hiddenRef = React.useRef(false)
       const closeSettings = React.useRef(() => setPanel(null)).current
       const [preview, setPreview] = React.useState(null)
+      const [reaction, setReaction] = React.useState(null)
+      const companion = st?.companion || { silenced: Boolean(st?.config?.focusMode), notificationLevel: st?.config?.notificationLevel || 'normal', reducedMotion: Boolean(st?.config?.petReducedMotion) }
+      const reducedMotion = Boolean(companion.reducedMotion)
       const previewTimers = React.useRef({ open: null, close: null })
       const cancelPreviewTimers = () => {
         clearTimeout(previewTimers.current.open); clearTimeout(previewTimers.current.close)
@@ -3180,9 +4044,10 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
      * 只在「跨越」的那一刻响一次（ref 记上次值），不会每 5 秒重复吵人。 */
     const lastTitleRef = React.useRef('')
     React.useEffect(() => {
+      if (!st || st.tokensTotal === null || st.tokensTotal === undefined || !Number.isFinite(Number(st.tokensTotal))) return
       const total = Number(st && st.tokensTotal) || 0
       const title = tokTitle(total)
-      if (total > 0 && lastTitleRef.current && title !== lastTitleRef.current) {
+      if (total > 0 && lastTitleRef.current && title !== lastTitleRef.current && !companion.silenced && companion.notificationLevel !== 'minimal') {
         toast(`称号升级：${lastTitleRef.current} → ${title}（一共吃下 ${total.toLocaleString()} token）`, 'good')
       }
       lastTitleRef.current = title
@@ -3204,15 +4069,23 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     const mood = (st && st.mood) || 'neutral'
     /* 🗨️ 桌宠说话：宿主把收工小结/闲聊/提醒写进 st.petEvent —— at 变了就冒 toast。
      *    首见不冒（ref 从 0 起步），免得一打开就播昨天旧账。 */
-    const lastPetEventRef = React.useRef(0)
+    const lastPetEventRef = React.useRef(null)
     React.useEffect(() => {
       const ev = st && st.petEvent
-      if (!ev || !Number(ev.at)) return
-      if (lastPetEventRef.current && Number(ev.at) !== lastPetEventRef.current) {
-        toast(String(ev.text || ''), ev.tone === 'warn' ? 'warn' : ev.tone === 'good' ? 'good' : 'info')
+      if (!st) return
+      if (!ev || !Number(ev.at)) { if (lastPetEventRef.current === null) lastPetEventRef.current = 0; return }
+      if (lastPetEventRef.current !== null && Number(ev.at) !== lastPetEventRef.current) {
+        const important = ev.tone === 'warn' || ev.tone === 'good' || ev.kind === 'complete'
+        if (important || (!companion.silenced && companion.notificationLevel !== 'minimal')) {
+          toast(String(ev.text || ''), ev.tone === 'warn' ? 'warn' : ev.tone === 'good' ? 'good' : 'info')
+        }
+        if (important || !companion.silenced) setReaction(ev.tone === 'warn'
+          ? { kind: 'concerned', symbol: '…', label: '需要看一眼' }
+          : ev.tone === 'good' ? { kind: 'celebrate', symbol: '✦', label: '收好这一趟' }
+          : { kind: 'curious', symbol: '♪', label: '冒个小泡' })
       }
       lastPetEventRef.current = Number(ev.at)
-    }, [st && st.petEvent && st.petEvent.at])
+    }, [Boolean(st), st && st.petEvent && st.petEvent.at])
     /* 需要你：出现新的待办时提一句（同一条只提一次，事由变了再说一遍） */
     const lastAttentionRef = React.useRef('')
     React.useEffect(() => {
@@ -3220,6 +4093,39 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       if (key && lastAttentionRef.current !== key) toast(`需要你：${attention[0]}`, 'warn')
       lastAttentionRef.current = key
     }, [attention.join('|')])
+
+    // Compare real observations. The first snapshot never replays yesterday's milestones.
+    const previousPetSnapshot = React.useRef(null)
+    React.useEffect(() => {
+      if (!st) return
+      const current = { approved: Number(st.learn?.approved) || 0, picked: Number(st.pickedToday) || 0,
+        running: Boolean(st.feiyu?.active), background: Boolean(st.bgBusy), day: String(st.today || ''),
+        cooldown: String(st.pace?.cooldown?.until || '') }
+      const before = previousPetSnapshot.current
+      previousPetSnapshot.current = current
+      if (!before || companion.silenced) return
+      let cue = null, message = '', important = false
+      if (current.cooldown && current.cooldown !== before.cooldown) {
+        cue = { kind: 'concerned', symbol: '☂', label: '先等一等' }
+        message = '发送进入冷却，先只看不发。具体等待时间在「互动与投递」里。'; important = true
+      } else if (current.approved > before.approved) {
+        cue = { kind: 'learned', symbol: '✧', label: '又懂了一点' }
+        message = `新批准了 ${current.approved - before.approved} 条经验，来源和撤销入口都在记忆中心。`
+      } else if (current.day === before.day && current.picked > before.picked) {
+        cue = { kind: 'curious', symbol: '!', label: '有新精选' }
+        message = `今天的精选多了 ${current.picked - before.picked} 条，理由留在报告里。`
+      } else if (current.running !== before.running || current.background !== before.background) {
+        cue = current.running || current.background ? { kind: 'working', symbol: '≈', label: '出发找好玩的' } : { kind: 'resting', symbol: '·', label: '歇一会儿' }
+        if (companion.notificationLevel === 'all') message = current.running || current.background ? '开始冲浪了，过程在运行日志里。' : '运行状态变了，暂停或结束的原因可以在运行方式里查看。'
+      }
+      if (cue) setReaction(cue)
+      if (message && (important || companion.notificationLevel !== 'minimal')) toast(message, important ? 'warn' : 'info')
+    }, [st, companion.silenced, companion.notificationLevel])
+    React.useEffect(() => {
+      if (!reaction) return
+      const timer = setTimeout(() => setReaction(null), 4800)
+      return () => clearTimeout(timer)
+    }, [reaction])
 
     /* 吐泡泡：隔 5~9 秒吐 1~2 个上浮消散；页面不可见或桌宠被藏时不吐（白画一场） */
       React.useEffect(() => {
@@ -3251,14 +4157,15 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
        * 失败逐级 toast（error 与 hint 都要说出来）；期间按钮 disabled + 转圈，绝不双发。 */
       const runNewSession = async () => {
         if (sessLock.current) return
+        if (st?.toolScope?.checked && !st.toolScope.supported) { toast('当前 DSH 不支持会话工具隔离，无法启动会话运行。', 'warn'); return }
         sessLock.current = true
         setSessBusy(true)
         try {
           let r1 = null
           try { r1 = await jpost('/pet/session-new', newSessionContext(ctx)) }
-          catch (e) { toast('开不了会话：' + String(e?.message ?? e), 'warn'); return }
+          catch (e) { toast('创建会话失败：' + String(e?.message ?? e), 'warn'); return }
           if (!r1 || r1.ok === false) {
-            toast('开不了会话：' + ((r1 && r1.error) || '未知原因') + (r1 && r1.hint ? ' —— ' + r1.hint : ''), 'warn')
+            toast('创建会话失败：' + ((r1 && r1.error) || '未知原因') + (r1 && r1.hint ? '；' + r1.hint : ''), 'warn')
             return
           }
           /* 切过去看它刷：uiWorkspace 是宿主服务，可能没有/名字可能不同 ⇒ 全程防御式；
@@ -3275,7 +4182,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             toast('开刷没成：' + ((r2 && r2.error) || '未知原因') + (r2 && r2.hint ? ' —— ' + r2.hint : ''), 'warn')
             return
           }
-          toast('开冲！它在新会话里刷起来了 —— 点鱼随时看状态', 'good')
+          toast('会话任务已启动。', 'good')
           setPanel(null)
         } finally { sessLock.current = false; setSessBusy(false) }
       }
@@ -3385,7 +4292,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       if (!pos) return null
       if (hidden) {
         return h('button', {
-          'data-bd-pet-dot': '', type: 'button', title: '鲸鱼摸鱼藏这儿了 · 点一下叫回来',
+          'data-bd-pet-dot': '', type: 'button', title: '显示鲸鱼摸鱼桌宠',
           style: { right: '18px', bottom: '18px' }, onClick: showPet,
         })
       }
@@ -3400,11 +4307,11 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               : 'idle'
       const moodLabel = { curious: '好奇', content: '满足', glum: '有点蔫', neutral: '平静' }[mood] || '平静'
       const auraTitle = {
-        idle: '鲸鱼摸鱼：歇着（点我弹菜单）',
-        run: '在刷～（点我看状态卡）',
-        bg: '后台那轮跑着呢…',
-        attention: '需要你：' + (attention[0] || '有要你拿主意的事'),
-        err: st && st.loggedIn === false ? '还没登录 B站 —— 菜单里进设置扫码' : '读不到状态（插件没起来？）',
+        idle: '鲸鱼摸鱼 · 空闲',
+        run: '鲸鱼摸鱼 · 会话运行中',
+        bg: '鲸鱼摸鱼 · 后台运行中',
+        attention: '待处理：' + (attention[0] || '存在待处理事项'),
+        err: st && st.loggedIn === false ? 'B站未登录' : '插件状态暂不可用',
       }[aura]
       /* 卡片默认从鱼上方弹出；上方装不下就翻到下方 —— JS 算好挂属性，CSS 消费。
        * 判据按「实际可用空间」算，不能写死 y<380：窗口矮的时候（笔记本 + 分屏）
@@ -3436,15 +4343,15 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             h('span', {}, h('div', {}, label), note ? h('i', {}, note) : null),
             spinning ? h('i', { 'data-bd-pet-spin': '' }) : null)
         return h('div', { 'data-bd-pet-card': '', 'data-bd-menu': '', style: { maxHeight: Math.max(80, (flip ? spaceBelow : spaceAbove) - 8) + 'px', maxWidth: Math.max(160, vw - 20) + 'px' } },
-          h('div', { 'data-bd-pet-cardhead': '' }, h('b', {}, '鲸鱼摸鱼'), h('span', {}, '右键菜单 · 双击开刷')),
+          h('div', { 'data-bd-pet-cardhead': '' }, h('b', {}, 'DeepMoYu'), h('span', {}, '鲸鱼摸鱼')),
           /* 副标题：将用的模型/预算 —— 取设置里的 modelId/tokenBudget（/status 的 config 镜像） */
           item('session', 'play', '新开会话刷',
             sessBusy ? '正在开会话…' : `${modelTxt} · 预算 ${petFmtWan(cfg.sessionTokenBudget ?? cfg.tokenBudget)}`,
             () => { setPanel(null); runNewSession() }, sessBusy, sessBusy),
-          item('background', 'moon', '后台刷一轮', '', () => setPanel('bg')),
-          item('logs', 'list', '运行日志', '', () => { setSettingsTab('logs'); setPanel('settings') }),
-          item('status', 'pulse', '状态卡', '', () => setPanel('status')),
-          item('settings', 'gear', '设置', '', () => { setSettingsTab('basic'); setPanel('settings') }),
+          item('background', 'moon', '后台刷', '运行时长与定时参数', () => setPanel('bg')),
+          item('logs', 'list', '运行记录', '', () => { setSettingsTab('logs'); setPanel('settings') }),
+          item('status', 'pulse', '运行状态', '', () => setPanel('status')),
+          item('settings', 'gear', '工作台', '', () => { setSettingsTab('run'); setPanel('settings') }),
           h('hr', { 'data-bd-pet-sep': '' }),
           item('hide', 'hide', '隐藏桌宠', '', hidePet),
            h('footer', { 'data-bd-menu-token': '' },
@@ -3463,11 +4370,11 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           onPointerUp: onUp, onPointerCancel: onUp,
           onDoubleClick: onDbl, onContextMenu: onCtx,
         }, [
-          h(PetFish, { key: 'fish', aura, bubbles, title: auraTitle }),
+          h(PetFish, { key: 'fish', aura, bubbles, title: auraTitle, reaction, reducedMotion }),
           /* 🎨⭐ 心情/需要-你小灯：attention 时是急促的琥珀，平时按 soul 的心情换颜色 —— 纯显示层 */
           h('i', {
             'data-bd-pet-mood': '', 'data-mood': attention.length ? 'attention' : mood,
-            title: attention.length ? `需要你：${attention[0]}` : `心情：${moodLabel}（来自她的小账本，只是显示）`,
+            title: attention.length ? `待处理：${attention[0]}` : `心情：${moodLabel}（来源：角色记忆）`,
           }),
           /* ⚠️ 卡片与面板必须挂在 [data-bd-pet] 里面，不能是它的兄弟：
              [data-bd-pet-card] 的 bottom:calc(100% + 14px) 要拿 128px 的鱼盒当参照，
@@ -3479,7 +4386,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           panel === 'log' ? h(PetLogPanel, { toast }) : null,
           panel === 'status' ? h(PetStatusCard, { st, fails }) : null,
           panel === 'settings' ? h(StablePetSettingsModal, { onClose: closeSettings, toast, ctx, status: [st, setSt, fails], initialTab: settingsTab }) : null,
-          h('div', { key: 'toast', 'data-bd-pet-toast': '' },
+          h('div', { key: 'toast', 'data-bd-pet-toast': '', role: 'status', 'aria-live': 'polite', 'aria-atomic': false },
             toasts.map((t) => h('div', { key: t.id, 'data-tone': t.tone || undefined }, t.text))),
         ]))
     }
@@ -3534,7 +4441,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     return {
       /* ⚠️ 2026-10-26 起 **不再往 slots 注册任何东西**（使用者要求「鲸鱼摸鱼的设置不要出现在
        *    DSH 的默认设置里」）。整页设置搬进了桌宠的 ⚙️ 设置弹窗（PetSettingsModal 的
-       *    五个 tab，按功能分组且不重复挂旧设置页），所以 inject 也清空。
+       *    六组导航与组内子页，按功能分组且不重复挂旧设置页），所以 inject 也清空。
        *    改这条要连带改 selfcheck.mjs 的 slot 断言与 render-panel.cjs 的取组件方式。 */
       inject: [],
       apply(ctx) {

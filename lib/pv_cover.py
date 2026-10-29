@@ -228,25 +228,97 @@ def _wrap_measured(draw: ImageDraw.ImageDraw, text: str, font, max_width: int, l
     return list(result[1]) if result else None
 
 
+HEADLINE_MAX_SIZE = 126      # 一行两个字那么大的时候的上限
+HEADLINE_MIN_SIZE = 48       # 再小就不像标题了，宁可截短
+HEADLINE_READABLE = 72       # 「一眼能读」的下限：到这个字号还排不下才允许更小
+
+
+def _text_field(ratio: str):
+    """Return ``(max_width, max_height)`` the headline may occupy.
+
+    Kept in one place so the measuring pass and :func:`render_cover` can never
+    disagree about how much room the artwork actually gives the headline.
+    """
+    (width, height), key = _dimensions(ratio)
+    portrait_size = 720 if key == "16x9" else 650
+    portrait_x = width - portrait_size - (52 if key == "16x9" else 34)
+    text_left = 90
+    text_right = portrait_x - (58 if key == "16x9" else 46)
+    text_width = max(420, text_right - text_left)
+    text_top = 180
+    text_bottom = height - 170
+    return text_width - 42, text_bottom - text_top - 30
+
+
+def _layout_at(draw: ImageDraw.ImageDraw, text: str, max_width: int, max_height: int):
+    """Largest font size that fits the whole headline, per line count.
+
+    Returns ``{lines_wanted: (font, lines, line_height, spacing, size)}``;
+    a line count is absent when even the smallest size cannot hold the text.
+    """
+    fits = {}
+    for count in (1, 2, 3):
+        for size in range(HEADLINE_MAX_SIZE, HEADLINE_MIN_SIZE - 1, -2):
+            font = NF(size, "Bold")
+            lines = _wrap_measured(draw, text, font, max_width, count)
+            if not lines:
+                continue
+            boxes = [draw.textbbox((0, 0), line, font=font, stroke_width=0) for line in lines]
+            line_height = max(box[3] - box[1] for box in boxes)
+            spacing = max(10, int(size * 0.18))
+            total_height = line_height * len(lines) + spacing * (len(lines) - 1)
+            if total_height <= max_height:
+                fits[count] = (font, lines, line_height, spacing, size)
+                break
+    return fits
+
+
 def _fit_headline(draw: ImageDraw.ImageDraw, title: str, max_width: int, max_height: int):
-    # Prefer a balanced one/two-line layout whenever it remains comfortably
-    # readable; only fall back to three lines for headlines that need them.
-    probe = NF(90, "Bold")
-    preferred = next((count for count in (1, 2, 3)
-                      if _wrap_measured(draw, title, probe, max_width, count)), None)
-    if preferred is None:
-        raise ValueError("标题无法在三行内以可读字号排入封面")
-    for size in range(126, 51, -2):
-        font = NF(size, "Bold")
-        lines = _wrap_measured(draw, title, font, max_width, preferred)
-        if not lines:
-            continue
-        boxes = [draw.textbbox((0, 0), line, font=font, stroke_width=0) for line in lines]
-        line_height = max(box[3] - box[1] for box in boxes)
-        spacing = max(10, int(size * 0.18))
-        total_height = line_height * len(lines) + spacing * (len(lines) - 1)
-        if total_height <= max_height:
-            return font, lines, line_height, spacing
+    """Pick a layout: fewest lines first, then the largest readable size.
+
+    A balanced one/two-line layout is preferred whenever it stays comfortably
+    readable; three lines are only used when they are the readable option.
+    """
+    fits = _layout_at(draw, title, max_width, max_height)
+    if not fits:
+        raise ValueError("标题无法在封面内完整排版")
+    for count in (1, 2, 3):
+        if count in fits and fits[count][4] >= HEADLINE_READABLE:
+            return fits[count][:4]
+    # Nothing stays comfortably readable: take whatever is largest.
+    return max(fits.values(), key=lambda item: item[4])[:4]
+
+
+_BREAK_MARKS = "，,、；;：:—–－？！!?。…"
+
+
+def _trim_variants(text: str):
+    """Progressively shorter headlines, cut at a clause break when possible."""
+    cuts = sorted({index + 1 for index, char in enumerate(text) if char in _BREAK_MARKS})
+    for cut in reversed(cuts):
+        head = text[:cut].rstrip(" ，,、；;：:—–－")
+        if 8 <= len(head) < len(text):
+            yield head + "…"
+    for size in range(len(text) - 1, 7, -2):
+        yield text[:size].rstrip(" ，,、；;：:—–－") + "…"
+
+
+def fitted_title(title: str, ratio: str) -> str:
+    """Return the headline that actually fits this ratio.
+
+    A concrete but very long source title (a full B站 video title, say) used to
+    abort the whole build with 「标题无法在三行内以可读字号排入封面」.  A cover
+    thumbnail is a headline, not the full title, so overlong input is trimmed at
+    a clause boundary instead of failing the day's video.
+    """
+    headline = validate_title(title)
+    max_width, max_height = _text_field(ratio)
+    draw = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    if _layout_at(draw, headline, max_width, max_height):
+        return headline
+    for candidate in _trim_variants(headline):
+        if _layout_at(draw, candidate, max_width, max_height):
+            return candidate
     raise ValueError("标题无法在封面内完整排版")
 
 
@@ -261,7 +333,7 @@ def _paint_portrait(canvas: Image.Image, size: int, x: int, y: int):
 
 def render_cover(title: str, ratio: str) -> Image.Image:
     """Render one 16:9 or 4:3 RGBA cover at its exact delivery size."""
-    title = validate_title(title)
+    title = fitted_title(title, ratio)
     (width, height), key = _dimensions(ratio)
     seed = sum((index + 1) * ord(char) for index, char in enumerate(title)) % 997
     base = bg_ocean(seed=seed, top="#eaf6ff", mid="#cfe7f8", bottom="#a8d2ec", rice=True)
@@ -276,6 +348,7 @@ def render_cover(title: str, ratio: str) -> Image.Image:
     text_width = max(420, text_right - text_left)
     text_top = 180
     text_bottom = height - 170
+    headline_width, headline_height = _text_field(ratio)
 
     # A quiet translucent panel gives the measured headline a stable contrast
     # field without introducing another textual label or a subtitle.
@@ -288,7 +361,7 @@ def render_cover(title: str, ratio: str) -> Image.Image:
     canvas.alpha_composite(panel, (text_left - 42, text_top - 35))
 
     draw = ImageDraw.Draw(canvas, "RGBA")
-    font, lines, line_height, spacing = _fit_headline(draw, title, text_width - 42, text_bottom - text_top - 30)
+    font, lines, line_height, spacing = _fit_headline(draw, title, headline_width, headline_height)
     total = line_height * len(lines) + spacing * (len(lines) - 1)
     y = text_top + max(0, (text_bottom - text_top - total) // 2)
     for line in lines:
@@ -314,28 +387,32 @@ def _atomic_save(image: Image.Image, target: Path):
             pass
 
 
-def generate_covers(outdir: os.PathLike | str, title: str, only_missing: bool = False):
+def generate_covers(outdir: os.PathLike | str, title: str, only_missing: bool = False, theme=None):
     """Generate both daily covers and return their paths.
 
     Both images are rendered before either file is replaced, so a rendering
     error cannot leave one newly-written cover paired with one old cover.
+    An overlong headline is trimmed per ratio rather than failing the build;
+    ``title`` in the result stays the full validated headline.
     """
     output = Path(outdir)
     headline = validate_title(title)
     rendered = {}
-    generated = []
     for ratio, filename in COVER_NAMES.items():
         path = output / filename
         if only_missing and valid_cover(path, ratio):
             continue
-        rendered[path] = render_cover(headline, ratio)
+        if theme:
+            from pv_editorial import cover as editorial_cover
+            rendered[path] = editorial_cover(headline, ratio, theme)
+        else:
+            rendered[path] = render_cover(headline, ratio)
     for path, image in rendered.items():
         _atomic_save(image, path)
-        generated.append(path)
     paths = {ratio: output / filename for ratio, filename in COVER_NAMES.items()}
     if not all(valid_cover(paths[ratio], ratio) for ratio in RATIO_SIZES):
         raise RuntimeError("封面生成后校验失败")
-    return {"title": headline, "paths": paths, "generated": generated}
+    return {"title": headline, "paths": paths, "generated": list(rendered)}
 
 
 def main() -> int:
@@ -349,10 +426,15 @@ def main() -> int:
         # Windows 编辑器写出的 JSON 常带 BOM（utf-8-sig），不能因此判失败。
         data = json.loads(plan_path.read_text(encoding="utf-8-sig"))
         title = choose_title(data)
-        result = generate_covers(args.outdir, title, only_missing=args.only_missing)
+        result = generate_covers(outdir=args.outdir, title=title, only_missing=args.only_missing,
+                                 theme=data.get("theme") if data.get("schema") == "deepmoyu-editorial-v2" else None)
         for ratio, path in result["paths"].items():
             print(f"封面 → {path} {path.stat().st_size:,} B", flush=True)
         print(f"封面文字：{title}", flush=True)
+        for ratio in RATIO_SIZES:
+            drawn = fitted_title(title, ratio)
+            if drawn != title:
+                print(f"  {ratio} 排不下全文，封面用：{drawn}", flush=True)
         return 0
     except (OSError, ValueError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
         parser.exit(1, f"封面生成失败：{exc}\n")

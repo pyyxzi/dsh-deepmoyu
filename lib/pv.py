@@ -1581,17 +1581,25 @@ def _draw_desk_front(camera, prop):
     for y in range(top, 984):
         d.line([(0, y), (DW, y)], fill=mix(WOOD_HI, WOOD_MID, (y - top) / max(1, 984 - top)) + (255,))
     d.line((0, top, DW, top), fill=(238, 208, 170, 255), width=5)
+    # RGBA ImageDraw replaces destination alpha; blend translucent grain separately
+    # so the desk still occludes the character and background underneath it.
+    grain = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(grain, "RGBA")
     for i in range(9):
         y = top + 14 + i * 7
-        d.line((0, y, DW, y - 2), fill=(150, 105, 68, 26), width=2)
+        gd.line((0, y, DW, y - 2), fill=(150, 105, 68, 26), width=2)
+    layer.alpha_composite(grain)
     pool = _soft_dot(980, (255, 226, 176), 120).resize((1180, 300))
     layer.alpha_composite(pool, (60, top - 90))
     for y in range(984, DH):
         d.line([(0, y), (DW, y)], fill=mix(WOOD_MID, WOOD_LO, (y - 984) / max(1, DH - 984)) + (255,))
     d.rectangle((0, 984, DW, 990), fill=(226, 190, 152, 255))
+    grain = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(grain, "RGBA")
     for i in range(14):
         x = int(i * DW / 14)
-        d.line((x, 990, x - 26, DH), fill=(90, 60, 38, 30), width=3)
+        gd.line((x, 990, x - 26, DH), fill=(90, 60, 38, 30), width=3)
+    layer.alpha_composite(grain)
     if camera == "insert":
         _draw_bowl(layer, 720, 940, 250)
         _draw_cup(layer, 1180, 880, 62)
@@ -2158,6 +2166,7 @@ def prepare_audio(shots, base_voice, work, fps):
     #   ④ 失败语义照旧：任一镜合成失败（edge-tts 和 SAPI 兜底都失败）就让整次
     #      渲染失败，按镜序抛**最早**那镜的异常 —— 原串行版就是死在第一句失败上。
     pending = []
+    pending_keys = {}
     for index, (shot, voice) in enumerate(zip(shots, effective)):
         if index in gsv_paths:
             continue                       # GSV 镜头走上面的批处理（串行），不进 TTS 池
@@ -2168,18 +2177,26 @@ def prepare_audio(shots, base_voice, work, fps):
         source = work / "tts" / f"{key}.mp3"
         if source.exists() and source.stat().st_size >= 600:
             continue                       # 缓存命中（判定与下方串行循环逐字一致）
+        # Identical lines share one content-addressed file. Submitting both would
+        # have two threads writing the same .partial.mp3 and replacing it, which
+        # reproducibly raised FileNotFoundError on Windows. Synthesize once per key.
+        if key in pending_keys:
+            pending_keys[key].append(index)
+            continue
+        pending_keys[key] = [index]
         pending.append((index, text, voice, key))
     if pending:
         print(f"🎙 edge-tts 并发合成 {len(pending)} 句（{min(4, len(pending))} 线程）…", flush=True)
         failures = {}
         with ThreadPoolExecutor(max_workers=min(4, len(pending))) as pool:
-            futures = {index: pool.submit(_synthesize_edge_take, text, voice, work, key)
+            futures = {key: pool.submit(_synthesize_edge_take, text, voice, work, key)
                        for index, text, voice, key in pending}
-            for index, future in futures.items():      # 按提交（镜）序收结果
+            for index, text, voice, key in pending:      # 按提交（镜）序收结果
                 try:
-                    future.result()
+                    futures[key].result()
                 except Exception as exc:
-                    failures[index] = exc
+                    for failed_index in pending_keys[key]:
+                        failures[failed_index] = exc
         if failures:
             raise failures[min(failures)]
 
@@ -2244,6 +2261,7 @@ def make_timeline(shots, audios, lead, gap, tail, fps):
                      "audio_duration":audio["dur"],"engine":audio.get("engine","unknown"),
                      "cache_key":audio.get("cache_key",""),"camera":shot.get("camera","legacy"),
                      "expression":shot.get("expression","neutral"),
+                     "scene":shot.get("scene",""),"headline":shot.get("headline",""),
                      "provenance":shot.get("provenance","user-plan"),"source_ids":shot.get("source_ids",[]),
                      "mouth_frames":sum(value > .05 for value in audio["env"])})
         cursor = end + max(0, float(shot.get("pause_after",gap)))
@@ -2275,8 +2293,12 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
         raise ValueError("fps must be 1..60; scale must be 0.1..2")
     t_start = time.time()
     shots = plan["shots"]
-    # 对话舞台按 DW x DH（1080p）原生绘制；旧卡片方案仍是 1280x720。
-    NAT_W, NAT_H = (DW, DH) if plan.get("schema") == "dafeiyu-dialogue-v1" else (W, H)
+    # Editorial v2 and dialogue plans use the 1080p stage. Legacy cards remain 720p.
+    editorial_plan = plan.get("schema") == "deepmoyu-editorial-v2"
+    editorial_renderer = None
+    if editorial_plan:
+        import pv_editorial as editorial_renderer
+    NAT_W, NAT_H = (DW, DH) if editorial_plan or plan.get("schema") == "dafeiyu-dialogue-v1" else (W, H)
     if (int(plan.get("width", NAT_W)),int(plan.get("height", NAT_H))) != (NAT_W, NAT_H):
         raise ValueError(f"the current stage supports {NAT_W}x{NAT_H}; resize with --scale")
     W2,H2 = max(2,round(NAT_W*scale/2)*2),max(2,round(NAT_H*scale/2)*2)
@@ -2290,9 +2312,11 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
 
     ff = ffmpeg_exe()
     # 有真立绘就用真立绘，没有才退回程序化角色
-    portrait = Portrait(AV_SIZE)
-    fish = portrait if portrait.ok else Fish(AV_SIZE)
-    if portrait.ok:
+    portrait = None if editorial_plan else Portrait(AV_SIZE)
+    fish = None if editorial_plan else (portrait if portrait.ok else Fish(AV_SIZE))
+    if editorial_plan:
+        print(f"🎨 动态短片 · {plan.get('theme', 'paper')} · {len(shots)} 镜", flush=True)
+    elif portrait.ok:
         print(f"🐟 形象：真·大肥鱼立绘 {portrait.name}（{portrait.size}px）", flush=True)
     else:
         print("🐟 形象：没找到立绘素材，退回程序化角色", flush=True)
@@ -2305,7 +2329,8 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
     starts,total,cues = make_timeline(shots,audios,lead,gap,tail,fps)
     timeline = {"schema":"dafeiyu-timeline-v1","duration":total,"fps":fps,
                 "disclosure":plan.get("disclosure",""),"sources":plan.get("sources",[]),
-                "cues":cues,"timing":"measured PCM utterances; RMS mouth animation, not phoneme alignment"}
+                "visual_schema":plan.get("schema", "legacy"), "theme":plan.get("theme", ""),
+                "cues":cues,"timing":"measured PCM utterances; editorial phrase positions proportional within each utterance; RMS mouth animation, not phoneme alignment"}
     (work / "timeline.json").write_text(json.dumps(timeline,ensure_ascii=False,indent=2),encoding="utf-8")
     write_captions(cues,work/"captions.srt")
 
@@ -2313,13 +2338,14 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
     st = {
         "fish": fish,
         "dialogue_portrait": DialoguePortrait(),
+        "theme": plan.get("theme", "paper"), "mode": plan.get("mode", "custom"), "shot_count": len(shots),
         "disclosure":plan.get("disclosure","原创对白"),
         "source_map":{source["id"]:source for source in plan.get("sources",[]) if "id" in source},
-        "bg_title": bg_ocean(7, "#eaf6ff", "#d2eafb", "#b6dcf2", rice=True),
-        "bg_stats": bg_ocean(11, "#e6f3fd", "#cfe6f8", "#b2d5ee"),
-        "bg_video": bg_ocean(13, "#e8f4fe", "#cde5f7", "#aed2ec"),
-        "bg_quote": bg_ocean(17, "#f0f8ff", "#d8ecfa", "#bcdcef", rice=True),
-        "bg_social": bg_ocean(19, "#ecf7fd", "#d4ebf9", "#b8d9ee"),
+        "bg_title": None if editorial_plan else bg_ocean(7, "#eaf6ff", "#d2eafb", "#b6dcf2", rice=True),
+        "bg_stats": None if editorial_plan else bg_ocean(11, "#e6f3fd", "#cfe6f8", "#b2d5ee"),
+        "bg_video": None if editorial_plan else bg_ocean(13, "#e8f4fe", "#cde5f7", "#aed2ec"),
+        "bg_quote": None if editorial_plan else bg_ocean(17, "#f0f8ff", "#d8ecfa", "#bcdcef", rice=True),
+        "bg_social": None if editorial_plan else bg_ocean(19, "#ecf7fd", "#d4ebf9", "#b8d9ee"),
         "_cover_cache": {},
     }
     dialogue_plan = plan.get("schema") == "dafeiyu-dialogue-v1"
@@ -2347,9 +2373,12 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
         env = audios[index]["env"]
         active = 0 <= local < duration
         st["mouth"] = env[min(len(env)-1,int(local*fps))] if active and env else 0.0
-        fn = CARDS.get(shot.get("kind","title"),title_card)
-        frame = fn(shot,max(0,local),duration,st)
-        if shot.get("kind") == "dialogue":
+        st["shot_index"] = index
+        fn = editorial_renderer.render if editorial_plan else CARDS.get(shot.get("kind","title"),title_card)
+        frame = fn(shot,local if editorial_plan else max(0,local),duration,st)
+        if editorial_plan:
+            pass
+        elif shot.get("kind") == "dialogue":
             frame = dialogue_subtitle(frame,shot,active,max(0,local))
         else:
             frame = subtitle(frame,str(shot.get("text","")),max(0,local),duration,shot.get("words"))
@@ -2397,7 +2426,7 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
     tmp_mp4 = work / "video_noaudio.mp4"
     # 调色的一半在构图里（暖高光/冷阴影），这里只做很轻的统一 + 时变颗粒。
     # 颗粒必须 allf=t+u（时变+均匀）：静态噪声会变成脏点。
-    vf = ("eq=contrast=1.045:saturation=1.05:brightness=-0.004,"
+    vf = "null" if editorial_plan else ("eq=contrast=1.045:saturation=1.05:brightness=-0.004,"
           "curves=master='0/0.012 0.25/0.242 0.75/0.772 1/0.99',"
           "unsharp=5:5:0.35:5:5:0,"
           "noise=alls=4:allf=t+u")
@@ -2432,6 +2461,24 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
                         tails[si-1] = shot_frame(si-1, max(0.0, audios[si-1]["dur"] - .02))
                     prev = tails[si-1]
                     frame = Image.blend(prev, frame, ease_out(clamp(local / XFADE, 0, 1)))
+            # Editorial plans author their own transition intent. A short
+            # overlap gives the viewer a visual breath between beats while the
+            # default cut keeps punchy hooks crisp.
+            if editorial_plan and si > 0:
+                transition = shots[si].get("transition", "cut")
+                blend_window = .24 if transition in {"slide", "match"} else 0.0
+                if blend_window and local < blend_window:
+                    tails = st.setdefault("_tail", {})
+                    if si - 1 not in tails:
+                        tails[si-1] = shot_frame(si-1, max(0.0, audios[si-1]["dur"] - .02))
+                    prev = tails[si-1]
+                    amount = ease_out(clamp(local / blend_window, 0, 1))
+                    if transition == "slide":
+                        shifted = prev.copy()
+                        shifted.paste(frame, (int(frame.width * (1 - amount)), 0))
+                        frame = Image.blend(prev, shifted, amount)
+                    else:
+                        frame = Image.blend(prev, frame, amount)
             # 片头片尾各 600ms 淡入淡出（像一段真正剪过的短片，而不是突然开始）
             if dialogue_plan:
                 head = clamp(tnow / .60, 0, 1)
@@ -2440,7 +2487,7 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
                 if alpha < 1:
                     frame = Image.blend(Image.new("RGB", frame.size, (12, 9, 7)), frame, ease_out(alpha))
             # Skits cut cleanly; legacy report plans retain a short global fade.
-            if plan.get("schema") != "dafeiyu-dialogue-v1":
+            if not editorial_plan and plan.get("schema") != "dafeiyu-dialogue-v1":
                 alpha = clamp(min(tnow,total-tnow)/.15,0,1)
                 frame = Image.blend(Image.new("RGB",frame.size),frame,alpha)
             if fi in {max(1,int(lead*fps)+1),n_frames//2,max(0,n_frames-2)}:
@@ -2453,11 +2500,26 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
                 print(f"   {fi}/{n_frames}  {el:.0f}s  ETA {eta:.0f}s", flush=True)
         proc.stdin.close()
         err = proc.stderr.read().decode("utf-8", "ignore")
+        proc.stderr.close()
         if proc.wait() != 0:
             raise RuntimeError("ffmpeg 视频编码失败：" + err[:600])
     except BaseException:
         try:
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()
+        except Exception:
+            pass
+        try:
             proc.kill()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        try:
+            if proc.stderr and not proc.stderr.closed:
+                proc.stderr.close()
         except Exception:
             pass
         raise

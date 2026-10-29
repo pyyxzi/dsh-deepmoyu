@@ -1,0 +1,9 @@
+# Direct dependencies verified for the 2.4.1 release.
+# Regenerate requirements.txt using the command recorded in its header.
+bilibili-api-python==17.4.2
+aiohttp==3.14.5
+mcp==1.30.0
+qrcode[pil]==8.2
+Pillow==13.0.0
+edge-tts==7.3.1
+imageio-ffmpeg==0.7.0

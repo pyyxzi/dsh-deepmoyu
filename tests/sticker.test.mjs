@@ -25,8 +25,9 @@ const collectionCfg = { ...STICKER_DEFAULTS, stickerAutoCollect: true, stickerCo
 test.after(() => { if (priorBuiltin === undefined) delete process.env.DAFEIYU_STICKER_DIR; else process.env.DAFEIYU_STICKER_DIR = priorBuiltin; rmSync(root, { recursive: true, force: true }) })
 
 test('sticker settings keep separate switches, exact defaults and bounded percentages/capacity', () => {
-  assert.deepEqual(STICKER_DEFAULTS, { stickerAutoCollect: false, stickerCollectProbability: 35, stickerCollectCooldown: 60, stickerAutoSend: false, stickerSendProbability: 30, stickerSendCooldown: 180, stickerCapacity: 60 })
-  assert.deepEqual(clampStickerSettings({ stickerAutoCollect: 'true', stickerAutoSend: true, stickerCollectProbability: 200, stickerSendProbability: -10, stickerCollectCooldown: -3, stickerSendCooldown: 999999, stickerCapacity: 500 }), { stickerAutoCollect: false, stickerAutoSend: true, stickerCollectProbability: 100, stickerSendProbability: 0, stickerCollectCooldown: 0, stickerSendCooldown: 86400, stickerCapacity: 60 })
+  assert.deepEqual(STICKER_DEFAULTS, { stickerAutoCollect: false, stickerCollectProbability: 35, stickerCollectCooldown: 60, stickerAutoSend: false, stickerSendProbability: 30, stickerSendCooldown: 180, stickerCapacity: 60, stickerReview: false })
+  assert.deepEqual(clampStickerSettings({ stickerAutoCollect: 'true', stickerAutoSend: true, stickerReview: 'true', stickerCollectProbability: 200, stickerSendProbability: -10, stickerCollectCooldown: -3, stickerSendCooldown: 999999, stickerCapacity: 500 }), { stickerAutoCollect: false, stickerAutoSend: true, stickerReview: false, stickerCollectProbability: 100, stickerSendProbability: 0, stickerCollectCooldown: 0, stickerSendCooldown: 86400, stickerCapacity: 60 })
+  assert.equal(clampStickerSettings({ stickerReview: true }).stickerReview, true)
 })
 
 test('public-image validation rejects local addresses, credentials, ports and special address ranges', () => {

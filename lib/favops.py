@@ -8,6 +8,7 @@
 import asyncio
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,6 +50,10 @@ async def folders():
 
 
 async def add(bvid, fid):
+    if not isinstance(bvid, str) or not re.fullmatch(r'BV[0-9A-Za-z]{10}', bvid):
+        raise ValueError('视频 BV 号格式无效')
+    if isinstance(fid, bool) or not isinstance(fid, int) or fid <= 0:
+        raise ValueError('收藏夹 ID 必须为正整数')
     # 2026-10-26：删掉了原来那句 `FavoriteList(aid, credential=cred).get_info()` ——
     # 它把**视频 aid** 当收藏夹 media_id 传进去，查的是"编号恰好等于这个 aid 的收藏夹"，
     # 几乎必然不存在/报错；结果没被使用，却会把整个 add() 拖崩（真正的收藏动作到不了）。
@@ -73,9 +78,11 @@ def main():
     if not args:
         out({'ok': False, 'error': '没有子命令（folders / add）'})
     try:
-        if args[0] == 'folders':
+        if args[0] == 'folders' and len(args) == 1:
             asyncio.run(folders())
-        elif args[0] == 'add' and len(args) >= 3:
+        elif args[0] == 'add' and len(args) == 3:
+            if not re.fullmatch(r'[0-9]+', args[2]):
+                raise ValueError('收藏夹 ID 必须为正整数')
             asyncio.run(add(args[1], int(args[2])))
         else:
             out({'ok': False, 'error': '子命令不认识：' + ' '.join(args)})

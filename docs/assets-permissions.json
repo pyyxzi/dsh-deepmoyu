@@ -1,0 +1,20 @@
+{
+  "confirmedForRedistribution": true,
+  "status": "maintainer-attested",
+  "confirmedOn": "2026-10-29",
+  "basis": "The maintainer confirmed that these images are original or authorized for public redistribution and requested retaining the existing character artwork.",
+  "files": [
+    "assets/pet/pet.png",
+    "assets/avatar/bust.png",
+    "assets/avatar/face.png",
+    "assets/avatar/fish.png",
+    "assets/avatar/wide.png"
+  ],
+  "sha256": {
+    "assets/pet/pet.png": "263095b67bf3ba12cf165d30837c0c047350c999747c4a7a6a013712527a73db",
+    "assets/avatar/bust.png": "9c2e40aeea23bbebed32acca3f38d0b6eb90a30a24ea3d60d351dd67b2edf2dc",
+    "assets/avatar/face.png": "6e7e52685022a2a864ae85ca37bc09d92e3fe5d4be413e8f72d990f8e05a41e2",
+    "assets/avatar/fish.png": "82caa6641025e186077c20d58e7ba8c0c29b2fbc5a3638dbd02fce4fc13273e1",
+    "assets/avatar/wide.png": "3583a065a21640c03b990cc1b6b28ed1c3284cdb5d2a42cd8bd1a9237592873e"
+  }
+}

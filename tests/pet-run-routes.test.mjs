@@ -20,8 +20,9 @@ test('pet routes isolate defaults, enforce session budgets and safely stop backg
     if (type === 'approval/policy') state.approval = data.policy
     permissionState.set(id, state)
   } })
-  const a = { id: 'fish-a', status: 'running', session: session('fish-a') }
-  const b = { id: 'fish-b', status: 'idle', session: session('fish-b') }
+  const scopedTools = () => ({ register() { return () => {} } })
+  const a = { id: 'fish-a', status: 'running', session: session('fish-a'), ctx: { tools: scopedTools() } }
+  const b = { id: 'fish-b', status: 'idle', session: session('fish-b'), ctx: { tools: scopedTools() } }
   permissionState.set(a.id, { sandbox: 'workspace-write', approval: 'ask' })
   permissionState.set(b.id, { sandbox: 'danger-full-access', approval: 'never' })
   const agents = [a, b], goalsById = new Map(), selections = new Map(agents.map(x => [x.id, { current: { provider: 'default', model: 'model' } }]))
@@ -43,7 +44,7 @@ test('pet routes isolate defaults, enforce session budgets and safely stop backg
     workspaceRegistry: { list: () => [workspace], get: id => id === workspace.id ? workspace : undefined, resolveByPath: async path => path === root ? workspace : undefined },
     sessionProjections: { stateOf(session, key) { if (key === 'agentPreset') return 'dafeiyu'; if (key === 'tokenUsage') return { totals: { uncachedInputTokens: usage.get(session) || 0 } }; if (key === 'permissions') return permissionState.get(agents.find(a => a.session === session)?.id) } },
   }
-  const ctx = { get: key => services[key], logger: { info() {} }, tools: { register: tool => tool }, settings: { describe: () => [] },
+  const ctx = { get: key => services[key], logger: { info() {} }, tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] },
     on(name, fn) { events.set(name, fn); return () => events.delete(name) },
     effect(fn) { const c = fn(); if (typeof c === 'function') cleanup.push(c); return c },
     webServer: { register(route) { handler = route.handler; return { dispose() {} } } },

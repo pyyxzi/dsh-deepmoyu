@@ -19,6 +19,8 @@ test('background MCP shares host activity, pending learning, usage and live auto
   const cli = join(root, 'mock-cli.js'); writeFileSync(cli, '// child spawn mocked')
   writeFileSync(join(home, 'config.json'), JSON.stringify({ dshBin: cli, learnAutoReview: false, backgroundModelId: 'buddy/fixture', reportLevel: 'off', replyToComments: true, autoComment: false, autoReplyDm: false }))
   const cp = createRequire(import.meta.url)('node:child_process'), originalSpawn = cp.spawn, cleanups = [], registered = new Map()
+  const fishAgent = { id: 'scope-fixture', session: { header: { agentPreset: 'dafeiyu', cwd: root } },
+    ctx: { tools: { register(spec) { registered.set(spec.name, spec); return () => registered.delete(spec.name) } } } }
   let handler, childEnv, child
   cp.spawn = (command, args, options) => {
     childEnv = options.env
@@ -38,8 +40,8 @@ test('background MCP shares host activity, pending learning, usage and live auto
   }
   const ctx = {
     logger: { info() {} },
-    get: key => key === 'llm' ? llm : key === 'dshHomePath' ? (...parts) => join(root, ...parts) : key === 'agents' ? { list: () => [] } : undefined,
-    tools: { register(spec) { registered.set(spec.name, spec); return spec } }, settings: { describe: () => [] }, on() { return () => {} },
+    get: key => key === 'llm' ? llm : key === 'dshHomePath' ? (...parts) => join(root, ...parts) : key === 'agents' ? { list: () => [fishAgent], get: id => id === fishAgent.id ? fishAgent : undefined } : undefined,
+    tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} },
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
   }
@@ -87,6 +89,7 @@ test('background MCP shares host activity, pending learning, usage and live auto
     await new Promise(resolve => setImmediate(resolve))
     assert.equal(state().tokensTotal, 60)
     assert.equal(state().tokensToday, 60)
+    child.stderr.emit('data', Buffer.from('Error ETIMEDOUT text="fixture-private-dm-body" content="fixture-secret-content"\n'))
     child.exitCode = 0; child.emit('close', 0)
     const status = await request('/status', {}, 'GET')
     assert.equal(status.backgroundRun.stopReason, 'exit')
@@ -97,6 +100,8 @@ test('background MCP shares host activity, pending learning, usage and live auto
     assert.equal(round.unknownRequests, 1)
     assert.equal(status.tokenRounds.sums.partial, 1)
     const log = (await request('/pet/log?n=500', {}, 'GET')).entries
+    assert.ok(log.some(x => x.type === 'bg-progress' && x.stage === 'diagnostic' && /ETIMEDOUT/.test(x.text)))
+    assert.doesNotMatch(JSON.stringify(log), /fixture-private-dm-body|fixture-secret-content/)
     assert.ok(log.some(x => x.type === 'bg-progress' && x.stage === 'tool-done' && /bili_say/.test(x.text)))
     assert.ok(log.some(x => x.type === 'bg-done' && x.tokens?.total === 60 && x.unknownRequests === 1))
     await assert.rejects(client.post({ action: 'tools-list' }), /撤销或过期/)
@@ -135,7 +140,7 @@ test('stopping during DM qualification never submits a new send after the pendin
   const llm = { listProviders: () => [{ id: 'buddy' }] }
   const ctx = {
     logger: { info() {} }, get: key => key === 'llm' ? llm : key === 'dshHomePath' ? (...parts) => join(root, ...parts) : key === 'agents' ? { list: () => [] } : undefined,
-    tools: { register(spec) { return spec } }, settings: { describe: () => [] }, on() { return () => {} },
+    tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} },
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
   }

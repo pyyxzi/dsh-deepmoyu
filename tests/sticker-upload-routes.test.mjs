@@ -16,7 +16,7 @@ const { apply } = await import('../index.js')
 const cleanups = [], tools = new Map()
 let handler
 const ctx = { logger: { info() {} }, get: key => key === 'dshHomePath' ? (...parts) => join(root, ...parts) : undefined,
-  tools: { register(spec) { tools.set(spec.name, spec); return spec } }, settings: { describe: () => [] }, on() { return () => {} },
+  tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} },
   effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
   webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
 }
@@ -56,7 +56,7 @@ test('HTTP upload provides stable errors, preserves Origin and posting gates, an
   const raw = Buffer.from(JSON.stringify(body)), firstChinese = raw.indexOf(Buffer.from('本'))
   assert.ok(raw.length > 1_000_000)
   const added = await post(body, { origin: 'http://127.0.0.1:43129' }, [raw.subarray(0, firstChinese + 1), raw.subarray(firstChinese + 1, 500000), raw.subarray(500000)])
-  assert.equal(added.status, 200); assert.deepEqual(added.body, { ok: true, name: '本地图片', bytes: Buffer.from(dataBase64, 'base64').length, mime: 'image/png', source: 'collected', imageUrl: '/api/bili-duty/stickers/image?name=' + encodeURIComponent('本地图片') + '&source=collected' })
+  assert.equal(added.status, 200); assert.deepEqual(added.body, { ok: true, name: '本地图片', bytes: Buffer.from(dataBase64, 'base64').length, mime: 'image/png', source: 'collected', status: 'approved', imageUrl: '/api/bili-duty/stickers/image?name=' + encodeURIComponent('本地图片') + '&source=collected' })
   assert.ok(!Object.hasOwn(added.body, 'file'))
   const duplicate = await post({ name: '同内容', dataBase64 }); assert.equal(duplicate.status, 409); assert.equal(duplicate.body.duplicate, true)
   const config = JSON.parse(readFileSync(join(home, 'config.json')))

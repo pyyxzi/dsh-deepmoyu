@@ -119,11 +119,13 @@ async function withFixture(run) {
     const cancelled = []
     const agent = {
       id, status: 'idle', session: { id, header: { ...(preset == null ? {} : { agentPreset: preset }), cwd: root } }, cancelled,
+      ctx: { tools: { register(spec) { tools.set(spec.name, spec); return () => { if (tools.get(spec.name) === spec) tools.delete(spec.name) } } } },
       cancel(...args) { cancelled.push(args) },
     }
     agents.push(agent)
     presets.set(id, preset)
     usage.set(id, startingUsage())
+    for (const listener of [...(listeners.get('agent/created') || [])]) listener({ agent })
     return agent
   }
   const setUsage = (agent, input, output) => usage.set(agent.id, noCacheUsage(input, output))
@@ -165,7 +167,7 @@ async function withFixture(run) {
     apply(ctx, {})
     await flush()
     assert.equal(typeof handler, 'function')
-    await run({ addAgent, setUsage, clearUsage, running, idle, turnStart, turnEnd, selectPreset, execute, request, emit, flush, calls, goalsById, goalChanges })
+    await run({ addAgent, setUsage, clearUsage, running, idle, turnStart, turnEnd, selectPreset, execute, request, emit, flush, calls, tools, goalsById, goalChanges })
     assert.deepEqual(spawned, [], 'manual tool execution must not start a worker or Python process')
     assert.deepEqual(networkCalls, [], 'manual fixture must never reach an account or external endpoint')
   } finally {
@@ -257,7 +259,7 @@ test('manual content tools show running without a goal and account the whole req
 
 test('zero measured usage stays zero while manual start and end still invalidate status revisions', async () => {
   await withFixture(async f => {
-    const agent = f.addAgent('manual-measured-zero', 'default')
+    const agent = f.addAgent('manual-measured-zero', 'dafeiyu')
     const before = await f.request('/status')
     await f.running(agent)
     const turn = await f.turnStart(agent)
@@ -280,7 +282,7 @@ test('zero measured usage stays zero while manual start and end still invalidate
 
 test('session turn events capture the request baseline even without a running notification', async () => {
   await withFixture(async f => {
-    const agent = f.addAgent('turn-events-only', 'default')
+    const agent = f.addAgent('turn-events-only', 'dafeiyu')
     agent.status = 'running'
     const turn = await f.turnStart(agent)
     f.setUsage(agent, 600, 70)
@@ -297,7 +299,7 @@ test('session turn events capture the request baseline even without a running no
   })
 })
 
-test('ordinary presets count each content entry point without entering the fish goal mode', async () => {
+test('ordinary presets expose no fish tools and stale definitions cannot act or charge usage', async () => {
   await withFixture(async f => {
     let count = 0
     for (const [name, args] of [
@@ -306,26 +308,27 @@ test('ordinary presets count each content entry point without entering the fish 
       ['bili_my_notices', { num: 3 }], ['bili_received_replies', {}],
       ['bili_dm_inbox', { num: 3 }], ['bili_dm_thread', { uid: '12345', num: 3 }],
     ]) {
-      const agent = f.addAgent(`ordinary-${name}`, count % 2 ? 'default' : null)
+      const agent = f.addAgent(`ordinary-${name}`, 'dafeiyu')
+      const stale = f.tools.get(name), staleMemory = f.tools.get('bili_soul')
+      await f.selectPreset(agent, count++ % 2 ? 'default' : null)
+      assert.equal(f.tools.has(name), false, `${name} schema is removed on mode exit`)
       await f.running(agent)
       f.setUsage(agent, 600, 70)
-      await f.execute(agent, name, args)
+      const denied = await stale.execute(args, { agent })
+      assert.equal(denied.reason, 'mode_required')
       const active = await f.request('/status')
-      assert.equal(active.feiyu.active, true, `${name} alone proves actual browsing`)
-      assert.equal(active.feiyu.sessionId, agent.id)
-      assert.equal(active.feiyu.source, 'manual')
-      assert.equal(active.feiyu.goal, null)
-      const memory = await f.execute(agent, 'bili_soul', { action: 'stats' })
-      assert.equal(memory.blocked, true, 'accounting for ordinary browsing does not enable fish persona memory')
+      assert.equal(active.feiyu.active, false)
+      const memory = await staleMemory.execute({ action: 'stats' }, { agent })
+      assert.equal(memory.blocked, true, 'ordinary conversation cannot read role memory')
       assert.equal(memory.reason, 'mode_required')
       f.setUsage(agent, 650, 90)
       await f.idle(agent)
       const status = await f.request('/status')
-      assertTotals(status, ++count * 190)
-      assert.equal(status.tokenRounds.entries.length, count)
-      assert.ok(status.tokenRounds.entries.every(entry => entry.kind === 'session' && entry.endedAt && entry.tokens.total === 190))
+      assertTotals(status, 0)
+      assert.equal(status.tokenRounds.entries.length, 0)
     }
     assert.deepEqual(f.goalChanges, [])
+    assert.deepEqual(f.calls, [])
   })
 })
 
@@ -548,7 +551,7 @@ for (const resumeAction of ['resume', 'start']) {
 
 test('disposing a manual browsing agent closes its ledger without relying on a final idle event', async () => {
   await withFixture(async f => {
-    const agent = f.addAgent('manual-dispose', 'default')
+    const agent = f.addAgent('manual-dispose', 'dafeiyu')
     await f.running(agent)
     const turn = await f.turnStart(agent)
     f.setUsage(agent, 600, 70)
@@ -620,7 +623,7 @@ test('resetting an active manual request rebases usage and starts a new ledger w
 
 test('missing manual token projections remain unknown instead of reporting measured zero', async () => {
   await withFixture(async f => {
-    const agent = f.addAgent('manual-unmetered', 'default')
+    const agent = f.addAgent('manual-unmetered', 'dafeiyu')
     f.clearUsage(agent)
     await f.running(agent)
     const turn = await f.turnStart(agent)
@@ -645,7 +648,7 @@ test('missing manual token projections remain unknown instead of reporting measu
 
 test('stopping a goal-free manual request uses the host cancellation contract and settles once', async () => {
   await withFixture(async f => {
-    const agent = f.addAgent('manual-stop', 'default')
+    const agent = f.addAgent('manual-stop', 'dafeiyu')
     await f.running(agent)
     const turn = await f.turnStart(agent)
     f.setUsage(agent, 600, 70)

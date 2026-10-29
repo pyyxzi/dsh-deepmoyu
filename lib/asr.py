@@ -18,33 +18,42 @@ import argparse
 import os
 import re
 import sys
-import tempfile
-
-# ⭐ Windows 上 Python 默认按 GBK 编/解码标准输出 —— 中文或 emoji 打进管道会直接炸
-#    （有用户反馈装依赖 / 跑转写时报 UnicodeDecodeError 或乱码）⇒ 这里钉死 UTF-8
-try:
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-except Exception:
-    pass
+import uuid
 
 # ⚠️ 临时目录必须待在家目录里：值班那一轮跑在沙箱里（只允许写工作区/cwd），
 #    yt-dlp 默认往 %TEMP% 写、会被直接拒掉（2026-10-14 在主人机器上实证：
 #    yt_dlp DownloadError: unable to open for writing: [Errno 13] Permission denied）
 _HOME = os.path.dirname(os.path.abspath(__file__))
 _TMP = os.path.join(_HOME, 'tmp', 'asr')
-try:
-    os.makedirs(_TMP, exist_ok=True)
-    tempfile.tempdir = _TMP
-except Exception:
-    pass
 
-# ⭐ 必须在 import faster_whisper **之前**设好，否则它已经去连 HuggingFace 了
-os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
-# 模型缓存放本脚本所在目录（= 插件家）：默认的 ~/.cache 在本机拒绝写入
-os.environ.setdefault('HF_HOME', os.path.join(os.path.dirname(os.path.abspath(__file__)), '.hf-cache'))
-# HuggingFace 新版存储（Xet）国内镜像不代理 ⇒ 关掉它，走老 CDN 通道（否则 401）
-os.environ.setdefault('HF_HUB_DISABLE_XET', '1')
+def prepare_runtime() -> None:
+    """仅在执行命令时初始化环境，导入模块不改变进程的缓存或临时目录。"""
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+    # 必须在 import faster_whisper 前设置；保留用户明确指定的端点与缓存。
+    os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
+    os.environ.setdefault('HF_HOME', os.path.join(_HOME, '.hf-cache'))
+    os.environ.setdefault('HF_HUB_DISABLE_XET', '1')
+
+
+def cleanup_download(tmp: str, tag: str) -> None:
+    """只回收本次下载的独占文件前缀，也处理失败时留下的分片。"""
+    try:
+        with os.scandir(tmp) as entries:
+            for entry in entries:
+                if not entry.name.startswith(tag + '.'):
+                    continue
+                try:
+                    # 不递归进入目录；即使出现符号链接也只删除链接本身。
+                    if entry.is_file(follow_symlinks=False) or entry.is_symlink():
+                        os.remove(entry.path)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def to_url(target: str) -> str:
@@ -59,7 +68,7 @@ def fetch_audio(url: str, tmp: str, tag: str) -> str:
     from yt_dlp import YoutubeDL
     opts = {
         'format': 'bestaudio/best',
-        'outtmpl': os.path.join(tmp, tag + '.%(ext)s'),   # ⭐ 用 BV 号当文件名：固定名会和别的轮次撞车（踩过）
+        'outtmpl': os.path.join(tmp, tag + '.%(ext)s'),   # 每次调用的独占标签，允许同视频并行下载。
         'paths': {'home': tmp, 'temp': tmp},   # 别让 yt-dlp 往 %TEMP% 写（沙箱会拒）
         'cachedir': False,                      # 顺手别去动用户目录里的缓存
         # ⭐ nopart：不写 .part 再改名，直接落最终文件。
@@ -89,17 +98,22 @@ def main() -> int:
                     help='Whisper 模型大小：tiny / base / small / medium（默认 small）')
     ap.add_argument('--lang', default='zh', help='语言（默认 zh；不给就自动判断请传 auto）')
     args = ap.parse_args()
+    prepare_runtime()
 
     src = args.target
     # ⚠️ 不用 mkdtemp：沙箱只允许写"子进程启动前就存在"的目录，新建的会被拒 ✗
-    #    这个目录由宿主（插件）预先建好；文件名固定，跑完自己清掉
+    #    这个目录由宿主（插件）预先建好；使用唯一前缀而不是新建子目录。
     tmp = _TMP
-    # ⭐ 每个视频用**自己的**文件名：以前写死 audio.m4a ⇒ 两轮同时跑会互相覆盖，
-    #    上一轮转出来的其实是另一个视频的内容（2026-10-14 值班那轮亲踩 ✗）
+    # 同一个视频也可能同时转写；清理权只属于本次远程下载，不属于本地输入。
     tag = os.path.basename(src).rsplit('.', 1)[0] or 'clip'
     tag = re.sub(r'[^0-9A-Za-z_-]', '_', tag)[:40] or 'clip'
+    tag += '-' + uuid.uuid4().hex
+    downloaded = False
     try:
-        if src.lower().startswith('http') or src.upper().startswith('BV'):
+        # 已存在的本地文件优先，即使文件名恰好以 BV/http 开头。
+        if not os.path.exists(src) and (src.lower().startswith('http') or src.upper().startswith('BV')):
+            os.makedirs(tmp, exist_ok=True)
+            downloaded = True
             print('[asr] 先下音频…', file=sys.stderr)
             src = fetch_audio(to_url(src), tmp, tag)
         if not os.path.exists(src):
@@ -117,16 +131,8 @@ def main() -> int:
         )
         text = ''.join(seg.text for seg in segments).strip()
     finally:
-        # 临时音频不留在磁盘上
-        try:
-            import glob
-            for f in glob.glob(os.path.join(tmp, tag + '.*')):
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        if downloaded:
+            cleanup_download(tmp, tag)
 
     if args.out:
         with open(args.out, 'w', encoding='utf-8') as f:

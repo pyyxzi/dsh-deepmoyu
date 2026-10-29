@@ -16,5 +16,5 @@
     - id: dafeiyu
       name: dsh-deepmoyu
       config:
-        # 真正的用户配置在插件自己的 config 里（点桌宠 → ⚙️ 设置可改），这里只放默认值
+        # 用户配置由桌宠工作台管理，这里只声明 bundle 默认值。
         enabled: true

@@ -39,17 +39,38 @@ p.write_text(json.dumps({'date': p.stem.replace('plan_',''), 'cover': {'title': 
                          'shots': [{'kind': 'story', 'title': '蜻蜓的产房没了', 'text': 'fixture'}]}, ensure_ascii=False), encoding='utf-8')
 `
 
-const FAKE_RENDER = `import os,sys
+const FAKE_RENDER = `import os,sys,time
 from pathlib import Path
 if os.environ.get('PV_FAKE_FAIL') == '1':
     raise SystemExit(7)
 marker = os.environ.get('PV_RENDER_MARKER')
 if marker:
     Path(marker).write_text('rendered', encoding='utf-8')
+if os.environ.get('PV_FAKE_RENDER_WAIT') == '1':
+    time.sleep(10)
 out = Path(sys.argv[sys.argv.index('--out')+1]); out.parent.mkdir(parents=True, exist_ok=True)
 out.write_bytes(b'new-render' + bytes(1600))
 work = Path(sys.argv[sys.argv.index('--work')+1]); work.mkdir(parents=True, exist_ok=True)
 (work / 'timeline.json').write_text('{}', encoding='utf-8')
+`
+
+const FAKE_VERIFY = `import json,os,sys,time
+from pathlib import Path
+args = sys.argv
+outdir = Path(args[args.index('--outdir') + 1])
+marker = os.environ.get('PV_VERIFY_MARKER')
+if marker:
+    Path(marker).write_text('verifying', encoding='utf-8')
+if os.environ.get('PV_FAKE_VERIFY_WAIT') == '1':
+    time.sleep(10)
+if os.environ.get('PV_FAKE_VERIFY_FAIL') == '1':
+    (outdir / 'verification.json').write_text(json.dumps({'ok': False}), encoding='utf-8')
+    raise SystemExit(9)
+if os.environ.get('PV_FAKE_VERIFY_RECEIPT') != 'missing':
+    receipt = {'ok': True, 'maxDuration': args[args.index('--max-duration') + 1]}
+    if os.environ.get('PV_FAKE_VERIFY_RECEIPT') == 'false':
+        receipt['ok'] = False
+    (outdir / 'verification.json').write_text(json.dumps(receipt), encoding='utf-8')
 `
 
 async function fixture(run) {
@@ -60,12 +81,13 @@ async function fixture(run) {
   const out = join(root, 'out')
   for (const path of [state, join(plugin, 'lib'), work, out]) mkdirSync(path, { recursive: true })
   // A stale home copy must never win script selection.
-  for (const name of ['pv.py', 'pv_plan.py', 'pv_cover.py']) {
+  for (const name of ['pv.py', 'pv_plan.py', 'pv_cover.py', 'pv_verify.py']) {
     writeFileSync(join(state, name), 'raise RuntimeError("stale home script used")\n')
   }
   writeFileSync(join(plugin, 'lib', 'pv_plan.py'), FAKE_PLAN, 'utf-8')
   writeFileSync(join(plugin, 'lib', 'pv.py'), FAKE_RENDER, 'utf-8')
   writeFileSync(join(plugin, 'lib', 'pv_cover.py'), FAKE_COVER, 'utf-8')
+  writeFileSync(join(plugin, 'lib', 'pv_verify.py'), FAKE_VERIFY, 'utf-8')
   try { await run({ root, state, plugin, work, out }) }
   finally {
     assert.ok(root.startsWith(join(here, '.tmp-pv-')))
@@ -81,6 +103,16 @@ async function settled(controller) {
   }
   controller.stop()
   throw new Error('video coordinator did not settle within test timeout')
+}
+
+async function until(controller, predicate) {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const status = controller.status()
+    if (predicate(status)) return status
+    await delay(20)
+  }
+  controller.stop()
+  throw new Error('video coordinator did not reach expected state')
 }
 
 const dayDir = (out, day) => join(out, day)
@@ -127,6 +159,10 @@ test('successful render publishes movie and both covers into the dated folder', 
     assert.equal(readFileSync(join(dayDir(out, '2026-10-21'), '封面_4x3.png')).readUInt32BE(16), 1440)
     assert.ok(existsSync(status.plan))
     assert.ok(existsSync(status.timeline))
+    assert.equal(JSON.parse(readFileSync(status.verification, 'utf8')).ok, true)
+    for (const name of ['plan.json', 'timeline.json', 'build.log', 'verification.json', 'job.json']) {
+      assert.ok(existsSync(join(dayDir(out, '2026-10-21'), name)), name)
+    }
     assert.equal(existsSync(join(out, `${PV_PREFIX}_2026-10-21.mp4`)), false)
   })
 })
@@ -174,12 +210,83 @@ test('existing movie with missing covers repairs only artwork, never renders', a
     const started = controller.start('2026-10-21')
     assert.equal(started.started, true)
     assert.equal(started.repairing, true)
+    assert.equal(started.verificationSkipped, true)
     const status = await settled(controller)
     assert.equal(status.stage, 'done', status.tail)
     assert.equal(existsSync(marker), false)
     assert.deepEqual(readFileSync(movie), previous)
     assert.ok(existsSync(join(dayDir(out, '2026-10-21'), '封面_16x9.png')))
     assert.ok(existsSync(join(dayDir(out, '2026-10-21'), '封面_4x3.png')))
+  })
+})
+
+test('verifier exit failure preserves the full previous daily package and failure history', async () => {
+  await fixture(async ({ state, plugin, work, out }) => {
+    const previous = Buffer.alloc(1400, 70)
+    mkdirSync(dayDir(out, '2026-10-21'))
+    writeFileSync(dayMovie(out, '2026-10-21'), previous)
+    writeFileSync(join(dayDir(out, '2026-10-21'), '封面_16x9.png'), 'previous-cover')
+    writeFileSync(join(dayDir(out, '2026-10-21'), 'verification.json'), '{"ok":true,"old":true}')
+    const controller = createPv({ stateDir: state, pluginDir: plugin, python: () => python,
+      dirs: () => ({ root: out, out, work }), env: { ...process.env, PV_FAKE_VERIFY_FAIL: '1' } })
+    controller.start('2026-10-21', { force: true })
+    const status = await settled(controller)
+    assert.equal(status.stage, 'failed')
+    assert.match(status.error, /成片校验失败.*exit 9/)
+    assert.deepEqual(readFileSync(dayMovie(out, '2026-10-21')), previous)
+    assert.equal(readFileSync(join(dayDir(out, '2026-10-21'), '封面_16x9.png'), 'utf8'), 'previous-cover')
+    assert.equal(JSON.parse(readFileSync(join(dayDir(out, '2026-10-21'), 'verification.json'), 'utf8')).old, true)
+    assert.equal(status.failures[0].stage, 'verify')
+  })
+})
+
+for (const receipt of ['false', 'missing']) {
+  test(`zero-exit verifier still fails when explicit receipt is ${receipt}`, async () => {
+    await fixture(async ({ state, plugin, work, out }) => {
+      const controller = createPv({ stateDir: state, pluginDir: plugin, python: () => python,
+        dirs: () => ({ root: out, out, work }), env: { ...process.env, PV_FAKE_VERIFY_RECEIPT: receipt } })
+      controller.start('2026-10-21', { force: true })
+      const status = await settled(controller)
+      assert.equal(status.stage, 'failed')
+      assert.match(status.error, /verification.json/)
+      assert.equal(existsSync(dayMovie(out, '2026-10-21')), false)
+    })
+  })
+}
+
+test('verify is running and stop blocks a competing start until the process closes', async () => {
+  await fixture(async ({ state, plugin, work, out }) => {
+    const marker = join(out, 'verify-started')
+    const controller = createPv({ stateDir: state, pluginDir: plugin, python: () => python,
+      dirs: () => ({ root: out, out, work }),
+      env: { ...process.env, PV_VERIFY_MARKER: marker, PV_FAKE_VERIFY_WAIT: '1' } })
+    controller.start('2026-10-21', { force: true })
+    const verifying = await until(controller, (status) => status.stage === 'verify' && existsSync(marker))
+    assert.equal(verifying.running, true)
+    assert.equal(controller.start('2026-10-22').ok, false)
+    const stopped = controller.stop()
+    assert.equal(stopped.stopped, true)
+    assert.equal(controller.status().stage, 'stopped')
+    assert.equal(controller.status().running, true)
+    assert.equal(controller.start('2026-10-22').ok, false)
+    await until(controller, (status) => !status.running)
+    assert.equal(existsSync(dayMovie(out, '2026-10-21')), false)
+    assert.equal(controller.status().stage, 'stopped')
+    assert.equal(controller.status().failures.length, 0)
+  })
+})
+
+test('total job timeout remains failed and cannot publish after the child exits', async () => {
+  await fixture(async ({ state, plugin, work, out }) => {
+    const controller = createPv({ stateDir: state, pluginDir: plugin, python: () => python,
+      dirs: () => ({ root: out, out, work }), timeoutMs: 120,
+      env: { ...process.env, PV_FAKE_RENDER_WAIT: '1' } })
+    controller.start('2026-10-21', { force: true })
+    await until(controller, (status) => status.stage === 'failed' && !status.running)
+    const status = controller.status()
+    assert.match(status.error, /总时限/)
+    assert.equal(status.failures.length, 1)
+    assert.equal(existsSync(dayMovie(out, '2026-10-21')), false)
   })
 })
 
@@ -194,6 +301,7 @@ test('legacy flat movie is archived without re-rendering the film', async () => 
       env: { ...process.env, PV_FAKE_FAIL: '0', PV_RENDER_MARKER: marker } })
     const started = controller.start('2026-10-21')
     assert.equal(started.repairing, true)
+    assert.equal(started.verificationSkipped, true)
     const status = await settled(controller)
     assert.equal(status.stage, 'done', status.tail)
     assert.equal(existsSync(marker), false)

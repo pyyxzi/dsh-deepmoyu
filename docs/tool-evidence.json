@@ -1,0 +1,196 @@
+{
+  "version": "2.4.1",
+  "scope": "Isolated positive contracts, not real platform sends",
+  "tools": [
+    {
+      "tool": "bili_whoami",
+      "category": "readonly",
+      "specialist": "login.test.mjs"
+    },
+    {
+      "tool": "bili_search",
+      "category": "readonly",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_subtitle",
+      "category": "readonly",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_danmaku",
+      "category": "readonly",
+      "specialist": "tool-surface.test.mjs"
+    },
+    {
+      "tool": "bili_buzzwords",
+      "category": "readonly",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_video_info",
+      "category": "readonly",
+      "specialist": "tool-surface.test.mjs"
+    },
+    {
+      "tool": "bili_rank",
+      "category": "readonly",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_hot_videos",
+      "category": "readonly",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_user_videos",
+      "category": "readonly",
+      "specialist": "tool-surface.test.mjs"
+    },
+    {
+      "tool": "bili_seen",
+      "category": "local",
+      "specialist": "memory-chain.test.mjs"
+    },
+    {
+      "tool": "bili_received_replies",
+      "category": "readonly",
+      "specialist": "reply.test.mjs"
+    },
+    {
+      "tool": "bili_my_notices",
+      "category": "readonly",
+      "specialist": "memory-chain.test.mjs"
+    },
+    {
+      "tool": "bili_learn",
+      "category": "local",
+      "specialist": "memory-center-routes.test.mjs"
+    },
+    {
+      "tool": "bili_records",
+      "category": "local",
+      "specialist": "memory-chain.test.mjs"
+    },
+    {
+      "tool": "bili_soul",
+      "category": "local",
+      "specialist": "memory-center-routes.test.mjs"
+    },
+    {
+      "tool": "bili_taste",
+      "category": "local",
+      "specialist": "memory-chain.test.mjs"
+    },
+    {
+      "tool": "bili_my_dynamics",
+      "category": "readonly",
+      "specialist": "tool-surface.test.mjs"
+    },
+    {
+      "tool": "bili_opus_comments",
+      "category": "readonly",
+      "specialist": "dup-cross-channel.test.mjs"
+    },
+    {
+      "tool": "bili_my_video_comments",
+      "category": "readonly",
+      "specialist": "reply.test.mjs"
+    },
+    {
+      "tool": "bili_reply_opus",
+      "category": "send",
+      "specialist": "send-review-routes.test.mjs"
+    },
+    {
+      "tool": "bili_dm_inbox",
+      "category": "readonly",
+      "specialist": "background-tools.test.mjs"
+    },
+    {
+      "tool": "bili_dm_thread",
+      "category": "readonly",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_dm_reply",
+      "category": "send",
+      "specialist": "background-tools.test.mjs"
+    },
+    {
+      "tool": "bili_deliver",
+      "category": "send",
+      "specialist": "send-review-routes.test.mjs"
+    },
+    {
+      "tool": "bili_comments",
+      "category": "readonly",
+      "specialist": "sticker-routes.test.mjs"
+    },
+    {
+      "tool": "bili_sticker",
+      "category": "local",
+      "specialist": "sticker-review-routes.test.mjs"
+    },
+    {
+      "tool": "bili_reply",
+      "category": "send",
+      "specialist": "send-review-routes.test.mjs"
+    },
+    {
+      "tool": "bili_status",
+      "category": "local",
+      "specialist": "product-status-routes.test.mjs"
+    },
+    {
+      "tool": "bili_pace",
+      "category": "local",
+      "specialist": "pace-routes.test.mjs"
+    },
+    {
+      "tool": "bili_say",
+      "category": "local",
+      "specialist": "manual-browsing.test.mjs"
+    },
+    {
+      "tool": "bili_run",
+      "category": "worker",
+      "specialist": "pet-run-routes.test.mjs"
+    },
+    {
+      "tool": "bili_feiyu",
+      "category": "goal",
+      "specialist": "pet-run-routes.test.mjs"
+    },
+    {
+      "tool": "bili_pv",
+      "category": "local",
+      "specialist": "pv-session-routes.test.mjs"
+    },
+    {
+      "tool": "bili_moment",
+      "category": "send",
+      "specialist": "send-review-routes.test.mjs"
+    },
+    {
+      "tool": "bili_login_start",
+      "category": "login",
+      "specialist": "login.test.mjs"
+    },
+    {
+      "tool": "bili_login_poll",
+      "category": "login",
+      "specialist": "login.test.mjs"
+    },
+    {
+      "tool": "bili_setup",
+      "category": "installer",
+      "specialist": "install-routes.test.mjs"
+    },
+    {
+      "tool": "bili_config",
+      "category": "local",
+      "specialist": "authorization.test.mjs"
+    }
+  ]
+}

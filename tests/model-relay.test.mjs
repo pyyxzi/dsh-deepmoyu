@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createModelRelay, RELAY_PROVIDER, splitModelRoute, usageTokens } from '../lib/model-relay.mjs'
-import { createRelayAdapter } from '../lib/model-relay-adapter.mjs'
+import { createRelayAdapter, createRelayClient } from '../lib/model-relay-adapter.mjs'
 
 const model = 'buddy/glm-5.3-flash'
 function fakeLlm(overrides = {}) {
@@ -102,7 +102,7 @@ test('terminal errors are shown and partial measured usage is not lost on interr
     const adapter = createRelayAdapter(grant.env)
     for await (const _ of adapter.stream({ provider: RELAY_PROVIDER, model, messages: [] })) {}
     assert.deepEqual(usage, [{ input: 11, output: 2, total: 13 }])
-    assert.ok(events.some(e => e.stage === 'model-error' && /fixture/.test(e.text)))
+    assert.ok(events.some(e => e.stage === 'model-error' && /NO_ADAPTER/.test(e.text) && !/fixture/.test(e.text)))
     assert.ok(!events.some(e => e.stage === 'model-done'))
   } finally { relay.close() }
 })
@@ -113,4 +113,37 @@ test('model routes and usage validation never invent a route or estimate missing
   assert.equal(usageTokens(undefined), null)
   assert.equal(usageTokens({ inputTokens: 2 }), null)
   assert.deepEqual(usageTokens({ inputTokens: 0, outputTokens: 0 }), { input: 0, output: 0, total: 0 })
+})
+
+test('provider and tool exception events contain only safe diagnostics, including unlabelled private echoes', async () => {
+  const events = [], secret = '收件人的合成私信正文-fixture-private', key = 'fixture-api-key'
+  let mode = 'resolve'
+  const failure = () => Object.assign(new Error(`Error unlabelled ${secret}; text=${secret}; content=${secret}; api_key=${key}`), { code: 'ETIMEDOUT' })
+  const llm = fakeLlm({
+    resolveModelInfo: async () => { if (mode === 'resolve') throw failure(); return { provider: 'buddy', id: 'glm-5.3-flash' } },
+    prepareCall: async config => {
+      if (mode === 'prepare') throw failure()
+      return { config, async *stream() {
+        if (mode === 'stream') throw failure()
+        yield { type: 'finish', reason: { kind: 'error', failure: { code: 'NO_ADAPTER', message: secret + key } } }
+      } }
+    },
+  })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    const grant = relay.open(model, { onEvent: event => { events.push(event); return Promise.reject(new Error('optional observer')) },
+      tools: [{ name: 'bili_dm_reply', execute: async () => { throw failure() } }] })
+    const adapter = createRelayAdapter(grant.env), client = createRelayClient(grant.env)
+    await assert.rejects(adapter.resolveModel(RELAY_PROVIDER, model))
+    for (mode of ['prepare', 'stream', 'terminal']) {
+      try { for await (const _ of adapter.stream({ provider: RELAY_PROVIDER, model, messages: [] })) {} } catch { /* caller receives its own failure */ }
+    }
+    await assert.rejects(client.post({ action: 'tool-call', name: 'bili_dm_reply', args: { text: secret } }))
+    await new Promise(resolve => setImmediate(resolve))
+    assert.ok(events.filter(event => event.stage === 'model-error').length >= 4)
+    assert.ok(events.some(event => event.stage === 'tool-error' && /ETIMEDOUT/.test(event.text)))
+    const saved = JSON.stringify(events)
+    assert.ok(!saved.includes(secret)); assert.ok(!saved.includes(key)); assert.match(saved, /原始输出已省略/)
+  } finally { relay.close() }
 })

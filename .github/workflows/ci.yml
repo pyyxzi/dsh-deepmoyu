@@ -1,0 +1,74 @@
+name: Plugin verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.node == 22 && '3.11' || '3.12' }}
+      - run: npm ci --ignore-scripts
+      - run: python -m pip install -r vendor/bilibili-mcp/requirements.txt
+      - run: npm test
+      - run: npm run test:python
+      - run: npm run test:mcp
+      - run: npm run test:ui
+      - run: npm run release:check
+      - run: npm audit --registry=https://registry.npmjs.org
+      - run: python -m pip install pip-audit==2.10.1
+      - run: python -m pip_audit --format json --output "${{ runner.temp }}/python-dependency-audit.json"
+
+  browser-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+      QA_OUTPUT_DIR: ${{ runner.temp }}/deepmoyu-browser
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: npm ci --ignore-scripts
+      - run: npm run test:browser
+      - run: npm run release:build
+      - run: npm run release:smoke
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: verified-package-and-browser-evidence
+          path: |
+            release/
+            ${{ runner.temp }}/deepmoyu-browser/
+          if-no-files-found: ignore

@@ -17,13 +17,11 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { join } from 'node:path'
 
 import { McpClient } from '../lib/mcp.mjs'
 
-const root = resolve(import.meta.dirname, '../../..')
-const mcpUrl = pathToFileURL(join(root, 'plugin/dsh-dafeiyu/lib/mcp.mjs')).href
+const mcpUrl = new URL('../lib/mcp.mjs', import.meta.url).href
 
 /** 最小 stdio MCP server：启动时往 COUNT_FILE 追加一个字符，好数「起了几次」 */
 const FAKE_SERVER = `

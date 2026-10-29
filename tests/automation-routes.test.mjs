@@ -19,7 +19,7 @@ test('schedule and review routes share background exclusion, persist days and is
   const children = [], spawned = [], cleanups = [], intervals = [], timers = []
   let handler
   const ctx = { logger: { info() {} }, get(key) { return key === 'llm' ? { listProviders: () => [{ id: 'background' }, { id: 'reviewer' }] } : key === 'dshHomePath' ? (...parts) => join(root, ...parts) : key === 'agents' ? { list: () => [] } : undefined },
-    tools: { register: tool => tool }, settings: { describe: () => [] }, on() { return () => {} },
+    tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} },
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
   }
@@ -122,7 +122,7 @@ test('default automatic review starts on idle startup, respects retry and off sw
   const children = [], spawned = [], cleanups = [], intervals = [], timers = []
   let handler
   const ctx = { logger: { info() {} }, get(key) { return key === 'llm' ? { listProviders: () => [{ id: 'reviewer' }] } : key === 'dshHomePath' ? (...parts) => join(root, ...parts) : key === 'agents' ? { list: () => [] } : undefined },
-    tools: { register: tool => tool }, settings: { describe: () => [] }, on() { return () => {} },
+    tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} },
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
   }

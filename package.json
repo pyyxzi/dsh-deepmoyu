@@ -1,8 +1,8 @@
 {
   "name": "dsh-deepmoyu",
-  "version": "2.3.0",
+  "version": "2.4.1",
   "private": false,
-  "description": "🐋 DeepMoYu 鲸鱼摸鱼 —— 一只鲸鱼娘在 DSH 里替你刷 B站：搜、读字幕、写日报，可选评论 @ 你（dsh-bili-scroll 0.1.19 分叉，已断开一切自动更新通道）",
+  "description": "🐋 DeepMoYu 鲸鱼摸鱼 —— 让一只鲸鱼娘自己逛 B站：自主搜片、读字幕、发评论、发动态、回私信，还能写日报、做视频的 DSH 插件（dsh-bili-scroll 0.1.19 分叉，无自动更新）",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -17,6 +17,10 @@
     "type": "git",
     "url": "git+https://github.com/pyyxzi/dsh-deepmoyu.git"
   },
+  "homepage": "https://github.com/pyyxzi/dsh-deepmoyu#readme",
+  "bugs": {
+    "url": "https://github.com/pyyxzi/dsh-deepmoyu/issues"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -26,20 +30,30 @@
   },
   "files": [
     "AGENTS.md",
+    "CONTRIBUTING.md",
     "CONTRIBUTORS.md",
     "LICENSE",
     "NOTICE.md",
     "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "docs",
+    "marketplace",
+    "screenshots.json",
     "assets",
     "client.js",
     "cordis.patch.yml",
     "index.js",
-    "lib",
+    "lib/*.mjs",
+    "lib/*.py",
+    "!lib/pv-writer.mjs",
     "presets",
     "prompts",
     "selfcheck.mjs",
-    "tests",
-    "vendor"
+    "vendor",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/*.pyo"
   ],
   "engines": {
     "dsh": ">=0.1.7-rc.1",
@@ -47,14 +61,25 @@
   },
   "scripts": {
     "check": "node selfcheck.mjs",
-    "test": "node selfcheck.mjs && node --test tests/*.test.mjs"
+    "test": "node selfcheck.mjs && node scripts/test-node.mjs",
+    "test:python": "node scripts/test-python.mjs",
+    "test:ui": "node scripts/qa/check-ui.cjs",
+    "test:browser": "node scripts/qa/check-menu-dom.cjs && node scripts/qa/check-product-experience.cjs && node scripts/qa/check-ui-races.cjs && node scripts/qa/check-memory-ui.cjs && node scripts/qa/check-pages-browser.cjs && node scripts/qa/check-dm-uid-browser.cjs",
+    "test:isolation": "node scripts/qa/check-persona-isolation.cjs && node scripts/qa/check-mode-exit-goal.cjs",
+    "release:check": "node scripts/release/check-manifest.mjs",
+    "release:build": "node scripts/release/build.mjs",
+    "release:smoke": "node scripts/release/smoke-install.mjs",
+    "verify": "npm test && npm run test:python && npm run test:ui && npm run test:browser && npm run release:check",
+    "test:coverage": "node scripts/test-node.mjs --experimental-test-coverage --test-coverage-include=index.js --test-coverage-include=lib/*.mjs",
+    "test:host": "node scripts/qa/host-bundle-smoke.mjs",
+    "test:mcp": "node scripts/qa/check-real-mcp.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/schemastery": "3.18.5"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "3.18.5"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-tools": {
@@ -74,10 +99,14 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-runtime"
       ]
     }
+  },
+  "devDependencies": {
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "scheduler": "0.26.0",
+    "yaml": "2.9.1"
   }
 }

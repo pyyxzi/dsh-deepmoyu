@@ -19,9 +19,10 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
   writeFileSync(join(home, 'config.json'), JSON.stringify({ reportLevel: 'off', learnAutoReview: false, autoComment: false, stickerAutoSend: true, stickerSendProbability: 100, stickerSendCooldown: 0 }))
   const cleanups = [], tools = new Map(), calls = []
   let handler
-  const agent = { id: 'fish', session: { header: { agentPreset: 'dafeiyu', cwd: root } } }
+  const agent = { id: 'fish', session: { header: { agentPreset: 'dafeiyu', cwd: root } },
+    ctx: { tools: { register(spec) { tools.set(spec.name, spec); return () => tools.delete(spec.name) } } } }
   const ctx = { logger: { info() {} }, get: key => key === 'dshHomePath' ? (...parts) => join(root, ...parts) : key === 'agents' ? { list: () => [agent] } : undefined,
-    tools: { register(spec) { tools.set(spec.name, spec); return spec } }, settings: { describe: () => [] }, on() { return () => {} },
+    tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} },
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
   }
@@ -34,7 +35,9 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
   }
   const actualCall = McpClient.prototype.call
   McpClient.prototype.call = async function(name, args) {
-    calls.push({ name, args })
+    const record = { name, args }
+    if (Array.isArray(args?.pictures)) record.pictureBytes = args.pictures.map(file => { try { return readFileSync(file) } catch { return null } })
+    calls.push(record)
     if (name === 'bili_reply') return { success: false, error: 'fixture send rejected; no network' }
     if (name === 'bili_comments') return { comments: [] }
     return {}
@@ -43,7 +46,7 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
   try {
     apply(ctx, {}); await new Promise(resolve => setImmediate(resolve))
     const gallery = await request('/stickers')
-    assert.equal(gallery.body.ok, true); assert.deepEqual(gallery.body.counts, { total: 1, builtin: 1, collected: 0 })
+    assert.equal(gallery.body.ok, true); assert.deepEqual(gallery.body.counts, { total: 1, builtin: 1, collected: 0, pending: 0, approved: 1 })
     assert.equal(gallery.body.settings.stickerCollectProbability, 35); assert.equal(gallery.body.capacity, 60)
     assert.equal(gallery.body.stickers[0].removable, false); assert.ok(!Object.hasOwn(gallery.body.stickers[0], 'file'))
     const image = await request(gallery.body.stickers[0].imageUrl.replace('/api/bili-duty', ''))
@@ -62,20 +65,26 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
     assert.equal(config.config.stickerCollectProbability, 100); assert.equal(config.config.stickerCapacity, 60)
     const blocked = await reply({})
     assert.equal(blocked.blocked, true); assert.equal(calls.filter(x => x.name === 'bili_reply').length, 0)
-    const sent = await reply({ force: true })
-    assert.equal(sent.auto_picture, '贴贴'); assert.deepEqual(calls.at(-1).args.pictures, [join(builtin, '贴贴.png')])
-    await reply({ force: true, picture: '' }); assert.equal(calls.at(-1).args.pictures, undefined)
-    await reply({ force: true, picture: '贴贴' }); assert.deepEqual(calls.at(-1).args.pictures, [join(builtin, '贴贴.png')])
-    await reply({ force: true, rpid: '123456789' }); assert.equal(calls.at(-1).args.pictures, undefined)
-    await reply({ force: true }, false); assert.equal(calls.at(-1).args.pictures, undefined, 'ordinary mode never auto-attaches fish stickers')
+    assert.equal((await reply({ force: true })).code, 'FORCE_NOT_AUTHORIZATION')
+    await request('/config', { autoComment: true, replyToComments: true }, 'POST')
+    const sent = await reply({})
+    assert.equal(sent.auto_picture, '贴贴')
+    assert.notEqual(calls.at(-1).args.pictures[0], join(builtin, '贴贴.png'), 'send uses a private snapshot')
+    assert.deepEqual(calls.at(-1).pictureBytes, [png])
+    await reply({ picture: '' }); assert.equal(calls.at(-1).args.pictures, undefined)
+    await reply({ picture: '贴贴' })
+    assert.notEqual(calls.at(-1).args.pictures[0], join(builtin, '贴贴.png'))
+    assert.deepEqual(calls.at(-1).pictureBytes, [png])
+    await reply({ rpid: '123456789' }); assert.equal(calls.at(-1).args.pictures, undefined)
+    assert.equal((await reply({}, false)).reason, 'mode_required', 'ordinary mode never executes role sends')
     const beforeUnknown = calls.length
-    assert.equal((await reply({ force: true, picture: '../private' })).sticker_unknown, true); assert.equal(calls.length, beforeUnknown)
-    assert.equal((await reply({ force: true, rpid: '987654321', picture: '贴贴' })).picture_floor, true)
+    assert.equal((await reply({ picture: '../private' })).sticker_unknown, true); assert.equal(calls.length, beforeUnknown)
+    assert.equal((await reply({ rpid: '987654321', picture: '贴贴' })).picture_floor, true)
     const status = (await request('/status')).body
     assert.ok(!Object.hasOwn(status, 'stickers')); assert.equal(status.tokensTotal, 0)
     const unchanged = (await request('/status?rev=' + encodeURIComponent(status.rev))).body
     assert.equal(unchanged.unchanged, true)
-    assert.equal(JSON.parse(readFileSync(join(home, 'config.json'))).autoComment, false, 'image settings never grant posting authority')
+    assert.equal(JSON.parse(readFileSync(join(home, 'config.json'))).autoComment, true, 'only the explicit manual config call granted posting authority')
   } finally {
     for (const cleanup of cleanups.reverse()) { try { cleanup() } catch {} }
     McpClient.prototype.call = actualCall
@@ -87,7 +96,8 @@ test.after(() => { if (priorBuiltin === undefined) delete process.env.DAFEIYU_ST
 test('session stop cancels only that session collection queue and download; resume accepts a fresh scope', async () => {
   const isolated = join(root, 'scopes'), duty = join(isolated, 'bili-duty'); mkdirSync(duty, { recursive: true })
   writeFileSync(join(duty, 'config.json'), JSON.stringify({ reportLevel: 'off', learnAutoReview: false, stickerAutoCollect: true, stickerCollectProbability: 100, stickerCollectCooldown: 0 }))
-  const agents = ['a', 'b'].map(id => ({ id, session: { header: { agentPreset: 'dafeiyu', cwd: isolated } } })), goals = new Map()
+  const agents = ['a', 'b'].map(id => ({ id, session: { header: { agentPreset: 'dafeiyu', cwd: isolated } },
+    ctx: { tools: { register(spec) { tools.set(spec.name, spec); return () => tools.delete(spec.name) } } } })), goals = new Map()
   for (const agent of agents) goals.set(agent.id, { id: agent.id + '-goal', objective: '🐟 鲸鱼摸鱼模式 fixture', phase: 'active', activation: 'armed', revision: 1, roundsStarted: 1, maxGoalRounds: 10 })
   const cleanups = [], tools = new Map(), require = createRequire(import.meta.url)
   const http = require('node:https'), dns = require('node:dns'), oldRequest = http.request, oldLookup = dns.promises.lookup
@@ -111,7 +121,7 @@ test('session stop cancels only that session collection queue and download; resu
   syncBuiltinESMExports()
   McpClient.prototype.call = async function(name) { return name === 'bili_comments' ? { comments: [{ rpid: String(++urlCounter), images: [{ url: 'https://images.example.com/' + urlCounter + '.png', w: 256, h: 256 }] }] } : {} }
   const services = { dshHomePath: (...parts) => join(isolated, ...parts), agents: { list: () => agents, get: id => agents.find(a => a.id === id) }, goals: { get: agent => goals.get(agent.id), pause(agent) { const g = goals.get(agent.id); g.phase = 'paused'; g.activation = 'disarmed'; return g }, resume(agent) { const g = goals.get(agent.id); g.phase = 'active'; g.activation = 'armed'; return g } } }
-  const ctx = { logger: { info() {} }, get: key => services[key], tools: { register(spec) { tools.set(spec.name, spec); return spec } }, settings: { describe: () => [] }, on() { return () => {} }, effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) }, webServer: { register(route) { handler = route.handler; return { dispose() {} } } } }
+  const ctx = { logger: { info() {} }, get: key => services[key], tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] }, on() { return () => {} }, effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) }, webServer: { register(route) { handler = route.handler; return { dispose() {} } } } }
   async function post(action, agent) {
     const req = new EventEmitter(); req.url = '/api/bili-duty/feiyu'; req.method = 'POST'; req.headers = {}; req.destroy = () => {}
     const res = { writeHead() {}, end(text) { this.body = JSON.parse(text) } }, promise = handler(req, res)

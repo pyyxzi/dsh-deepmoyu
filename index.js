@@ -23,30 +23,37 @@ const hostDeps = await loadHostDeps()
 const z = hostDeps.z
 const defineTool = hostDeps.defineTool
 import { spawn } from 'node:child_process'
-import { appendFileSync, closeSync, createReadStream, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, createReadStream, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { McpClient } from './lib/mcp.mjs'
-import { resolveSessionPreset, personaScope, CHARACTER_COMPASS } from './lib/mode.mjs'
-import { buildFeiyuObjective, buildLiveBrief } from './lib/prompts.mjs'
+import { resolveSessionPreset, personaScope, isFeiyuGoal, CHARACTER_COMPASS } from './lib/mode.mjs'
+import { createToolScopeRegistry } from './lib/tool-scope.mjs'
+import { buildFeiyuObjective, buildLiveBrief, MOMENT_OPENING_KEEP, interactionStyleGuide } from './lib/prompts.mjs'
 import { RUN_DEFAULTS, RUN_LIMITS, migrateRunSettings, clampRunSettings, resolveRunOptions, scheduleRunDeadline, backgroundWindowActive, backgroundWindowEndAt, backgroundWindowLaunch } from './lib/run-settings.mjs'
 import { AUTOMATION_DEFAULTS, AUTOMATION_LIMITS, clampAutomationSettings, dailyScheduleStatus, markDailyStarted, releaseDailyStart } from './lib/automation.mjs'
+import { COMPANION_DEFAULTS, clampCompanionSettings, companionPolicy, companionPrompt, nextChatterAt } from './lib/companion.mjs'
 import { createPetSession } from './lib/pet-session.mjs'
 import { mutateLearningStateSync } from './lib/learn-store.mjs'
 import { learningReviewBatch, learningReviewKey, learningReviewProgress, buildLearningReviewPrompt, learningReviewRetryAllowed, summarizeLearningReview } from './lib/learn-review.mjs'
 import { createModelRelay, RELAY_PROVIDER, splitModelRoute } from './lib/model-relay.mjs'
-import { backgroundToolNames, exposeBackgroundTools } from './lib/background-tools.mjs'
+import { backgroundToolNames, exposeBackgroundTools, toolInputSchema, validateToolArguments } from './lib/background-tools.mjs'
 import { redactRecordText, sanitizeRecord } from './lib/record-privacy.mjs'
 import { createBackgroundOutput } from './lib/background-output.mjs'
+import { openDirectory } from './lib/open-directory.mjs'
+import { inspectMainEnvironment, inspectAsrEnvironment, MAIN_PYTHON_RANGE, PYTHON_COMPATIBILITY_CHECK, MAIN_RUNTIME_CHECK, ASR_RUNTIME_CHECK } from './lib/python-env.mjs'
 import { appendActivityRecord, readActivityTail, rotateActivityLog, importActivityFile, importArchivedActivityChunk, captureMemorySnapshot, appendLearningRecord, readRecordEvents } from './lib/records.mjs'
-import { withFileLockSync, readJsonFileSync } from './lib/record-storage.mjs'
+import { withFileLockSync, readJsonFileSync, atomicWriteFileSync } from './lib/record-storage.mjs'
+import { MEMORY_SOURCES, memoryCenterSnapshot, memoryFingerprint } from './lib/memory-center.mjs'
 import { normalizeId, optionalId, readableId, replyTargetId } from './lib/ids.mjs'
 import { verifyRecent, appendVerifyToReport } from './lib/verify.mjs'
 import { WINDOWS, stateDirOf, readJson, writeJson, ensureHomeFiles, ensureCharter, charterPath, inWindow, dayKey } from './lib/state.mjs'
 import { loginStart, loginPoll, saveCredential, renderQrPng } from './lib/login.mjs'
+import { createLoginSession } from './lib/login-session.mjs'
+import { modelConfigDecision, modelForceDecision } from './lib/config-policy.mjs'
 import { ensureUv } from './lib/uvfetch.mjs'
 // 💬 私信判据（该不该回这条）只此一份：收件箱标注、发送前复核、测试都调它
 import { dmSkipReason, dmRemember, dmSentToday as dmSentTodayOf } from './lib/dm.mjs'
@@ -91,13 +98,15 @@ import {
 //    这里只负责"发之前问一句、发成功记一笔、被风控记冷却"。
 import {
   PACE, PACE_KINDS, RISK_COOLDOWN, QUOTA_CODES, quotaBucketOf,
-  paceBook, paceCheck, paceTake, paceNoteRisk, paceSummary, paceHint,
+  paceBook, paceCheck, paceTake, paceNoteRisk, paceSummary, paceExplain, paceHint,
 } from './lib/pace.mjs'
 // 🖼️ 表情包（2026-10-22 使用者 m02275「回复评论的时候可以多用上表情包」）——
 //    内置区 = 使用者的「大肥鱼形象图\大肥鱼表情」（只读），收集区 = 家目录 stickers/（鱼自己收）。
 //    resolve 只出**库内**绝对路径，collect 只收 http(s) 或库内文件 —— 不当下载器，不碰任意路径。
 import {
-  listStickers, collectSticker, uploadSticker, forgetSticker, resolveSticker, collectedDirOf, readStickerImage,
+  listStickers, collectSticker, uploadSticker, forgetSticker, resolveSticker, collectedDirOf, readStickerImage, approveSticker, rejectSticker,
+  snapshotStickerForSend,
+  sniffImageFormat,
 } from './lib/sticker.mjs'
 import { STICKER_DEFAULTS, STICKER_LIMITS, clampStickerSettings, stickerSettings, createStickerAutomation } from './lib/sticker-automation.mjs'
 // 🧾 每轮任务的 token 账本（2026-10-27）：一次任务一条账 —— 会话精确计量、后台如实标"未计量"。
@@ -108,6 +117,8 @@ import {
 // 🎬 「昨日冲浪报告」视频（2026-10-22 使用者要求）——
 //    编排（出分镜 → 渲染 → 收成品）在 lib/pv.mjs，真正的画面/配音在 lib/pv.py 与 lib/pv_plan.py
 import { createPv, pvYesterday, pvDateOk } from './lib/pv.mjs'
+import { createVideoStudio, migrateVideoSettings } from './lib/pv-session.mjs'
+import { buildSevenDayRetrospective, buildRecoverySnapshot } from './lib/product-status.mjs'
 
 export const name = 'dafeiyu'
 export const inject = ['webServer', 'tools', 'settings']
@@ -130,6 +141,8 @@ export const Config = !z ? undefined : z.object({
   night: z.boolean().default(true).extra('volatile', true),
   /** 自动评论 @ 使用者（默认关 —— 会拿用户的号说话，必须他自己开） */
   autoComment: z.boolean().default(false).extra('volatile', true),
+  /** 鱼模式的公开发送先落本地待审核队列；默认关闭，保持历史直发行为。 */
+  sendReview: z.boolean().default(false).extra('volatile', true),
   /** 本地采图与新评论配图各自控制；不会打开评论权限。概率为 0–100，冷却单位秒。 */
   stickerAutoCollect: z.boolean().default(STICKER_DEFAULTS.stickerAutoCollect).extra('volatile', true),
   stickerCollectProbability: z.natural().default(STICKER_DEFAULTS.stickerCollectProbability).extra('volatile', true),
@@ -138,10 +151,12 @@ export const Config = !z ? undefined : z.object({
   stickerSendProbability: z.natural().default(STICKER_DEFAULTS.stickerSendProbability).extra('volatile', true),
   stickerSendCooldown: z.natural().default(STICKER_DEFAULTS.stickerSendCooldown).extra('volatile', true),
   stickerCapacity: z.natural().default(STICKER_DEFAULTS.stickerCapacity).extra('volatile', true),
+  /** 新图先经本人批准；关闭只影响以后收的新图，不放行仍待审核的图片。 */
+  stickerReview: z.boolean().default(STICKER_DEFAULTS.stickerReview).extra('volatile', true),
   /** ⭐ 私信投递：off=只发评论（现状）· only=只私信（完全不公开评论）· both=评论 + 私信 */
   dmMode: z.string().default('off').extra('volatile', true),
   /** ⭐ 私信发给谁的 UID（数字）。要在 dmMode 不是 off 时填 */
-  dmUid: z.natural().default(0).extra('volatile', true),
+  dmUid: z.union([z.natural(), z.string()]).default(0).extra('volatile', true),
   /** 本地转写（没字幕的视频用 Whisper 转；默认关，要下模型） */
   transcribe: z.boolean().default(false).extra('volatile', true),
   /** 本地转写用哪个 Whisper 模型（tiny / base / small / medium） */
@@ -203,8 +218,10 @@ export const Config = !z ? undefined : z.object({
   autoMoment: z.boolean().default(false).extra('volatile', true),
   /** 每天最多发几条说说 */
   momentPerDay: z.natural().default(1).extra('volatile', true),
-  /** 说说的口吻：感想 / 吐槽 / 安利 / 冷知识 */
-  momentStyle: z.string().default('感想').extra('volatile', true),
+  /** 说说的口味：随心情（默认，不加任何倾向）/ 感想 / 吐槽 / 安利 / 冷知识 —— 只当软提示，不是模板 */
+  momentStyle: z.string().default('随心情').extra('volatile', true),
+  /** 鲸鱼的互动档位：只调整陪伴方式，不改变任何发送权限。 */
+  interactionStyle: z.string().default('companion').extra('volatile', true),
   /** 指定模型（`provider/model`；**留空 = 用当前对话的模型**） */
   modelId: z.string().default('').extra('volatile', true),
   /** token 预算（0 = 不限；**这一次开跑之后**烧的量超了就自动停，不会把号刷爆） */
@@ -238,6 +255,8 @@ export const Config = !z ? undefined : z.object({
   pvVoice: z.string().default('zh-CN-XiaoyiNeural').extra('volatile', true),
   /** 视频放哪儿（留空 = 自动：反推出使用者工作区，落在工作区根） */
   pvDir: z.string().default('').extra('volatile', true),
+  /** 制作整条视频的会话模型（provider/model；留空跟随来源会话或宿主默认模型）。 */
+  videoModelId: z.string().default('').extra('volatile', true),
   /* ── 🎙 真·本鱼音色（GPT-SoVITS 零样本克隆）──────────────────────────
    * 三件套都给齐了才走 GPT-SoVITS，缺一个就自动退回上面的 edge-tts ——
    * 没装这套环境的机器照样能出片，不会因为音色做不了而整条卡死。 */
@@ -259,6 +278,13 @@ export const Config = !z ? undefined : z.object({
   petShow: z.boolean().default(true).extra('volatile', true),
   /* 🫧 空闲时的闲聊泡泡（低频自言自语；false = 安静模式） */
   idleChatter: z.boolean().default(true).extra('volatile', true),
+  chatterFrequency: z.string().default('normal').extra('volatile', true),
+  notificationLevel: z.string().default('normal').extra('volatile', true),
+  focusMode: z.boolean().default(false).extra('volatile', true),
+  quietHoursEnabled: z.boolean().default(false).extra('volatile', true),
+  quietHoursStart: z.string().default('23:00').extra('volatile', true),
+  quietHoursEnd: z.string().default('08:00').extra('volatile', true),
+  petReducedMotion: z.boolean().default(false).extra('volatile', true),
   sessionModelId: z.string().default('').extra('volatile', true),
   sessionTokenBudget: z.natural().default(0).extra('volatile', true),
   sessionMaxRounds: z.natural().default(64).extra('volatile', true),
@@ -320,29 +346,13 @@ export function apply(ctx, config) {
 
   // ⭐ "就绪"必须检查依赖真的装上了，不能只看目录存不存在
   //    （2026-10-15：只看目录，害一位真实用户"显示就绪但其实装失败"白折腾 ✗）
-  const sitePkgs = (venvRoot) => {
-    const win = join(venvRoot, 'Lib', 'site-packages')
-    if (existsSync(win)) return win
-    try {
-      const lib = join(venvRoot, 'lib')
-      for (const d of readdirSync(lib)) {
-        if (!d.startsWith('python')) continue
-        const p = join(lib, d, 'site-packages')
-        if (existsSync(p)) return p
-      }
-    } catch { /* 没有就算了 */ }
-    return win
-  }
-  const hasPkg = (venvRoot, prefix) => {
-    try { return readdirSync(sitePkgs(venvRoot)).some((n) => n.startsWith(prefix)) } catch { return false }
-  }
   // ⚠️ 2026-10-18 用户实测：徽章显示「环境已就绪」、B站也登录了，可一跑就 `ModuleNotFoundError: No module named 'mcp'`
   //    ⇒ 原判据**只查了 bilibili_api**（0.1.2 修"假就绪"时留下的口子）⇒ 缺 `mcp` / `qrcode` 也照样说就绪 ✗
   //    ⇒ 三个都得有：bilibili_api（查数据）· mcp（跑那一轮的 MCP 服务器）· qrcode（画登录二维码）
-  const VENV_DEPS = ['bilibili_api', 'mcp', 'qrcode']
-  const missingVenvDeps = () => VENV_DEPS.filter((n) => !hasPkg(join(stateDir, '.venv'), n))
-  const venvReadyNow = () => existsSync(venvPython()) && missingVenvDeps().length === 0
-  const asrReadyNow = () => existsSync(asrPython()) && hasPkg(asrDir, 'faster_whisper')
+  const mainEnvironment = () => inspectMainEnvironment(join(stateDir, '.venv'))
+  const missingVenvDeps = () => mainEnvironment().reasons
+  const venvReadyNow = () => mainEnvironment().ready
+  const asrReadyNow = () => asrEnvironment().ready
   const cfgFile = join(stateDir, 'config.json')
   /**
    * 本地优先（2026-10-18，两个用户实证）：DSH 0.2.1 某些启动方式下 ctx.settings.update 会抛
@@ -531,30 +541,45 @@ export function apply(ctx, config) {
    *     ② **定时器回调里绝不让异常外冒**（见 tick）—— 未捕获异常会杀掉整个宿主进程。
    */
   const DEFAULTS = {
+    ...COMPANION_DEFAULTS,
     ...RUN_DEFAULTS,
     ...AUTOMATION_DEFAULTS,
     ...STICKER_DEFAULTS,
-    perDay: 5, peakValley: false, noon: true, night: true, autoComment: false, transcribe: false, asrModel: 'small',
+    perDay: 5, peakValley: false, noon: true, night: true, autoComment: false, sendReview: false, transcribe: false, asrModel: 'small',
     dmMode: 'off', dmUid: 0,
     keywords: [], commentPerRound: 1, mentionName: '', pythonPath: 'python', dshBin: '', headlessProfile: 'headless', overlayMcp: true, workspace: '', reportLevel: 'full', replyToComments: false, replyPerRound: 1,
     autoReplyDm: false, dmReplyPerDay: 0, dmReplyFollowedOnly: true,
     // 🐟 鲸鱼摸鱼模式（键必须和 Config 里的一模一样，normalize 是按 base 的键挑的）
-    persona: '', focus: '', autoMoment: false, momentPerDay: 1, momentStyle: '感想', modelId: '', tokenBudget: 0, totalTokenBudget: 0, maxRounds: 64, mirrorDir: '',
+    persona: '', focus: '', autoMoment: false, momentPerDay: 1, momentStyle: '随心情', interactionStyle: 'companion', modelId: '', tokenBudget: 0, totalTokenBudget: 0, maxRounds: 64, mirrorDir: '',
     // ⏱️ 出手节奏系数（1 = 标准；2 = 间隔翻倍；0.5 = 快一倍）—— 2026-10-21 使用者 m18802 第 1、2 条
     paceFactor: 1,
     // 🎬 昨日冲浪报告视频（2026-10-22）
-    pvAuto: false, pvAt: '10:30', pvVoice: 'zh-CN-XiaoyiNeural', pvDir: '',
+    pvAuto: false, pvAt: '10:30', pvVoice: 'zh-CN-XiaoyiNeural', pvDir: '', videoModelId: '',
     // 🎙 真·本鱼音色（GPT-SoVITS 零样本克隆；三项齐全才启用，否则退回 edge-tts）
     pvGsvRepo: '', pvGsvRef: '', pvGsvPrompt: '', pvGsvPython: '',
     // 🐾 桌宠显隐（2026-10-26 桌宠化改造）：默认展示；false = 桌宠菜单里点了「隐藏桌宠」，
     //    设置页还有开关能唤回 —— 所以这个值必须走配置对账那套（loadCfg 按 DEFAULTS 的键挑）
     petShow: true,
   }
+  const configuredUid = value => {
+    const id = normalizeId(typeof value === 'string' && !value.trim() ? '0' : value)
+    const small = Number(id)
+    // Preserve compatible legacy safe integers; large decimal strings never become numeric identities.
+    return Number.isSafeInteger(small) ? small : id
+  }
+  let invalidRecipientWarned = false
   const normalize = (src, base) => {
     const out = { ...base }
     for (const k of Object.keys(base)) {
       const v = src?.[k]
       if (v === undefined || v === null) continue
+      if (k === 'dmUid') {
+        try { out[k] = configuredUid(v) } catch {
+          out[k] = 0
+          if (!invalidRecipientWarned) { invalidRecipientWarned = true; log('配置的收件 UID 无效或已丢失精度，已暂停成果投递；请重新填写原始十进制字符串。') }
+        }
+        continue
+      }
       if (Array.isArray(base[k])) { if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string') }
       else if (typeof base[k] === 'number') { const n = Number(v); if (Number.isFinite(n)) out[k] = n }
       else if (typeof base[k] === 'boolean') { if (typeof v === 'boolean') out[k] = v }
@@ -610,6 +635,7 @@ export function apply(ctx, config) {
     if ('perDay' in p) p.perDay = clampNum('perDay', p.perDay, 0)
     if ('reportLevel' in p) p.reportLevel = ['full', 'brief', 'off'].includes(String(p.reportLevel)) ? String(p.reportLevel) : 'full'
     if ('replyToComments' in p) p.replyToComments = Boolean(p.replyToComments)
+    if ('sendReview' in p) p.sendReview = Boolean(p.sendReview)
     if ('replyPerRound' in p) p.replyPerRound = clampNum('replyPerRound', p.replyPerRound, 1)
     if ('commentPerRound' in p) p.commentPerRound = clampNum('commentPerRound', p.commentPerRound, 0)
     // 💬 自动回私信：防的是「陌生人私信当聊天通道刷屏」和「一条都不回」两个极端
@@ -619,7 +645,9 @@ export function apply(ctx, config) {
     // 🐟 鲸鱼摸鱼模式
     if ('autoMoment' in p) p.autoMoment = Boolean(p.autoMoment)
     if ('momentPerDay' in p) p.momentPerDay = clampNum('momentPerDay', p.momentPerDay, 0)
-    if ('momentStyle' in p) p.momentStyle = ['感想', '吐槽', '安利', '冷知识'].includes(String(p.momentStyle)) ? String(p.momentStyle) : '感想'
+    // 说说口味：白名单外一律回落「随心情」——那是"不加倾向"，比强塞一个口味更安全
+    if ('momentStyle' in p) p.momentStyle = ['随心情', '感想', '吐槽', '安利', '冷知识'].includes(String(p.momentStyle)) ? String(p.momentStyle) : '随心情'
+    if ('interactionStyle' in p) p.interactionStyle = ['quiet', 'companion', 'creator', 'steward'].includes(String(p.interactionStyle)) ? String(p.interactionStyle) : 'companion'
     if ('tokenBudget' in p) p.tokenBudget = clampNum('tokenBudget', p.tokenBudget, 0)
     if ('totalTokenBudget' in p) p.totalTokenBudget = clampNum('totalTokenBudget', p.totalTokenBudget, 0)
     if ('maxRounds' in p) p.maxRounds = clampNum('maxRounds', p.maxRounds, 1)
@@ -643,6 +671,13 @@ export function apply(ctx, config) {
     }
     if ('pvVoice' in p) p.pvVoice = String(p.pvVoice ?? '').trim().slice(0, 100) || 'zh-CN-XiaoyiNeural'
     if ('pvDir' in p) p.pvDir = String(p.pvDir ?? '').trim().slice(0, 400)
+    if ('videoModelId' in p) {
+      const want = String(p.videoModelId ?? '').trim()
+      if (want.length > 200 || want && (want.indexOf('/') <= 0 || want.indexOf('/') === want.length - 1 || /\s/.test(want))) {
+        throw new Error('制作模型要写成 provider/model；留空跟随当前会话或宿主默认模型')
+      }
+      p.videoModelId = want
+    }
     // 🎙 真·本鱼音色：三个字符串都是路径/原文，只剪长度（路径可能很长）
     if ('pvGsvRepo' in p) p.pvGsvRepo = String(p.pvGsvRepo ?? '').trim().slice(0, 400)
     if ('pvGsvRef' in p) p.pvGsvRef = String(p.pvGsvRef ?? '').trim().slice(0, 400)
@@ -650,11 +685,11 @@ export function apply(ctx, config) {
     if ('pvGsvPython' in p) p.pvGsvPython = String(p.pvGsvPython ?? '').trim().slice(0, 400)
     // 🐾 桌宠显隐：纯布尔，给什么是什么（桌宠菜单/设置页两处都可能写它）
     if ('petShow' in p) p.petShow = Boolean(p.petShow)
-    return clampStickerSettings(clampAutomationSettings(clampRunSettings(p)))
+    return clampCompanionSettings(clampStickerSettings(clampAutomationSettings(clampRunSettings(p))))
   }
 
-  const hostCfg = () => normalize(config, { ...DEFAULTS })       // 宿主那份（schema 校验过、默认值已填）
-  const savedCfg = () => normalize(migrateRunSettings(readJson(cfgFile, {}), hostCfg()), { ...DEFAULTS })
+  const hostCfg = () => normalize(migrateVideoSettings(config), { ...DEFAULTS })       // 宿主那份（schema 校验过、默认值已填）
+  const savedCfg = () => normalize(migrateRunSettings(migrateVideoSettings(readJson(cfgFile, {})), hostCfg()), { ...DEFAULTS })
   /**
    * ⭐⭐ 0.1.11（2026-10-19 · 第三批用户报"开关还是回弹"之后改的）
    *   0.1.9 / 0.1.10 一直想"跟宿主对账"：宿主那边有值就以宿主为准 —— 但 DSH 0.2.1 的某些启动方式下
@@ -672,7 +707,7 @@ export function apply(ctx, config) {
   let hostDiff = []          // 插件这份和 DSH 原生设置那份不一样、且以插件为准的键
   let lastDiffSig = ''       // 上一次记过日志的组合（同一种组合只写一行）
   let touchedKeys = (() => {
-    const raw = readJson(cfgFile, {})
+    const raw = migrateVideoSettings(readJson(cfgFile, {}))
     if (Array.isArray(raw._set)) return new Set(raw._set)
     return new Set(Object.keys(DEFAULTS).filter((k) => k in raw && JSON.stringify(raw[k]) !== JSON.stringify(DEFAULTS[k])))
   })()
@@ -706,11 +741,11 @@ export function apply(ctx, config) {
     const row = settingsDesc()
     // ⭐ 读回来统一过一遍范围：原生设置页那边我们是钳不到写的（见 clampPatch 的注释）
     if (!row) return clampPatch(saved)
-    const user = row.user || {}
+    const user = migrateVideoSettings(row.user || {})
     // ⭐ 2026-10-19（另一位用户的 dsh 给出的更彻底的一招）：**别用闭包里那份 `config` 当宿主基准** ——
     //    桌面版里它是挂载时的快照，之后写进 `cordis.patch.yml` 的值不会热刷新进来 ✗
     //    ⇒ 用 `describe()` 这一行里的 `value`（当前 patch 解析出来的现值）当基准，拿不到才退回 `config` ✓
-    const out = normalize(row.value && typeof row.value === 'object' ? row.value : config, { ...DEFAULTS })
+    const out = normalize(migrateVideoSettings(row.value && typeof row.value === 'object' ? row.value : config), { ...DEFAULTS })
     // ⚠️ 2026-10-18（用户实证 + 他的 dsh 定位）：`pythonPath` 是**装依赖时自动写的**，
     //    但它一旦在 DSH 原生设置里有过值（默认 "python"），就会被宿主覆盖回来 ⇒
     //    「重装依赖」日志写着"已把 pythonPath 设为 venv"，实际生效的还是系统那个空壳 python
@@ -750,16 +785,19 @@ export function apply(ctx, config) {
   // ⭐ 配置是"随时可能被设置页就地改掉"的东西 ⇒ 每个入口用之前重算一遍（cfg 这个对象要一直指向同一份）
   const refreshCfg = () => { Object.assign(cfg, loadCfg()) }
   const saveCfg = (patch) => {
-    Object.assign(cfg, normalize(patch, cfg))
-    // ⭐ 记下"这些键由插件面板说了算"（0.1.11：loadCfg 拿它决定谁赢）
-    for (const k of Object.keys(patch || {})) if (k in DEFAULTS) touchedKeys.add(k)
     /* ⭐ 拿文件锁写（2026-10-26）：设置页是逐字段 PATCH 的，两个输入框并发保存时
      *    读-改-写会互相覆盖（后一次把前一次的 _set 抹掉 ⇒ 那批键的裁决权被还给宿主 ⇒ "开关弹回"）。
      *    锁内同时把盘上已有的 _set 并进来 —— 只信内存那份会把别的进程刚记的键丢掉。 */
     withFileLockSync(cfgFile, () => {
-      let prevSet = []
-      try { const cur = readJsonFileSync(cfgFile, {}); if (Array.isArray(cur?._set)) prevSet = cur._set } catch { /* 读不到就按空并 */ }
-      writeJson(cfgFile, { ...cfg, _set: [...new Set([...prevSet, ...touchedKeys])] })
+      const current = migrateVideoSettings(readJsonFileSync(cfgFile, {}))
+      if (!current || typeof current !== 'object' || Array.isArray(current)) throw new Error('CONFIG_JSON_INVALID: expected an object')
+      const next = normalize(patch, normalize(current, cfg))
+      const keys = new Set([...(Array.isArray(current._set) ? current._set : []), ...touchedKeys,
+        ...Object.keys(patch || {})].filter(key => Object.hasOwn(DEFAULTS, key)))
+      writeJson(cfgFile, { ...current, ...next, _set: [...keys] })
+      // Publish the in-memory result only after the durable transaction succeeds.
+      Object.assign(cfg, next)
+      touchedKeys = keys
     })
   }
   /**
@@ -803,6 +841,11 @@ export function apply(ctx, config) {
    *      漏掉任何一处，正好就是「设置页改了没反应」那个 bug 本身 ⇒ 收成一个函数。）
    */
   const persistCfg = async (patch) => {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw Object.assign(new Error('配置 PATCH 必须是对象'), { status: 400, code: 'CONFIG_INPUT' })
+    for (const key of Object.keys(patch)) {
+      if (!Object.hasOwn(DEFAULTS, key)) throw Object.assign(new Error('未知配置字段：' + key), { status: 400, code: 'CONFIG_INPUT' })
+      if (typeof DEFAULTS[key] === 'boolean' && typeof patch[key] !== 'boolean') throw Object.assign(new Error(key + ' 必须是 true 或 false，不能使用字符串或数字'), { status: 400, code: 'CONFIG_INPUT' })
+    }
     const clean = clampPatch(patch)
     /* ⭐ 2026-10-20（m11206）：钳制不再静默 —— 把「你要的」和「实际存下的」摆一起报给界面。
      *   原来 perDay 填 100 被钳成 50，界面还回一句「已保存」，使用者只能靠肉眼发现「还是 50」。 */
@@ -813,6 +856,9 @@ export function apply(ctx, config) {
       if (typeof clean[k] === 'number' && Number(want) !== clean[k]) clamped.push({ key: k, want, got: clean[k] })
     }
     saveCfg(clean)
+    if (Object.hasOwn(clean, 'chatterFrequency') || clean.idleChatter === true) {
+      await bumpState({ petChatterAt: nextChatterAt(cfg) })
+    }
     const host = await saveCfgHost(clean)
     // 宿主写成功 ⇒ 恢复对账；失败 ⇒ 记成"本地优先"，别让界面把它们压回去
     // ⭐ 无条件本地优先（2026-10-18 第二次修）：
@@ -889,9 +935,15 @@ export function apply(ctx, config) {
   }
 
   const call = async (toolName, args, opts) => {
-    const signal = toolExecution.getStore()?.signal
+    const execution = toolExecution.getStore()
+    const signal = execution?.signal
+    const assertScope = () => {
+      if (execution?.agent && !approvedReviewExecutions.has(execution) && !isFishExecution(execution)) throw Object.assign(new Error('MODE_REQUIRED: 已退出鲸鱼摸鱼模式，停止本次工具后续操作'), { code: 'MODE_REQUIRED' })
+    }
+    assertScope()
     signal?.throwIfAborted()
     const sending = ['bili_reply', 'bili_reply_opus', 'bili_send_message', 'bili_send_dynamic'].includes(toolName)
+    const reviewed = sending ? approvedReviewExecutions.get(toolExecution.getStore()) : null
     if (sending) {
       for (const file of [cfgFile, dutyStateFile]) {
         const value = readJsonFileSync(file, {})
@@ -900,14 +952,31 @@ export function apply(ctx, config) {
     }
     const client = await ensureMcp()
     signal?.throwIfAborted()
+    assertScope()
+    if (reviewed) {
+      refreshCfg()
+      const row = reviewed.row
+      const publicOk = cfg.dmMode !== 'only'
+      const allowed = row.tool === 'bili_deliver' ? ['both', 'only'].includes(cfg.dmMode) && readableId(cfg.dmUid) === row.targetUid
+        : row.tool === 'bili_dm_reply' ? Boolean(cfg.autoReplyDm)
+          : row.tool === 'bili_moment' ? Boolean(cfg.autoMoment)
+            : publicOk && Boolean(optionalId(row.args.rpid) === '0' ? cfg.autoComment : cfg.replyToComments)
+      if (!allowed) throw Object.assign(new Error('批准后发送权限已关闭或收件人已改变，内容没有提交'), { reviewBeforeSubmit: true })
+      reviewed.submitted = true
+    }
     const result = await client.call(toolName, args, signal ? { ...opts, signal } : opts)
     // A completed send must still be recorded even if stop arrived during IO.
     // Reads may not resume a stopped wrapper and submit a new send afterwards.
-    if (!sending) signal?.throwIfAborted()
+    if (!sending) { signal?.throwIfAborted(); assertScope() }
     return result
   }
 
   const hasCredential = () => existsSync(join(stateDir, 'bili_credential.json'))
+  const loginSession = createLoginSession({ start: loginStart, poll: loginPoll, save: credential => {
+    const execution = toolExecution.getStore()
+    if (execution?.agent && !isFishExecution(execution)) throw new Error('MODE_REQUIRED: 已退出鲸鱼摸鱼模式，未替换登录凭证')
+    return saveCredential(stateDir, credential)
+  } })
 
   /* 表情采集独立队列；图片读取、遍历只在表情功能需要时发生，不进入 /status。 */
   // goals.pause does not cancel in-flight tool IO. Keep each session's collection scope separate.
@@ -931,19 +1000,26 @@ export function apply(ctx, config) {
     stateDir,
     getConfig: () => { refreshCfg(); return cfg },
     onEvent: (kind, value) => {
-      if (kind === 'collected') act('note', `收了一张表情「${value.name}」`, { bvid: value.bvid })
+      if (kind === 'collected') act('note', `收了一张表情「${value.name}」${value.status === 'pending' ? '，等你审核后再用' : ''}`, { bvid: value.bvid })
       else log(`表情自动化（${kind}）：${value.error || ''}`)
     },
   })
-  const stickerGallery = () => {
-    const all = listStickers(stateDir)
+  // Only the manual gallery explicitly opts into pending. Public/tool defaults remain sendable-only.
+  const stickerGallery = (status = 'approved') => {
+    const all = listStickers(stateDir, { status: 'all' })
+    const visible = status === 'all' ? all : status === 'pending' ? all.filter(item => item.status === 'pending') : listStickers(stateDir)
     return {
       ok: true,
-      stickers: all.map(({ file, fmt, hash, ...item }) => ({ ...item,
-        imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(item.name)}&source=${item.source}`,
+      status,
+      stickers: visible.map(({ file, fmt, hash, ...item }) => ({ ...item,
+        ...(item.status === 'pending' ? { hash } : {}),
+        imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(item.name)}&source=${item.source}`
+          + (item.status === 'pending' ? `&status=pending&hash=${encodeURIComponent(hash)}` : ''),
         removable: item.source === 'collected',
       })),
-      counts: { total: all.length, builtin: all.filter(item => item.source === 'builtin').length, collected: all.filter(item => item.source === 'collected').length },
+      counts: { total: all.length, builtin: all.filter(item => item.source === 'builtin').length,
+        collected: all.filter(item => item.source === 'collected').length, pending: all.filter(item => item.status === 'pending').length,
+        approved: all.filter(item => item.status === 'approved').length },
       capacity: cfg.stickerCapacity,
       settings: stickerSettings(cfg),
       automation: stickerAutomation.snapshot(),
@@ -978,19 +1054,35 @@ export function apply(ctx, config) {
     try { goal = exec?.agent ? ctx.get('goals')?.get(exec.agent) : null } catch { /* no goal */ }
     return personaScope(resolveSessionPreset(ctx, exec?.agent), goal).enabled
   }
+  const roleTools = createToolScopeRegistry({ ctx, enabled: agent => isFishExecution({ agent }), log })
+  try {
+    onEvent('agent/created', ({ agent }) => roleTools.refresh(agent), '鲸鱼工具会话挂载')
+    onEvent('agent/disposed', ({ agent }) => roleTools.detach(agent), '鲸鱼工具会话卸载')
+    onEvent('agent-preset/selected', (sessionId) => {
+      const agent = (ctx.get('agents')?.list?.() || []).find(item => item.id === sessionId || item.session?.id === sessionId)
+      if (agent) roleTools.refresh(agent)
+    }, '鲸鱼工具预设隔离')
+    ctx.effect(() => () => roleTools.dispose(), '鲸鱼工具作用域清理')
+  } catch (error) { log('鲸鱼工具作用域监听失败：' + String(error?.message ?? error)) }
   // Content reads and account interactions are evidence of browsing. Settings,
   // status, memory and bookkeeping tools alone do not turn a chat into a run.
   const browsingTools = new Set(['bili_search', 'bili_subtitle', 'bili_danmaku', 'bili_buzzwords',
     'bili_video_info', 'bili_rank', 'bili_hot_videos', 'bili_user_videos', 'bili_comments',
     'bili_received_replies', 'bili_my_notices', 'bili_my_dynamics', 'bili_opus_comments',
     'bili_my_video_comments', 'bili_reply', 'bili_reply_opus', 'bili_dm_inbox',
-    'bili_dm_thread', 'bili_dm_reply', 'bili_moment'])
+    'bili_dm_thread', 'bili_dm_reply', 'bili_moment', 'bili_deliver'])
   const tool = (spec) => {
     const wrapped = {
     ...spec,
     output: textOutput,
     // ⭐ 流水就记在这一层：18 只工具一个都跑不掉，也不用每只都写一遍 log
     async execute(args, exec) {
+      const manuallyApproved = exec && approvedReviewExecutions.has(exec)
+      if (!manuallyApproved && !isFishExecution(exec)) return { ok: false, blocked: true, reason: 'mode_required', hint: 'DeepMoYu 工具仅在鲸鱼摸鱼模式内生效；普通会话不会启用角色工具或记忆。' }
+      if (['bili_reply', 'bili_reply_opus', 'bili_dm_reply', 'bili_moment', 'bili_deliver'].includes(spec.name)) {
+        const unauthorized = modelForceDecision(args)
+        if (unauthorized) return unauthorized
+      }
       if (['bili_soul', 'bili_learn', 'bili_taste', 'bili_records', 'bili_sticker'].includes(spec.name)) {
         const agent = exec?.agent
         let goal = null
@@ -1011,8 +1103,10 @@ export function apply(ctx, config) {
       const id = `t${++actSeq}`
       if (!quiet) act('call', describeCall(spec.name, args), { tool: spec.name, id })
       try {
-        const v = safe(await toolExecution.run(exec || {}, () => {
+        const v = safe(await toolExecution.run(exec || {}, async () => {
           exec?.signal?.throwIfAborted()
+          const review = await queueSendReview(spec.name, args, exec)
+          if (review) return review
           return spec.execute(args, exec)
         }))
         if (!quiet) {
@@ -1028,7 +1122,7 @@ export function apply(ctx, config) {
     },
     }
     backgroundToolRegistry.set(spec.name, wrapped)
-    return ctx.tools.register(defineTool(wrapped))
+    return roleTools.register(defineTool(wrapped))
   }
 
   tool({
@@ -1929,8 +2023,8 @@ export function apply(ctx, config) {
       if (!(isReply ? canReply : canNew) && !args.force) {
         return {
           ok: false, blocked: true, hint: isReply
-            ? '「自动回复评论」关着（或投递方式是「只发私信」）—— 先别回，或者本人当场让你发。'
-            : '「自动评论视频」关着（或投递方式是「只发私信」）—— 先别发，或者本人当场让你发。',
+            ? '「自动回复评论」关着（或投递方式是「只发私信」），请本人在工作台调整，模型不能自授权限。'
+            : '「自动评论视频」关着（或投递方式是「只发私信」），请本人在工作台调整，模型不能自授权限。',
         }
       }
       // 内容闸门与 bili_reply 同一套（动态评论同样不能是纯口号）
@@ -1945,7 +2039,7 @@ export function apply(ctx, config) {
               return {
                 ok: false, blocked: true, shallow: true, template: true, rule: t.rule,
                 reason: t.reason, marks: t.marks,
-                hint: t.hint + '（真想按原样发，本人当场明确要求，传 force: true。）',
+                hint: t.hint + '（请改写正文；人工审核也不绕过内容校验。）',
               }
             }
           } catch { /* 模板闸坏了不能挡住发评论 */ }
@@ -2072,13 +2166,13 @@ export function apply(ctx, config) {
       + '10 分钟最多 10 次出手。**没有每日条数上限 —— 想回就回，不想回就放着**。\n'
       + '⚠️ 但私信在 B站 举报权重里最重（是唯一直接推到别人手机的动作）：**别对着同一个人连着发**，'
       + '同一个 `msg_seqno` 只回一次（宿主记着账本），回得短、像人说话。\n'
-      + '🔴 安全闸：桌宠设置「自动化」里的「自动回复私信」默认关着，关着时这只工具会拒绝（本人当场让你发就传 force: true）。\n'
+      + '🔴 安全闸：「自动回复私信」默认关闭。只有本人在工作台手动打开后才允许发送；模型不能用 force 或配置 PATCH 绕过。\n'
       + '⚠️ 同一个 `msg_seqno` 只回一次（宿主记着账本，重复回会被挡）。**没有每日条数上限** —— 想回就回，不想回就放着。',
     parameters: {
       uid: { type: 'string', required: true, description: '发给谁（对方 UID）' },
       text: { type: 'string', required: true, description: '私信正文（短、像人说话、按人格；别粘链接、别写手机号）' },
       msg_seqno: { type: 'string', description: '回的是哪一条（从 bili_dm_inbox 拿；填了才判重，**建议一定要填**）' },
-      force: { type: 'boolean', description: '本人当场让你发的，传 true 越过"自动回私信关着"的闸' },
+      force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
     async execute(args) {
       refreshCfg()
@@ -2092,7 +2186,7 @@ export function apply(ctx, config) {
       if (!cfg.autoReplyDm && !args.force) {
         return {
           ok: false, blocked: true,
-          hint: '桌宠 ⚙️ 设置 →「自动化」里「自动回复私信」没开。本人当场让你发时传 force: true。',
+          hint: '工作台 → 互动与投递中的「自动回复私信」未开启，请本人手动调整；模型不能用 force 自授权限。',
         }
       }
       // 闸门二：判重（同一条私信只回一次 —— 这是最容易被模型搞砸的地方）
@@ -2119,7 +2213,7 @@ export function apply(ctx, config) {
         return {
           ok: false, blocked: true, perUserCap: true, sentToday: used,
           hint: `今天已经回过这个人 ${used} 条了 —— 再连着回就成刷屏了。等他有新消息再接，`
-            + '或者把话留给还没搭过话的人；确实需要继续说，本人当场让你发时传 force: true。',
+            + '或者把话留给还没搭过话的人；模型不能用 force 绕过这道防刷屏检查。',
         }
       }
       /* 闸门四（2026-10-20 补）：**按真实的收件箱状态复核一遍**。
@@ -2155,9 +2249,9 @@ export function apply(ctx, config) {
 
       const r = await call('bili_send_message', { receiver_uid: uid, text, msg_seqno: seqno })
       const o = typeof r === 'object' && r ? r : {}
-      if (o.success === false || o.error) {
+      if (o.success === false || o.error || !(o.success === true || o.ok === true)) {
         const risk = paceRiskOf(o)
-        return { ok: false, error: String(o.error || o.message || '发送失败'), raw: o, ...(risk ? { riskNote: risk } : {}) }
+        return { ok: false, unknown: o.success !== false && !o.error, error: String(o.error || o.message || '发送结果未知'), raw: o, ...(risk ? { riskNote: risk } : {}) }
       }
       await paceDone('dm')
       // 记账本：判重 + 当日额度（**发成功之后才记** —— 失败了记上就再也回不了）
@@ -2182,6 +2276,44 @@ export function apply(ctx, config) {
         })
       })
       return { ok: true, success: true, uid, sentToday: used + 1 }
+    },
+  })
+
+  tool({
+    name: 'bili_deliver',
+    description: '把本轮精选结果合并成一条私信投递给本人已配置的收件 UID。只在私信投递开关开启时可用；不接受任意收件人。最多 500 字，附标题、链接和简短理由，不放私密来信、路径或配置。发送预览开启时先等本人审核，批准仍经过原节奏和判重。',
+    parameters: { text: { type: 'string', required: true, description: '合并后的成果私信，最多 500 字' } },
+    async execute(args) {
+      refreshCfg()
+      const uid = readableId(cfg.dmUid, { allowZero: false })
+      const text = typeof args?.text === 'string' ? args.text.trim() : ''
+      if (!['only', 'both'].includes(cfg.dmMode) || !uid) return { ok: false, blocked: true, error: '私信投递未开启或未配置收件 UID' }
+      if (!text || text.length > 500) return { ok: false, blocked: true, error: '成果私信需要 1–500 字正文' }
+      const approved = approvedReviewArgs.get(args)
+      if (approved && approved.targetUid !== uid) return { ok: false, blocked: true, error: '收件 UID 在预览后已改变，请重新生成预览' }
+      const blocked = paceGate('dm')
+      if (blocked) return blocked
+      const key = createHash('sha256').update(JSON.stringify([dayKey(), uid, text])).digest('hex')
+      const reservation = await withStateLock(() => {
+        const state = readJsonFileSync(dutyStateFile, {})
+        const book = state.dmDeliveries && typeof state.dmDeliveries === 'object' ? state.dmDeliveries : {}
+        if (book[key]) return { ok: false, blocked: true, duplicate: true, error: '这份结果已投递或正在投递；未知结果不重试', previous: book[key].state }
+        book[key] = { state: 'sending', uid, at: new Date().toISOString() }
+        writeJson(dutyStateFile, { ...state, dmDeliveries: book })
+        return { ok: true }
+      })
+      if (!reservation.ok) return reservation
+      let result
+      try { result = await call('bili_send_message', { receiver_uid: uid, text, msg_seqno: '0' }) }
+      catch (error) { result = { ok: false, unknown: true, error: String(error?.message ?? error) } }
+      const success = Boolean(result && !result.error && (result.success === true || result.ok === true))
+      await withStateLock(() => {
+        const state = readJsonFileSync(dutyStateFile, {})
+        writeJson(dutyStateFile, { ...state, dmDeliveries: { ...(state.dmDeliveries || {}), [key]: { state: success ? 'sent' : 'unknown', uid, at: new Date().toISOString() } } })
+      })
+      if (success) await paceDone('dm')
+      else paceRiskOf(result)
+      return success ? { ok: true, success: true, uid } : { ok: false, unknown: true, error: String(result?.error || '成果私信结果未知，请到 B站核对后再决定') }
     },
   })
 
@@ -2242,7 +2374,7 @@ export function apply(ctx, config) {
       + '把图床链接收进来，起个好叫的名字（如 name:"贴贴"）；B站默认小表情不用收 —— [doge] 这类码直接写在回复正文里。\n'
       + '⚠️ 内置区（使用者的表情文件夹）只读，collect 时不能盖同名图；满了（60 张）先 forget 再收。\n'
       + 'picture 参数只在 bili_reply **发新评论**时能带（回复楼层不支持图片）。自动采集和自动配图按设置概率实际执行；'
-      + '你也能主动 collect、补上 description/tags 并显式选图。自动设置不授予评论权限。',
+      + '你也能主动 collect、补上 description/tags 并显式选图。开启人工审核时新图先待审，只有使用者在表情收藏页批准后才能用；关闭审核也不会放行旧待审图。自动设置不授予评论权限。',
     parameters: {
       action: { type: 'string', description: 'list=看库里有什么 · collect=收一张（给 url 或库内 path）· forget=忘掉一张收集区的' },
       name: { type: 'string', description: 'collect/forget 用的名字（collect 时起个好叫的，别带路径/扩展名）' },
@@ -2254,6 +2386,7 @@ export function apply(ctx, config) {
       rpid: { type: 'string', description: 'collect 来源评论 id（可选，原样字符串）' },
     },
     async execute(args, exec) {
+      refreshCfg()
       const action = String(args?.action ?? 'list').trim() || 'list'
       if (action === 'list') {
         const all = listStickers(stateDir)
@@ -2272,15 +2405,18 @@ export function apply(ctx, config) {
       if (action === 'collect') {
         const r = await collectSticker(stateDir, { name: args?.name, url: args?.url, path: args?.path,
           description: args?.description, tags: args?.tags, bvid: args?.bvid, rpid: args?.rpid,
-          capacity: cfg.stickerCapacity, signal: exec?.signal })
+          capacity: cfg.stickerCapacity, signal: exec?.signal,
+          get stickerReview() { refreshCfg(); return cfg.stickerReview } })
         if (!r.ok) return { ok: false, error: r.error }
         return {
           ok: true,
           collected: r.name,
-          file: r.file,
+          ...(r.status === 'approved' ? { file: r.file } : {}),
           bytes: r.bytes,
+          status: r.status,
           from: args?.url ? '网络' : '库内拷贝',
-          hint: '收好了 —— bili_reply({picture:"' + r.name + '"}) 用它。想换图先 forget。',
+          hint: r.status === 'pending' ? '已放入待审核。请使用者在桌宠设置 → 表情收藏中查看并批准；批准前不能配图。'
+            : '收好了 —— bili_reply({picture:"' + r.name + '"}) 用它。想换图先 forget。',
         }
       }
       if (action === 'forget') {
@@ -2307,14 +2443,14 @@ export function apply(ctx, config) {
       + '说等就等（发新评论 120~180 秒一条、回评论 60~90 秒、每小时各有上限、10 分钟最多 10 次出手）。'
       + '被拦是正常的，换个活干、过会儿再来，别试探性重发（那是 -352 的最短路径）。\n'
       + '🔴 安全闸：桌宠设置「自动化」里的「自动评论视频」**默认是关的**；关着的时候这个工具会拒绝 —— '
-      + '除非本人当场让你发（那时传 force: true）。',
+      + '需要本人在工作台手动打开权限；模型不能用 force 或配置 PATCH 绕过。',
     parameters: {
       bvid: { type: 'string', description: 'BV号' },
       text: { type: 'string', description: '评论正文（短、干净、像真人在说话；别写敏感词）' },
       rpid: { type: 'string', description: '要回复的评论 id（0/不填 = 发新评论）' },
       root: { type: 'string', description: '你那条主评论的 id（回复楼中楼时填；回复一级评论不用填）' },
       picture: { type: 'string', description: '（可选，仅发新评论）表情图名字，最多 2 张、用逗号或空格分隔；bili_sticker({action:"list"}) 查；回复楼层不支持图片' },
-      force: { type: 'boolean', description: '本人当场让你发的，传 true 越过"自动评论关着"的闸' },
+      force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
     async execute(args) {
       const bvid = String(args.bvid ?? '').trim()
@@ -2335,7 +2471,9 @@ export function apply(ctx, config) {
         const fromUrl = (bvid.match(/BV[0-9A-Za-z]{10}/) || [])[0]
         if (fromUrl && !looksOpus) {
           // 落到下面正常流程（把 bvid 换成抠出来的那个）
+          const reviewed = approvedReviewArgs.get(args)
           args = { ...args, bvid: fromUrl }
+          if (reviewed) approvedReviewArgs.set(args, reviewed)
         } else {
           return {
             ok: false,
@@ -2368,10 +2506,10 @@ export function apply(ctx, config) {
           ok: false,
           blocked: true,
           hint: !publicOk
-            ? '现在是「只私信」模式（dmMode=only）—— 规定不发公开评论，改成用 bili_send_message 私信。确实要发时传 force: true。'
+            ? '现在是「只私信」模式（dmMode=only），不能发公开评论。需要本人在工作台调整投递方式。'
             : isReply
-              ? '桌宠 ⚙️ 设置 →「自动化」里「自动回复评论」没开。本人当场让你发时传 force: true。'
-              : '桌宠 ⚙️ 设置 →「自动化」里「自动评论视频」没开。本人当场让你发时传 force: true。',
+              ? '工作台 → 互动与投递中的「自动回复评论」未开启，请本人手动调整。'
+              : '工作台 → 互动与投递中的「自动评论视频」未开启，请本人手动调整。',
         }
       }
       // 2026-10-20：回复也走判重 —— 回过的别再回（上限取消了，判重是唯一刹车）
@@ -2428,7 +2566,7 @@ export function apply(ctx, config) {
               return {
                 ok: false, blocked: true, shallow: true, template: true, rule: t.rule,
                 reason: t.reason, marks: t.marks,
-                hint: t.hint + '（最近几条自己的评论就在口味本子里；真想按原样发，本人当场明确要求，传 force: true。）',
+                hint: t.hint + '（最近几条评论可在口味本子里查看；请改写正文，不能用 force 绕过质量检查。）',
               }
             }
           } catch { /* 模板闸自己坏了不能挡住发评论 —— 上面三道质量闸已经过了 */ }
@@ -2442,6 +2580,7 @@ export function apply(ctx, config) {
        *   · 解析失败**不拦发送**是不对的——图没了话还在，但模型想要的就是那张图，
        *     所以这里明确拒绝并说明原因，让它决定是去掉图重发还是先去 collect。 */
       let pictures
+      let pictureSnapshots = []
       const picInput = String(args.picture ?? '').trim()
       if (picInput) {
         if (isReply) {
@@ -2460,31 +2599,54 @@ export function apply(ctx, config) {
             hint: `一条评论最多带 2 张图（拿到 ${names.length} 个名字）—— 挑最重要的两张，其余留给下一条。`,
           }
         }
-        const files = []
+        const files = [], snapshots = []
         for (const nm of names) {
-          const picFile = resolveSticker(stateDir, nm)
-          if (!picFile) {
+          // Read approved bytes under the library lock and hand the sender a private
+          // snapshot. A forget + same-name pending upload then cannot swap the file
+          // while MCP is still doing its own IO.
+          const shot = snapshotStickerForSend(stateDir, nm)
+          if (!shot) {
+            for (const made of snapshots) made.cleanup()
             return {
               ok: false, blocked: true, sticker_unknown: true,
-              hint: `表情「${nm.slice(0, 40)}」不在库里 —— 用 bili_sticker({action:"list"}) 看现有的，`
+              hint: `表情「${nm.slice(0, 40)}」不在已审核通过的库里 —— 用 bili_sticker({action:"list"}) 看现有的，`
                 + '或 bili_sticker({action:"collect", url:"…", name:"…"}) 先收进来。本条没发（怕你想要的就是那张图）。',
             }
           }
-          files.push(picFile)
+          const approved = approvedReviewArgs.get(args)
+          if (approved) {
+            const expected = (approved.attachments || []).find(item => item.name === shot.name)
+            const hash = createHash('sha256').update(readFileSync(shot.file)).digest('hex')
+            if (!expected || expected.hash !== hash) {
+              shot.cleanup()
+              for (const made of snapshots) made.cleanup()
+              return { ok: false, blocked: true, error: '预览后的表情字节已变化，请拒绝旧预览后重新生成', attachmentChanged: true }
+            }
+          }
+          snapshots.push(shot)
+          files.push(shot.file)
         }
         pictures = files
+        pictureSnapshots = snapshots
       }
 
       /* ⏱️ 出手节奏（2026-10-21 m18802 第 1 条，使用者原话「短时间内连点，几分钟发十几条，
        *   系统就可能会判为机器」）：发新评论和回别人**分开算**（两种间隔不一样），
        *   但连发刹车是**合着算**的 —— 风控看的是"这个号在动"，不看动的是哪种。 */
       const paceBlocked = paceGate(isReply ? 'reply' : 'comment', Boolean(args.force))
-      if (paceBlocked) return paceBlocked
+      if (paceBlocked) {
+        for (const made of pictureSnapshots) made.cleanup()
+        return paceBlocked
+      }
 
       // Only a missing field delegates selection. Explicit picture:"" still means text-only.
-      const autoPicture = !isReply && !Object.hasOwn(args, 'picture') && isFishExecution(toolExecution.getStore())
+      let autoPicture = !isReply && !Object.hasOwn(args, 'picture') && isFishExecution(toolExecution.getStore())
         ? stickerAutomation.pickForSend(String(args.text ?? '')) : null
-      if (autoPicture) pictures = [autoPicture.file]
+      if (autoPicture) {
+        const shot = snapshotStickerForSend(stateDir, autoPicture.name)
+        if (shot) { pictures = [shot.file]; pictureSnapshots = [shot] }
+        else { autoPicture.finish(false); autoPicture = null }
+      }
       let out
       try {
         out = await call('bili_reply', {
@@ -2494,7 +2656,11 @@ export function apply(ctx, config) {
           root,
           ...(pictures ? { pictures } : {}),
         })
-      } finally { autoPicture?.finish(sendOk(out)) }
+      } finally {
+        autoPicture?.finish(sendOk(out))
+        for (const made of pictureSnapshots) made.cleanup()
+        pictureSnapshots = []
+      }
       if (autoPicture && out && typeof out === 'object') out = { ...out, auto_picture: autoPicture.name }
       // 发成功才记节奏（失败也记会把后面本来能发的推后）
       if (sendOk(out)) await paceDone(isReply ? 'reply' : 'comment')
@@ -2595,7 +2761,7 @@ export function apply(ctx, config) {
         tokensTotal: Number(st.tokensTotal) || 0,
         totalTokenBudget: Number(cfg.totalTokenBudget) || 0,
         dmMode: cfg.dmMode,
-        dmUid: Number(cfg.dmUid) || 0,
+        dmUid: cfg.dmUid,
         transcribe: cfg.transcribe,
         loggedIn: hasCredential(),
         home: stateDir,
@@ -2687,7 +2853,7 @@ export function apply(ctx, config) {
       + '适合"我现在就想看一份"的场合。\n'
       + '⚠️ 这是**老的后台刷法**（另起进程、当前对话里看不见）。要"在当前对话里一直刷"用 `bili_feiyu`。',
     parameters: {},
-    async execute() { const r = runDuty('manual'); return { ok: true, ...r } },
+    async execute() { const r = runDuty('manual'); return { ok: r.started === true, ...r } },
   })
 
   /* ⭐ 鲸鱼摸鱼模式：对话启动 ⇒ 用当前对话模型一直刷（宿主 goal 机制自动续轮） */
@@ -2716,51 +2882,42 @@ export function apply(ctx, config) {
     },
   })
 
-  /* 🎬 「昨日冲浪报告」视频 —— 2026-10-22 使用者要求：
-   *   「每天生成一个视频讲今天的冲浪情况，用鲸鱼摸鱼的虚拟形象讲解，要有声音」。
-   * 它**不发布**（使用者先说本地看），所以这只工具只负责做出来 + 告诉你在哪。 */
+  // The selected conversation model authors the whole film; the renderer executes its validated plan.
   tool({
     name: 'bili_pv',
-    description: '🎬 把**某一天的冲浪情况**做成一条鲸鱼摸鱼本人讲解 + 配音的短片（本地 mp4，不发布）。\n'
-      + '片子里讲：那天挑了什么、看了什么、学到哪句话、谁跟本鱼说了话、有没有翻车。\n'
-      + '`action` = make（做一条，默认）/ status（看进度）/ list（已经有哪些）/ stop（停下）。\n'
-      + '⚠️ 一条要 2–6 分钟（要配音 + 逐帧渲染），**这只工具起完就返回**，别在原地等；\n'
-      + '   进度用 `status` 看，或看桌宠 ⚙️ 设置 →「视频 · 模型」。日期不填 = 昨天。',
+    description: '🎬 视频工作室：日报 / 观点放大镜 / 精选安利 / 自由创作，成片保存在本地。\n'
+      + 'make（默认）新开可见制作会话，model 指定负责整条视频的模型；不是只选台词写手。\n'
+      + '制作会话先 prepare 取约定、分镜规范和当天公开素材，再由当前模型提交 preview 检查节奏，确认后提交 render 的完整 production JSON。\n'
+      + '渲染异步执行，status 查进度与失败日志；只有 done 且验证通过才交付。list 看成片与制作会话，stop 停本会话的渲染。',
     parameters: {
-      action: { type: 'string', enum: ['make', 'status', 'list', 'stop'], description: 'make=做一条（默认）· status=看进度 · list=已经有哪些 · stop=停下' },
-      date: { type: 'string', description: '要做哪一天（YYYY-MM-DD，不填 = 昨天）' },
-      force: { type: 'boolean', description: '那天已经有一条了，也要重做（覆盖）' },
-      noNet: { type: 'boolean', description: '不联网取封面（没网 / 想快一点时用；封面会画成占位）' },
+      action: { type: 'string', enum: ['make', 'session', 'prepare', 'preview', 'render', 'status', 'list', 'stop'], description: 'make/session=新开制作会话 · prepare=取规范和素材 · preview=检查分镜节奏 · render=提交最终计划 · status/list/stop' },
+      date: { type: 'string', description: '素材日期 YYYY-MM-DD，默认本地昨天' },
+      mode: { type: 'string', enum: ['daily', 'rant', 'highlights', 'custom'], description: '冲浪日报 / 观点放大镜 / 精选安利 / 自由创作' },
+      brief: { type: 'string', description: '本条视频的创作要求，最多2000字' },
+      targetDurationSec: { type: 'number', description: '目标时长15–300秒，默认90秒' },
+      model: { type: 'string', description: '负责整条视频的 provider/model；省略用已保存选择或来源会话模型' },
+      production: { type: 'string', description: 'render 必填：符合 prepare 规范的完整 JSON 对象字符串，不含 Markdown 围栏' },
     },
-    async execute(args) {
+    async execute(args, exec) {
       refreshCfg()
+      const sessionId = String(exec?.agent?.id || '')
       const action = String(args?.action || 'make').toLowerCase()
-      if (action === 'status') {
-        const s = pv.status()
-        return { ok: true, ...s, hint: s.running ? `正在做 ${s.date}（${s.stage === 'plan' ? '整理分镜' : '渲染画面'}，已 ${Math.round(s.ms / 1000)} 秒）` : (s.error ? s.error : '现在没在做视频') }
-      }
-      if (action === 'list') {
-        const d = pvDirsOf()
-        const videos = pv.list()
-        return { ok: true, out: d.out, count: videos.length, videos: videos.map((v) => ({ date: v.date, size: v.size, mb: +(v.size / 1048576).toFixed(1), file: v.file })) }
-      }
-      if (action === 'stop') return pv.stop()
-      // make
-      const day = String(args?.date || '').trim() || pvYesterday()
-      if (!pvDateOk(day)) return { ok: false, error: `日期得是 YYYY-MM-DD（拿到的是 "${day}"）` }
-      const dep = await pv.checkDeps()
-      if (!dep) {
-        return {
-          ok: false,
-          error: '渲染依赖没装齐（缺 edge-tts / imageio-ffmpeg / Pillow 之一）—— 桌宠 ⚙️ 设置 →「账号」里点一次「装依赖」就好',
-          python: pvPython(),
+      try {
+        if (action === 'prepare') return videoStudio.prepare(args, sessionId)
+        if (action === 'preview') return videoStudio.preview(args, sessionId)
+        if (action === 'render') return await videoStudio.render(args, sessionId)
+        if (action === 'status') return { ...videoStudio.status(sessionId), modelId: videoStudio.sessionRow(sessionId)?.model || cfg.videoModelId || '' }
+        if (action === 'list') {
+          const videos = pv.list(), productions = pv.productions()
+          return { ok: true, out: pvDirsOf().out, count: videos.length + productions.length, videos, productions, sessions: videoStudio.list() }
         }
-      }
-      const r = pv.start(day, { force: args?.force === true, noNet: args?.noNet === true, voice: cfg.pvVoice })
-      if (r.ok && r.started) {
-        return { ...r, hint: `已开做 ${day}，一条约 2–6 分钟；用 bili_pv({action:'status'}) 看进度，成品会落在 ${r.file}` }
-      }
-      return r
+        if (action === 'stop') return videoStudio.stop(sessionId)
+        if (action === 'make' || action === 'session') {
+          if (videoStudio.sessionRow(sessionId)) return { ...videoStudio.prepare(args, sessionId), hint: '已在制作会话中；请编排完整计划后调用 render，无需重复创建会话。' }
+          return await videoStudio.start({ ...args, ...(sessionId ? { sourceSessionId: sessionId } : {}) })
+        }
+        return { ok: false, error: `不认识的 action：${action}` }
+      } catch (error) { return { ok: false, error: String(error?.message || error) } }
     },
   })
 
@@ -2768,12 +2925,16 @@ export function apply(ctx, config) {
   tool({
     name: 'bili_moment',
     description: '🐟 发一条 **B站动态**（就是"说说"）：`text` 是正文，可带图。\n'
-      + '⚠️ 这是**拿使用者账号公开发言**：只有桌宠设置里 `autoMoment` 开着、或使用者当场明确让你发（`force: true`）才能用。\n'
-      + '一天最多 `momentPerDay` 条（默认 1）；正文 300 字以内，别写风控词、别贴链接。',
+      + '⚠️ 这是拿使用者账号公开发言：只有本人在工作台手动打开 autoMoment 后才能发送；force 不是本人授权。\n'
+      + '一天最多 `momentPerDay` 条（默认 1）；正文 300 字以内，别写风控词、别贴链接。\n'
+      + '✍️ **动态是自己在开口，不是日报的缩写**：一条只装一个念头，别把今天看了几条、挑中哪条列一遍；'
+      + '别让「今天看了／读了／挑了／学到…」当默认入口，连着几条同一个起头读的人先看见句式。'
+      + '换个门进来（一句吐槽、一个还没想通的问题、一个甩不掉的画面、跟视频无关的联想都行），'
+      + '想提视频就一句带过，长度跟着念头走。**没有想说的就不发，配额不是催办。**',
     parameters: {
       text: { type: 'string', description: '正文（300 字以内，纯文本）' },
       images: { type: 'array', items: { type: 'string' }, description: '（可选）图片地址或本地路径，最多 9 张' },
-      force: { type: 'boolean', description: '使用者当场让你发的，传 true 越过"自动发说说关着"的闸' },
+      force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
     async execute(args) {
       refreshCfg()
@@ -2784,7 +2945,7 @@ export function apply(ctx, config) {
       if (!gateOn && args?.force !== true) {
         return {
           ok: false, blocked: true,
-          hint: '设置里「自动发说说」是关着的。要用就先去桌宠 ⚙️ 设置 →「自动化」里打开，或者当场跟使用者确认后带 force:true 再调一次。',
+          hint: '工作台中的「自动发说说」未开启，请本人手动打开。模型不能通过 force 或配置 PATCH 自授权限。',
         }
       }
       // ⚠️ 别用 `Number(...) || 1`：`momentPerDay: 0` 会被吞成 1，而设置页写的是「0 = 不发」。
@@ -2792,7 +2953,7 @@ export function apply(ctx, config) {
       const cap = Number.isFinite(capNum) ? Math.max(0, capNum) : 1
       const used = countMomentsToday()
       if (cap <= 0 && args?.force !== true) {
-        return { ok: false, blocked: true, hint: '设置里「每天最多发几条」是 0（= 不发）。要用就先去桌宠 ⚙️ 设置 →「自动化」里调大，或者当场跟使用者确认后带 force:true。' }
+        return { ok: false, blocked: true, hint: '工作台中的动态每日上限是 0（不发），请本人手动调整；模型不能绕过额度。' }
       }
       if (used >= cap && args?.force !== true) {
         return { ok: false, blocked: true, hint: `今天已经发了 ${used}/${cap} 条说说了，明天再聊。` }
@@ -2821,7 +2982,8 @@ export function apply(ctx, config) {
       try { r = await call('bili_send_dynamic', { text, images: Array.isArray(args?.images) ? args.images : [] }) }
       catch (error) {
         // Cancellation before submission did not spend this reservation.
-        if (reserved > 0 && toolExecution.getStore()?.signal?.aborted && error?.name === 'AbortError') await bumpMomentBy(-1)
+        const reviewed = approvedReviewExecutions.get(toolExecution.getStore())
+        if (reserved > 0 && ((toolExecution.getStore()?.signal?.aborted && error?.name === 'AbortError') || reviewed && !reviewed.submitted)) await bumpMomentBy(-1)
         throw error
       }
       let ok = false
@@ -2836,6 +2998,8 @@ export function apply(ctx, config) {
       }
       await paceDone('moment')
       const n = reserved > 0 ? reserved : await bumpMoment()
+      // 🪞 记下这次的开口（失败的不记）—— 下一轮实时信息里会把它摆给模型看
+      await rememberMomentOpening(text)
       log(`🐟 发了一条说说（今天 ${n}/${cap}）：${text.slice(0, 40)}`)
       return { ok: true, momentsToday: n, cap, text }
     },
@@ -2848,8 +3012,9 @@ export function apply(ctx, config) {
       + '⚠️ 二维码大约 180 秒有效，出码要马上递过去；手机上确认时选「记住我」那种长期登录。',
     parameters: {},
     async execute() {
-      const { key, url } = await loginStart()
+      const attempt = await loginSession.start(), { key, url } = attempt
       const png = await renderQrPng(cfg.pythonPath, stateDir, url)
+      if (!loginSession.current(attempt)) return { ok: false, error: '登录请求已被新的二维码替代，请重新查看最新二维码' }
       return {
         ok: true, key, url, png,
         hint: png ? '用 present 把这张 PNG 推给本人扫；扫完调 bili_login_poll' : '没画出 PNG：先去桌宠 ⚙️ 设置 →「账号」里点「装主依赖」（venv 里要有 qrcode）',
@@ -2863,9 +3028,9 @@ export function apply(ctx, config) {
       + '成功时会自动把凭证写进插件家目录的 `bili_credential.json`（MCP 认的那四个字段）。',
     parameters: { key: { type: 'string', description: 'bili_login_start 给的那个 key' } },
     async execute(args) {
-      const r = await loginPoll(String(args.key ?? ''))
+      const r = await loginSession.poll(String(args.key ?? ''))
       if (r.state === 'ok') {
-        const file = saveCredential(stateDir, r.credential)
+        const file = r.file
         log(`登录成功，凭证已写入 ${file}`)
         return { ok: true, state: 'ok', file }
       }
@@ -2883,13 +3048,14 @@ export function apply(ctx, config) {
 
   tool({
     name: 'bili_config',
-    description: '读 / 改「刷B站」的设置。不给 `patch` 就是读；给了就改（只认 schema 里的字段）。\n'
-      + '例：`{"perDay":5,"peakValley":true,"noon":true,"night":true,"autoComment":false,"transcribe":false,"keywords":["DeepSeek Harness"]}`；'
-      + '私信投递：`{"dmMode":"only","dmUid":12345678}`（dmMode = off / only / both）。',
+    description: '读取配置或调整内容与陪伴偏好。不给 patch 就是读。模型可改 persona/focus/keywords/reportLevel/perDay/momentStyle/interactionStyle 及闲聊、安静时段等展示偏好。\n'
+      + '例如：`{"perDay":5,"reportLevel":"brief","keywords":["DeepSeek Harness"]}`。发送权限、收件人、审核、防护、预算、自动任务和执行路径只能由本人在工作台手动设置；模型 PATCH 不能授予权限。',
     parameters: { patch: { type: 'object', additionalProperties: true, description: '要改的字段（可省）' } },
     async execute(args) {
       let host = null
       if (args?.patch && typeof args.patch === 'object' && !Array.isArray(args.patch)) {
+        const decision = modelConfigDecision(args.patch)
+        if (!decision.ok) return decision
         // ⭐ 设置页显式设过的键以宿主为准 ⇒ 必须跟着写一份，否则"改了没反应"（钳范围也在这里）
         host = (await persistCfg(args.patch)).host
       }
@@ -2911,6 +3077,188 @@ export function apply(ctx, config) {
     const run = stateLock.then(() => withFileLockSync(dutyStateFile, fn))
     stateLock = run.then(() => {}, () => {})   // 吞掉错误，别让一次失败卡死后面所有写
     return run
+  }
+
+  /* ── ✋ 发送前预览队列 ───────────────────────────────────────────────────────
+   * `sendReview` 只对鱼模式的自动发送生效。默认关闭，旧发送语义不变。
+   * 队列落在 state.json，重启后仍能看到待处理内容；批准时重新走原工具，
+   * 进程内 WeakMap 只通过预览排队这一层，原开关、质量、判重、节奏和风控闸都不跳过。 */
+  const SEND_REVIEW_TOOLS = new Set(['bili_reply', 'bili_reply_opus', 'bili_dm_reply', 'bili_moment', 'bili_deliver'])
+  const SEND_REVIEW_MAX = 80
+  const approvedReviewArgs = new WeakMap()
+  const approvedReviewExecutions = new WeakMap()
+  const reviewSending = new Set()
+  const reviewKind = (toolName, args = {}) => {
+    if (toolName === 'bili_dm_reply') return '私信'
+    if (toolName === 'bili_deliver') return '成果私信'
+    if (toolName === 'bili_moment') return '动态'
+    if (toolName === 'bili_reply_opus') return String(args.rpid || '0') === '0' ? '动态评论' : '动态回复'
+    return String(args.rpid || '0') === '0' ? '视频评论' : '视频回复'
+  }
+  const reviewArgs = (args = {}) => {
+    const out = {}
+    for (const key of Object.keys(args || {}).sort()) {
+      const value = args[key]
+      if (key === 'force' || key.startsWith('_')) continue
+      if (typeof value === 'string') out[key] = value
+      else if (Array.isArray(value)) out[key] = value
+      else if (value !== undefined) out[key] = value
+    }
+    return out
+  }
+  const reviewIdOf = (toolName, args, at = Date.now()) => 'sr-' + createHash('sha256').update(JSON.stringify([toolName, reviewArgs(args), at, process.pid])).digest('hex').slice(0, 20)
+  const reviewHash = row => createHash('sha256').update(JSON.stringify([row.tool, reviewArgs(row.args), row.attachments || [], row.targetUid || ''])).digest('hex')
+  const readReviewState = () => {
+    const state = readJsonFileSync(dutyStateFile, {})
+    if (!state || typeof state !== 'object' || Array.isArray(state) || state.sendReview !== undefined && !Array.isArray(state.sendReview)) throw new Error('发送预览记录损坏，已停止操作以保留原件')
+    return state
+  }
+  const reviewBook = () => {
+    const state = readReviewState()
+    const rows = Array.isArray(state.sendReview) ? state.sendReview : []
+    return rows.filter((row) => row && typeof row === 'object' && row.id && row.args && row.tool)
+      .map(row => row.state === 'approving' && !reviewSending.has(row.id) ? { ...row, state: 'unknown', error: '审批期间运行中断，发送结果未知。请去 B站核对，不能直接重试。' } : row)
+  }
+  const reviewSnapshot = (withItems = true) => {
+    const rows = reviewBook()
+    return {
+      ok: true,
+      enabled: Boolean(cfg.sendReview),
+      rev: createHash('sha256').update(JSON.stringify([Boolean(cfg.sendReview), rows.map(row => [row.id, row.state, row.hash, row.updatedAt])])).digest('hex'),
+      pending: rows.filter((row) => row.state === 'pending').length,
+      sending: rows.filter((row) => row.state === 'approving').length,
+      unknown: rows.filter((row) => row.state === 'unknown').length,
+      counts: Object.fromEntries(['pending', 'approving', 'unknown', 'sent', 'rejected', 'failed'].map(key => [key, rows.filter(row => row.state === key).length])),
+      ...(withItems ? { items: rows.slice(-SEND_REVIEW_MAX).reverse().map((row) => ({ ...row, args: reviewArgs(row.args) })) } : {}),
+    }
+  }
+  const queueSendReview = async (toolName, args, exec) => {
+    if (!SEND_REVIEW_TOOLS.has(toolName)) return null
+    refreshCfg()
+    if (!cfg.sendReview || approvedReviewArgs.has(args) || !isFishExecution(exec)) return null
+    const text = typeof args?.text === 'string' ? args.text.trim() : ''
+    if (!text || text.length > (toolName === 'bili_moment' ? 300 : toolName === 'bili_dm_reply' ? 200 : toolName === 'bili_deliver' ? 500 : 1000)) return { ok: false, blocked: true, error: '发送预览需要有效且未超长的正文' }
+    let clean
+    try { clean = validateToolArguments(toolInputSchema(backgroundToolRegistry.get(toolName)?.parameters || {}), reviewArgs(args)) }
+    catch (error) { return { ok: false, blocked: true, error: String(error?.message ?? error) } }
+    if (JSON.stringify(clean).length > 16000) return { ok: false, blocked: true, error: '预览参数过长，未保存内容' }
+    if (toolName === 'bili_reply' && !Object.hasOwn(clean, 'picture')) clean.picture = ''
+    const now = Date.now()
+    const id = reviewIdOf(toolName, clean, now)
+    const attachments = []
+    if (toolName === 'bili_reply' && clean.picture) {
+      const names = String(clean.picture).split(/[,，、]+|\s+/).filter(Boolean)
+      if (names.length > 2) return { ok: false, blocked: true, error: '发送预览最多选择 2 张表情' }
+      for (const name of names) {
+        const shot = snapshotStickerForSend(stateDir, name)
+        if (!shot) return { ok: false, blocked: true, error: '图片未审核或已变化，请重新选择：' + name }
+        try {
+          const hash = createHash('sha256').update(readFileSync(shot.file)).digest('hex')
+          attachments.push({ name: shot.name, hash, imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(shot.name)}&source=${shot.source}&hash=${hash}` })
+        }
+        finally { shot.cleanup() }
+      }
+    }
+    if (toolName === 'bili_moment' && clean.images?.length) {
+      if (clean.images.length > 9) return { ok: false, blocked: true, error: '动态最多 9 张附图' }
+      for (const name of clean.images) {
+        const shot = snapshotStickerForSend(stateDir, name)
+        if (!shot) return { ok: false, blocked: true, error: '预览动态附图需先收进已审核表情库；不预览随时可能变化的远程 URL：' + name }
+        try {
+          const bytes = readFileSync(shot.file), hash = createHash('sha256').update(bytes).digest('hex')
+          const dir = join(stateDir, 'send-review-media')
+          mkdirSync(dir, { recursive: true })
+          const fmt = sniffImageFormat(bytes)
+          const file = join(dir, hash + '.' + fmt)
+          try { writeFileSync(file, bytes, { flag: 'wx', mode: 0o600 }) } catch (error) { if (error.code !== 'EEXIST') throw error }
+          attachments.push({ name: shot.name, hash, kind: 'dynamic', fmt, mime: ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' })[fmt] || 'application/octet-stream', imageUrl: `/api/bili-duty/send-review/image?hash=${hash}` })
+        } finally { shot.cleanup() }
+      }
+    }
+    const row = { id, tool: toolName, kind: reviewKind(toolName, clean), args: clean, attachments, targetUid: toolName === 'bili_deliver' ? readableId(cfg.dmUid) : '', state: 'pending', createdAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString(), sourceSessionId: String(exec?.agent?.id || '') }
+    row.hash = reviewHash(row)
+    const result = await withStateLock(() => {
+      const state = readReviewState()
+      const rows = Array.isArray(state.sendReview) ? state.sendReview.filter((item) => item && typeof item === 'object') : []
+      exec?.signal?.throwIfAborted()
+      const duplicate = rows.find((item) => ['pending', 'approving', 'unknown', 'sent'].includes(item.state) && item.hash === row.hash)
+      if (duplicate) return { row: duplicate, duplicate: true }
+      if (rows.filter(item => ['pending', 'approving', 'unknown'].includes(item.state)).length >= SEND_REVIEW_MAX) return { error: '待审队列已满，请先处理现有预览' }
+      rows.push(row)
+      while (rows.length > SEND_REVIEW_MAX) {
+        const removable = rows.findIndex(item => ['sent', 'rejected', 'failed'].includes(item.state))
+        if (removable < 0) break
+        rows.splice(removable, 1)
+      }
+      writeJson(dutyStateFile, { ...state, sendReview: rows })
+      return { row, duplicate: false }
+    })
+    if (result?.error) return { ok: false, blocked: true, error: result.error }
+    const saved = result?.row || row
+    act('note', `${result?.duplicate ? '这条' : '新'}${saved.kind}已放进发送预览，等你点头`, { reviewId: saved.id, tool: toolName })
+    return { ok: true, queued: true, blocked: true, reviewId: saved.id, duplicate: Boolean(result?.duplicate), kind: saved.kind,
+      hint: '发送预览已打开：内容还没发出去，去桌宠「互动与投递」的待审核区批准或拒绝。' }
+  }
+  const decideSendReview = async (id, decision, expectedHash) => {
+    const key = String(id || '').trim()
+    if (!/^sr-[a-f0-9]{20}$/.test(key)) return { ok: false, error: 'reviewId 无效' }
+    if (!['approve', 'reject'].includes(decision)) return { ok: false, error: 'decision 只能是 approve / reject' }
+    if (!/^[a-f0-9]{64}$/.test(String(expectedHash || ''))) return { ok: false, error: '请重新查看预览后提交 expectedHash' }
+    let target = null
+    const claimed = await withStateLock(() => {
+      const state = readReviewState()
+      const rows = Array.isArray(state.sendReview) ? state.sendReview : []
+      const index = rows.findIndex((item) => item?.id === key)
+      if (index < 0) return { ok: false, error: '找不到这条待审核内容' }
+      const row = rows[index]
+      if (row.hash !== expectedHash || reviewHash(row) !== expectedHash) return { ok: false, error: '预览内容已变化，请重新查看后决定' }
+      if (row.state !== 'pending') return { ok: false, already: true, item: row }
+      if (decision === 'approve' && (!Number.isFinite(Date.parse(row.createdAt)) || Date.now() - Date.parse(row.createdAt) > 24 * 3600_000)) return { ok: false, error: '这条预览已超过 24 小时，请拒绝旧内容并重新生成，避免发送过时回复' }
+      target = { ...row, args: reviewArgs(row.args) }
+      rows[index] = { ...row, state: decision === 'approve' ? 'approving' : 'rejected', updatedAt: new Date().toISOString(), decidedAt: new Date().toISOString() }
+      writeJson(dutyStateFile, { ...state, sendReview: rows })
+      if (decision === 'approve') reviewSending.add(key)
+      return { ok: true }
+    })
+    if (!claimed?.ok) return claimed
+    if (decision === 'reject') {
+      act('note', `已拒绝${target.kind}预览`, { reviewId: key })
+      return { ok: true, item: { ...target, state: 'rejected' } }
+    }
+    const wrapped = backgroundToolRegistry.get(target.tool)
+    let output
+    const approvedArgs = { ...target.args }
+    if (target.tool === 'bili_moment' && target.attachments?.length) {
+      try {
+        approvedArgs.images = target.attachments.map(item => {
+          if (!/^[a-f0-9]{64}$/.test(item.hash) || !['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(item.fmt)) throw new Error('预览附图格式无效，未发送')
+          const file = join(stateDir, 'send-review-media', item.hash + '.' + item.fmt)
+          if (createHash('sha256').update(readFileSync(file)).digest('hex') !== item.hash) throw new Error('预览附图已丢失或变化，未发送')
+          return file
+        })
+      } catch (error) { output = { ok: false, blocked: true, error: String(error?.message ?? error) } }
+    }
+    approvedReviewArgs.set(approvedArgs, target)
+    const reviewed = { row: target, submitted: false }, reviewExec = {}
+    approvedReviewExecutions.set(reviewExec, reviewed)
+    try {
+      if (!output) output = wrapped ? await wrapped.execute(approvedArgs, reviewExec) : { ok: false, blocked: true, error: '发送工具当前不可用，请重启 DSH 后重试' }
+    }
+    catch (error) { output = { ok: false, blocked: !reviewed.submitted, error: String(error?.message ?? error), unknown: reviewed.submitted } }
+    finally { approvedReviewArgs.delete(approvedArgs); approvedReviewExecutions.delete(reviewExec); reviewSending.delete(key) }
+    const sent = Boolean(output && !output.error && !output.blocked && !output.queued && (output.success === true || output.ok === true))
+    const rejected = output?.guard_status === 'rejected' || output?.raw?.guard_status === 'rejected'
+    const unknown = output?.unknown || (!sent && !output?.blocked && reviewed.submitted && !rejected)
+    const stateName = sent ? 'sent' : unknown ? 'unknown' : output?.blocked ? 'pending' : 'failed'
+    await withStateLock(() => {
+      const state = readReviewState()
+      const rows = Array.isArray(state.sendReview) ? state.sendReview : []
+      const index = rows.findIndex((item) => item?.id === key)
+      if (index >= 0) rows[index] = { ...rows[index], state: stateName, result: safe(output), updatedAt: new Date().toISOString(), sentAt: sent ? new Date().toISOString() : '' }
+      writeJson(dutyStateFile, { ...state, sendReview: rows })
+    })
+    act(sent ? 'done' : 'error', `${sent ? '已批准并发送' : '批准后发送失败'}${target.kind}预览`, { reviewId: key })
+    return { ok: sent, sent, item: { ...target, state: stateName, result: safe(output) }, result: safe(output), error: sent ? '' : output?.hint || output?.error || '发送结果未知，请去 B站核对' }
   }
 
   /* ── ⏱️ 出手节奏（2026-10-21 使用者 m18802 第 1、2 条）────────────────────────
@@ -3107,11 +3455,27 @@ export function apply(ctx, config) {
     return Math.max(fromState, countPicks(reportFileOf(now)))
   }
 
+  /** 最近七天的事实回顾：只读日报、token 日账和任务明细，不用模型补写主题。 */
+  const sevenDayRetrospective = (st, now = new Date()) => {
+    let ledger = []
+    try { ledger = tokenLedgerSnapshot(stateDir, { limit: 200 }).entries || [] } catch { ledger = [] }
+    return buildSevenDayRetrospective({ now, tokenDays: st?.tokenDays || {}, ledger,
+      readReport: (day) => {
+        const file = join(outDir, `${day}.md`)
+        let size
+        try { size = statSync(file).size } catch (error) { if (error?.code === 'ENOENT') return ''; throw error }
+        if (size > 512 * 1024) throw new Error(`日报超过 512 KiB 安全读取上限（${size} bytes）`)
+        const fd = openSync(file, 'r')
+        try { const bytes = Buffer.alloc(size); const n = readSync(fd, bytes, 0, size, 0); return bytes.subarray(0, n).toString('utf8') }
+        finally { closeSync(fd) }
+      } })
+  }
+
   /* ────────── 🗨️ 桌宠「说话」通道（2026-10-28，把已有数据翻译成人话） ──────────
    * st.petEvent = { at, text, tone }：收工小结 / 闲聊 / 提醒统一走这里，PetRoot 监听
    * .at 变化冒 toast。文案全部本地兜底 —— 收工时不想为一句词再等一次推理。 */
-  const petEvent = (text, tone = 'info') => {
-    try { bumpState({ petEvent: { at: Date.now(), text: String(text || ''), tone } }).catch(() => {}) } catch { /* 说不出来就算 */ }
+  const petEvent = (text, tone = 'info', kind = tone === 'warn' ? 'error' : tone === 'good' ? 'complete' : 'note') => {
+    try { bumpState({ petEvent: { at: Date.now(), text: String(text || ''), tone, kind } }).catch(() => {}) } catch { /* 说不出来就算 */ }
     try { act(tone === 'warn' ? 'error' : 'note', text) } catch { /* 流水写不进也不影响收工 */ }
   }
   const fmtRunLen = (sec) => {
@@ -3162,15 +3526,14 @@ export function apply(ctx, config) {
       if (heads.length) {
         const t = heads[Math.floor(Math.random() * heads.length)]
         picks.push(
-          `刚才翻到《${t}》，回头想跟你细说`,
-          `《${t}》这条我看了两遍 —— 为什么留它，报告里写了`,
-          `今天刷到《${t}》的时候差点笑出声`,
+          `小鱼书签夹在《${t}》这里了，报告里留了选它的理由。`,
+          `想接着翻的话，可以从《${t}》开始；它在今天的精选里。`,
         )
       }
       picks.push(
         '鱼今天很闲，水换得勤快，泡泡也比平时圆',
-        '悄悄巡了一圈评论区，没出手 —— 有些话不说比说了好',
-        '发了会儿呆，记下了一个下次想试的开头',
+        '鱼的今日难题：是先找有趣的东西，还是先想吃什么。',
+        '给下一点好奇留了个座位，你忙你的，我在这儿。',
       )
       return picks[Math.floor(Math.random() * picks.length)]
     } catch { return '' }
@@ -3420,6 +3783,7 @@ export function apply(ctx, config) {
     const learned = learnInject(learnLedger(), { budget: 1200, mode: 'dafeiyu' })
     const lines = [
       CHARACTER_COMPASS,
+      companionPrompt(cfg),
       cfg.persona ? '【使用者为此角色补充的设定】\n' + cfg.persona : '',
       /* ⭐ 2026-10-28「刷多久」语义：时长是工作量目标，不是上限。
        *    旧版写「做完这一小段就结束进程」，模型刷一小段就自己退了 ⇒ 使用者看到
@@ -3430,7 +3794,7 @@ export function apply(ctx, config) {
           ? `本次是时段任务：要一直刷到 ${new Date(opts.windowEndAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}（还剩约 ${Math.max(1, Math.round((opts.windowEndAt - Date.now()) / 60_000))} 分钟），`
           : Number(opts.durationMinutes) > 0 ? `本次计划刷约 ${opts.durationMinutes} 分钟，` : '本轮刷到节奏账本建议收工为止，')
         + '做完一轮（找片 → 读字幕 → 挑着互动 → 记一句）就接着开下一轮，中间按节奏闸自然休息；时间没到就继续找新视频、翻评论区、整理待审材料，别提前收工。先读章程 ' + duty + '。',
-      buildLiveBrief({ cfg, day: dayKey(), picked: countPickedToday(), moments: countMomentsToday(), outDir, digestDir }),
+      buildLiveBrief({ cfg, day: dayKey(), picked: countPickedToday(), moments: countMomentsToday(), outDir, digestDir, recentOpenings: recentMomentOpenings() }),
       '按自己的兴趣找近7天的新视频，读字幕原文后判断；没找到合适的可以空手。可爱、吐槽和闲话都行，不靠固定自称、颜文字或关键词证明人格。',
       '开关只代表允许：不要求每挑一条就评、不要求发动态、不要求每轮学习或写心情。发送未知是否成功不能重发；收到节奏或冷却拒绝就换只读的事做。',
       '本进程通过宿主工具桥调用同一套鲸鱼摸鱼工具，以实际注册说明为准：bili_buzzwords 看热词，bili_seen 查刷过的片，bili_say 留选片旁白；bili_learn 只收集待审材料，不能自行批准；bili_soul 只记真实互动感受。发送前问 bili_pace，评论用 bili_reply / bili_reply_opus，私信开着时用 bili_dm_inbox / bili_dm_reply。共享开关、判重与节奏账本，未授权工具不可用。',
@@ -3584,6 +3948,7 @@ export function apply(ctx, config) {
    * 统一收紧：**必须是对象**才算数（bili_reply_opus 一直就是这么判的，口径拉齐）。
    */
   const sendOk = (out) => Boolean(out) && typeof out === 'object' && !Array.isArray(out) && !out.error && out.success !== false
+    && (out.success === true || out.ok === true)
 
   /* ⭐ 跑一轮的互斥 + 生命周期（2026-10-26）：
    * `runDuty` 有三条入口（bili_run 工具 / 设置页 POST /run / 谷时 tick），
@@ -4014,12 +4379,12 @@ export function apply(ctx, config) {
       if (activeManualBrowsing()) return true
       if (feiyuAgent) {
         const g = ctx.get('goals')?.get(feiyuAgent)
-        if (g && g.phase === 'active' && g.activation === 'armed') return true
+        if (isFeiyuGoal(g) && personaScope(resolveSessionPreset(ctx, feiyuAgent), g).enabled) return true
       }
       for (const id of feiyuLive.keys()) {
         const a = ctx.get('agents')?.get?.(id)
         const g = a ? ctx.get('goals')?.get(a) : null
-        if (g && g.phase === 'active' && g.activation === 'armed') return true
+        if (isFeiyuGoal(g) && personaScope(resolveSessionPreset(ctx, a), g).enabled) return true
       }
       // ⭐ 2026-10-20：进程重启后 `feiyuLive` 是空的、`feiyuAgent` 是 null，
       //    但 goal 是**存在 session 里**的（不随进程消失）⇒ 只靠上面两圈会漏判，
@@ -4028,7 +4393,7 @@ export function apply(ctx, config) {
       for (const a of (ctx.get('agents')?.list?.() ?? [])) {
         const g = ctx.get('goals')?.get(a)
         if (!g || g.phase !== 'active' || g.activation !== 'armed') continue
-        if (String(g.objective || '').startsWith(FEIYU_MARK)) return true
+        if (isFeiyuGoal(g) && personaScope(resolveSessionPreset(ctx, a), g).enabled) return true
       }
       return false
     } catch { return false }
@@ -4131,13 +4496,13 @@ export function apply(ctx, config) {
           && countPickedToday(now) < Number(cfg.perDay || 0)
         /* 🫧 闲聊泡泡：空闲时偶尔冒一句观察 —— 下一次开口时间抽好存进 state（不然每跳重抽
          *    随机数，等效恒为下限 2.2 小时）；免跑牌期间（用户说了「停」）绝不插话。 */
-        if (!scheduleDue && cfg.idleChatter !== false && !(Number(st.bgWindowHold) > now.getTime())) {
+        if (!scheduleDue && cfg.idleChatter !== false && companionPolicy(cfg, now).chatterAllowed && !(Number(st.bgWindowHold) > now.getTime())) {
           const due = Number(st.petChatterAt) || 0
           if (Date.now() >= due) {
             const line = chatterLine()
             if (line) {
-              petEvent(line, 'info')
-              bumpState({ petChatterAt: Date.now() + (2.2 + Math.random() * 1.3) * 3600_000 }).catch(() => {})
+              petEvent(line, 'info', 'chatter')
+              bumpState({ petChatterAt: nextChatterAt(cfg) }).catch(() => {})
             }
           }
         }
@@ -4267,7 +4632,7 @@ export function apply(ctx, config) {
   const adoptFeiyu = (agent) => {
     if (!agent) return null
     const preset = resolveSessionPreset(ctx, agent)
-    if (preset.known && preset.id !== 'dafeiyu') return null
+    if (preset.id !== 'dafeiyu') return null
     if (feiyuLive.has(agent.id)) return feiyuLive.get(agent.id)
     let g = null
     try { g = ctx.get('goals')?.get(agent) } catch { g = null }
@@ -4574,6 +4939,7 @@ export function apply(ctx, config) {
   }
   const beginBrowsingTurn = (agent, turn) => {
     if (!agent?.id || !agent.session) return
+    if (!isFishExecution({ agent })) return
     let previous = browsingTurns.get(agent.id)
     if (previous?.session !== agent.session) previous = null
     // running is published before turn/start; the latter supplies identity, not
@@ -4741,13 +5107,40 @@ export function apply(ctx, config) {
   const bumpMoment = () => bumpMomentBy(1)
 
   /**
+   * 🪞 记下这条动态是**怎么开口的**，只留开头十几个字，最多留最近 5 条。
+   *
+   * 为什么要记：模型每轮都是新上下文，它**看不见自己上一条长什么样** ——
+   * 光在章程里喊「别老用今天开头」是没用的，得把上一次的开头摆到它眼前。
+   * 真机证据（2026-10-28）：最近 12 条动态里 10 条以「今天看了／读了／挑了一条片／学到…」起头。
+   *
+   * ⚠️ 只存开头、不存全文：够它认出句式即可，存全文等于给它一份可抄的旧稿。
+   * ⚠️ 只在**发送成功之后**记（失败/退回名额不该污染这面镜子）。
+   */
+  const rememberMomentOpening = (text) => withStateLock(() => {
+    const flat = String(text || '').replace(/\s+/g, ' ').trim()
+    if (!flat) return
+    const head = [...flat].slice(0, 14).join('')
+    const st = readJson(dutyStateFile, {})
+    const prev = Array.isArray(st.momentOpenings) ? st.momentOpenings : []
+    const next = [...prev, head].slice(-MOMENT_OPENING_KEEP)
+    writeJson(dutyStateFile, { ...st, momentOpenings: next })
+  })
+
+  /** 最近几条动态的开头（给 `buildLiveBrief` 当镜子用；跨天也保留，疲劳是按条算的不是按天） */
+  const recentMomentOpenings = () => {
+    const st = readJson(dutyStateFile, {})
+    return Array.isArray(st.momentOpenings) ? st.momentOpenings.slice(-MOMENT_OPENING_KEEP) : []
+  }
+
+  /**
    * ⭐ 开一轮鲸鱼摸鱼模式：在**当前这个 agent** 上建一个 goal。
    *   之后 goal-round-driver 会在每轮结束时自动续上 —— 我们什么都不用做。
    * ⚠️ 一个会话同时只能有一个 goal：已经有活跃 goal 时如实告诉用户，别硬抢。
    */
   const feiyuStart = (agent, opts = {}) => {
     const preset = resolveSessionPreset(ctx, agent)
-    if (preset.known && preset.id !== DAFEIYU_PRESET_ID) return { ok: false, mode_required: true, hint: '先选择鲸鱼摸鱼模式，再明确说开始刷。' }
+    if (preset.id !== DAFEIYU_PRESET_ID) return { ok: false, mode_required: true, hint: '先选择鲸鱼摸鱼模式，再明确说开始刷。' }
+    if (!roleTools.refresh(agent)) return { ok: false, scope_unavailable: true, error: '宿主缺少会话工具作用域，已禁用对话内开刷；请更新 DSH。后台与定时设置仍可通过工作台使用。' }
     refreshCfg()
     const goals = ctx.get('goals')
     if (!goals || typeof goals.create !== 'function') {
@@ -4868,7 +5261,8 @@ export function apply(ctx, config) {
 
   const feiyuResume = (agent) => {
     const preset = resolveSessionPreset(ctx, agent)
-    if (preset.known && preset.id !== DAFEIYU_PRESET_ID) return { ok: false, mode_required: true, hint: '先切回鲸鱼摸鱼模式，再继续刷。' }
+    if (preset.id !== DAFEIYU_PRESET_ID) return { ok: false, mode_required: true, hint: '先切回鲸鱼摸鱼模式，再继续刷。' }
+    if (!roleTools.refresh(agent)) return { ok: false, scope_unavailable: true, error: '宿主缺少会话工具作用域，不能恢复对话内开刷，请更新 DSH。' }
     const goals = ctx.get('goals')
     const g = (() => { try { return goals.get(agent) } catch { return undefined } })()
     if (!g) return { ok: false, error: '这个会话没有 goal，先用 bili_feiyu 开一个' }
@@ -4946,6 +5340,29 @@ export function apply(ctx, config) {
       } catch (error) { log('退出鲸鱼摸鱼模式时暂停目标失败：' + String(error?.message ?? error)) }
     }, 'agent-preset/selected')
   } catch (error) { log('鲸鱼摸鱼模式退出监听未挂载：' + String(error?.message ?? error)) }
+
+  // Preset events may predate plugin loading after restart. The native goal
+  // driver owns its own objective prompt, so an empty persona section alone is
+  // not sufficient: disarm only a stale fish goal before the next request.
+  const enforceModeBoundary = agent => {
+    if (!agent || personaScope(resolveSessionPreset(ctx, agent), null).enabled) return
+    roleTools.detach(agent)
+    cancelStickerSession(agent)
+    finishManualBrowsing(agent, 'mode-exit')
+    const goal = ctx.get('goals')?.get(agent)
+    if (goal?.phase === 'active' && String(goal.objective || '').startsWith(FEIYU_MARK)) {
+      const result = feiyuStop(agent, 'mode-exit')
+      if (!result.ok) log('作用域边界暂停失败：' + String(result.error || 'unknown'))
+    }
+  }
+  try {
+    onEvent('agent/created', ({ agent }) => enforceModeBoundary(agent), '鲸鱼目标重启隔离')
+    onEvent('agent/pre-step', (step, next) => {
+      enforceModeBoundary(step?.agent)
+      return next()
+    }, '鲸鱼目标请求隔离')
+    for (const agent of (ctx.get('agents')?.list?.() || [])) enforceModeBoundary(agent)
+  } catch (error) { log('鲸鱼目标作用域保护未挂载：' + String(error?.message ?? error)) }
 
   const feiyuStatus = (agent) => {
     refreshCfg()
@@ -5097,7 +5514,7 @@ export function apply(ctx, config) {
           } : null)
           if (!scope.enabled) return ''
           if (!live && agent) live = adoptFeiyu(agent)
-          const parts = [CHARACTER_COMPASS]
+          const parts = [CHARACTER_COMPASS, companionPrompt(cfg), '【当前陪伴档位】' + interactionStyleGuide(cfg.interactionStyle)]
           // The early boundary also excludes memories and learning after explicit deselection.
           if (cfg.persona && (inFeiyuPreset || reallyRunning)) {
             parts.push('===== 你的人格设定（使用者写的，**按这个说话**）=====', cfg.persona, '===== 设定结束 =====')
@@ -5174,6 +5591,7 @@ export function apply(ctx, config) {
           if (live && !live.stoppedAt && reallyRunning) {
             parts.push(buildLiveBrief({
               cfg, day: dayKey(), picked: countPickedToday(), moments: countMomentsToday(), outDir, digestDir,
+              recentOpenings: recentMomentOpenings(),
             }))
           }
           return parts.join('\n')
@@ -5315,6 +5733,7 @@ export function apply(ctx, config) {
       description: '🐟 鲸鱼摸鱼模式：开始 / 停止 / 继续 / 状态 / 收台子',
       input: { hint: '[start|stop|resume|status|clear]', attachments: false },
       handler: ({ agent, rawInput }) => {
+        if (!personaScope(resolveSessionPreset(ctx, agent), null).enabled) return { kind: 'error', text: '此命令仅在鲸鱼摸鱼模式内可用，请先切换模式。' }
         const sub = String(rawInput || '').trim().toLowerCase() || 'start'
         try {
           if (sub === 'stop' || sub === 'pause' || sub === '停') {
@@ -5432,6 +5851,20 @@ export function apply(ctx, config) {
     env: pyEnv(),
     gsv: pvGsvOf,
   })
+  const publicVideoSources = (date) => readRecordEvents(stateDir, { date, type: 'activity', limit: 300, maxBytes: 512 * 1024 })
+    .filter(row => !/(?:bili_dm_|private|inbox)/i.test(String(row.data?.tool || ''))
+      && !/^(?:dm|private)(?:[.:_-]|$)/i.test(String(row.data?.kind || '')) && !/私信/.test(String(row.data?.text || '')))
+    .flatMap(row => {
+      const data = row.data || {}
+      const bvid = /BV[A-Za-z0-9]{10}/.exec(String(data.bvid || '') + ' ' + String(data.text || ''))?.[0]
+      if (!bvid) return []
+      return [{ id: row.eventId, eventId: row.eventId, date, bvid, kind: 'public-record',
+        title: redactRecordText(data.title || '当日公开视频活动', { maxLength: 160 }),
+        excerpt: redactRecordText(data.text || '', { maxLength: 1000 }),
+        url: `https://www.bilibili.com/video/${bvid}` }]
+    })
+  const videoStudio = createVideoStudio({ ctx, pv, stateDir, config: () => cfg, publicSources: publicVideoSources, log })
+  ctx.effect(() => () => videoStudio.dispose(), 'bili-duty: 收视频制作会话回执')
 
   /**
    * 建 venv + 装依赖 —— ⭐ **起完就返回，不等它装完**。
@@ -5450,13 +5883,7 @@ export function apply(ctx, config) {
   let uvOk = null
   const haveUv = async () => {
     if (uvOk) return true
-    const ok = await new Promise((resolve) => {
-      try {
-        const c = spawn('uv', ['--version'], { windowsHide: true, stdio: 'ignore' })
-        c.on('exit', (code) => resolve(code === 0))
-        c.on('error', () => resolve(false))
-      } catch { resolve(false) }
-    })
+    const ok = await probeCmd('uv')
     // ⭐ 只缓存"有"：把"没有"也缓存住的话，这一轮里刚下好的 uv（或用户刚装上的）会被一直当成没有，
     //    非重启 dsh 不可 ✗（调用点只有装依赖那两处，多探一次几毫秒）
     if (ok) uvOk = true
@@ -5493,14 +5920,14 @@ export function apply(ctx, config) {
   }
 
   /** 探一下某个命令在不在（用于"这台机器有没有 python"）—— 陌生人第一条坎就卡在这儿 */
-  const probeCmd = (cmd) => new Promise((resolve) => {
+  const probeCmd = (cmd, args = ['--version']) => new Promise((resolve) => {
     let c = null
     const finish = makeFinisher(resolve, 20_000, {
       value: false,
       onTimeout: () => { try { c?.kill('SIGKILL') } catch { /* 已经没了 */ } },
     })
     try {
-      c = spawn(cmd, ['--version'], { windowsHide: true, stdio: 'ignore' })
+      c = spawn(cmd, args, { windowsHide: true, stdio: 'ignore' })
       c.on('exit', (code) => finish(code === 0))
       c.on('error', () => finish(false))
     } catch { finish(false) }
@@ -5574,13 +6001,24 @@ export function apply(ctx, config) {
     } catch { /* 轮转失败不该影响跑一轮 */ }
   }
   let installingAsr = false
+  const asrInstallSnapshot = () => {
+    try {
+      const state = readJsonFileSync(dutyStateFile, {})
+      if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('invalid state')
+      const saved = state.asrInstall
+      if (saved === undefined) return { state: 'unknown', phase: '', ok: null, running: false, error: '' }
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved) || !['running', 'done', 'failed', 'interrupted'].includes(saved.state) || typeof saved.ok !== 'boolean') throw new Error('invalid ASR state')
+      if (saved.running && !installingAsr) return { ...saved, state: 'interrupted', ok: false, running: false, error: '上次转写安装已中断，请重新安装转写依赖' }
+      return saved
+    } catch { return { state: 'failed', phase: 'state', ok: false, running: false, error: '转写安装状态损坏，未按就绪处理；请检查本地 state.json' } }
+  }
+  const asrEnvironment = () => inspectAsrEnvironment(asrDir, { installState: asrInstallSnapshot() })
 
   /** 找 uv：系统里的 → 插件家里下好的 → 自己下一份（给"两样都没有"的人）；主/转写两套安装共用 */
   const resolveUv = async () => {
     const bundled = join(stateDir, 'bin', process.platform === 'win32' ? 'uv.exe' : 'uv')
     if (await haveUv()) return 'uv'
-    if (existsSync(bundled)) return bundled
-    appendInstall('这台机器上没有 uv —— 我下一份放进插件家目录（单文件、免管理员、约 15MB，只需要一次）…\n')
+    appendInstall(existsSync(bundled) ? '检查本机缓存 uv 的完整性和可运行状态…\n' : '这台机器上没有 uv —— 我下一份放进插件家目录（单文件、免管理员，只需要一次）…\n')
     const got = await ensureUv({ dir: join(stateDir, 'bin'), log: appendInstall })
     if (got) appendInstall('uv 已就位：' + got + '\n')
     return got
@@ -5613,15 +6051,24 @@ export function apply(ctx, config) {
     installingAsr = true
     appendAsr(`\n=== ${new Date().toISOString()} 开始装"本地转写"依赖 ===\n`)
     ;(async () => {
+      let installation = { state: 'running', phase: 'environment', ok: false, running: true, model: String(cfg.asrModel || 'small'), startedAt: new Date().toISOString(), finishedAt: '', error: '' }
+      const transition = async patch => {
+        installation = { ...installation, ...patch }
+        await bumpState({ asrInstall: installation })
+      }
       try {
+        await transition({})
+        if (existsSync(asrDir) && lstatSync(asrDir).isSymbolicLink()) throw new Error('转写 .venv-asr 指向符号链接或目录联接；为保护外部环境，本次不安装。请先手动迁移为插件独立环境。')
         const mirror = process.env.BILI_DUTY_PIP_MIRROR || 'https://pypi.tuna.tsinghua.edu.cn/simple'
         const hf = process.env.BILI_DUTY_HF_ENDPOINT || 'https://hf-mirror.com'
         const py = asrPython()
         const uvCmd = await resolveUv()
         if (!existsSync(py)) {
           // --seed：把 pip 也装进去（uv 默认不给）—— 不然出现问题时连 pip 都没有，没法补救 ✗
-          if (uvCmd) await spawnTo(uvCmd, ['venv', '--seed', asrDir], { sink: appendAsr })
-          else await spawnTo(String(cfg.pythonPath || 'python'), ['-m', 'venv', asrDir], { sink: appendAsr })
+          const created = uvCmd
+            ? await spawnTo(uvCmd, ['venv', '--seed', asrDir], { sink: appendAsr })
+            : await spawnTo(String(cfg.pythonPath || 'python'), ['-m', 'venv', asrDir], { sink: appendAsr })
+          if (created !== 0) throw new Error('转写 Python 环境创建失败，请检查上方日志后重试')
         }
         if (!existsSync(py)) {
           // ⭐ 2026-10-19（用户 `天文星球` 的截图）：uv 报 `Could not acquire lock … uv\cache\.lock 拒绝访问 (os error 5)`
@@ -5631,8 +6078,9 @@ export function apply(ctx, config) {
           appendAsr('  ① 上面日志里出现 "Could not acquire lock / uv\\cache\\.lock / 拒绝访问" ⇒ 是 uv 缓存目录没权限；\n')
           appendAsr('     装新版（0.1.11+）会把缓存改到插件自己的家目录，就不会再碰 %LOCALAPPDATA%\\uv 了。\n')
           appendAsr('  ② 机器上没有可用的 uv 或 Python ⇒ 先点上面的「装依赖」，把主依赖装好再来。\n')
-          log('转写：建环境失败'); return
+          throw new Error('转写：建环境失败')
         }
+        await transition({ phase: 'packages' })
         appendAsr('装 faster-whisper + yt-dlp（走国内镜像）…\n')
         let code = 1
         // ⚠️ av 必须钉在 17 以下：faster-whisper 1.2.1 会调 av.open(metadata_errors=…)，
@@ -5640,24 +6088,34 @@ export function apply(ctx, config) {
         const AV_PIN = process.env.BILI_DUTY_AV_PIN || 'av>=12,<17'
         if (uvCmd) code = await spawnTo(uvCmd, ['pip', 'install', '--python', py, '-i', mirror, 'faster-whisper', 'yt-dlp', AV_PIN], { sink: appendAsr })
         if (code !== 0) code = await spawnTo(py, ['-m', 'pip', 'install', '-i', mirror, 'faster-whisper', 'yt-dlp', AV_PIN], { sink: appendAsr })
-        if (code !== 0) { appendAsr('装包失败 —— 看上面的报错\n'); log('转写：装包失败'); return }
+        await transition({ packageExitCode: code })
+        if (code !== 0) throw new Error('转写装包失败，请检查上方日志后重试')
+        await transition({ phase: 'imports' })
+        const importCode = await spawnTo(py, ['-c', ASR_RUNTIME_CHECK], { sink: appendAsr })
+        await transition({ importExitCode: importCode })
+        if (importCode !== 0 || !inspectAsrEnvironment(asrDir).ready) throw new Error('转写运行依赖导入校验失败；不下载模型，也不标记就绪')
         // ⭐ 顺手把模型也下好（不然第一次跑那一轮会卡在下载上 ✗）；模型走 HuggingFace 国内镜像
-        const model = String(cfg.asrModel || 'small')
+        const model = installation.model
         // 模型缓存必须放进插件家：默认的 ~/.cache 在本机拒绝写入（2026-10-14 实测 WinError 5）
         const hfHome = join(stateDir, '.hf-cache')
         try { mkdirSync(hfHome, { recursive: true }) } catch { /* 建不了后面会给报错 */ }
         appendAsr(`下 Whisper 模型「${model}」（缓存在 ${hfHome}，源 ${hf}，几百 MB，只需要一次）…\n`)
+        await transition({ phase: 'model' })
         const code2 = await spawnTo(py, ['-c',
           'import os,sys;os.environ["HF_HUB_DISABLE_XET"]="1";from faster_whisper import WhisperModel;WhisperModel(sys.argv[1], device="cpu", compute_type="int8");print("模型就绪")',
           model], { sink: appendAsr, env: { HF_ENDPOINT: hf, HF_HOME: hfHome, HF_HUB_DISABLE_XET: '1' } })
-        appendAsr(`=== 结束（装包 exit ${code}，模型 exit ${code2}，asrReady=${asrReadyNow()}）===\n`)
+        await transition({ modelExitCode: code2 })
+        if (code2 !== 0) throw new Error('转写模型准备失败；不标记就绪，请检查日志后重试')
+        await transition({ state: 'done', phase: 'done', ok: true, running: false, modelReady: true, finishedAt: new Date().toISOString() })
+        appendAsr(`=== 安装校验完成（装包 exit ${code}，导入 exit ${importCode}，模型 exit ${code2}，asrReady=${asrReadyNow()}）===\n`)
         log(`装转写依赖结束：exit=${code}/${code2}`)
       } catch (e) {
+        try { await transition({ state: 'failed', ok: false, running: false, modelReady: false, error: String(e?.message || e), finishedAt: new Date().toISOString() }) } catch { /* Preserve damaged shared state; never replace it with an empty ledger. */ }
         appendAsr(`装转写依赖崩了：${e?.stack ?? e}\n`)
         log(`装转写依赖崩了：${e?.message ?? e}`)
       } finally { installingAsr = false }
     })()
-    return { ok: true, started: true, log: asrLogFile, hint: '正在后台装转写依赖 —— 进度显示在下面（要下几百 MB 模型，慢一点正常）' }
+    return { ok: true, started: true, completed: false, log: asrLogFile, hint: '已开始安装转写依赖；运行依赖与模型校验完成后才标记就绪，最终结果和失败原因显示在状态与日志中。' }
   }
 
   const runInstall = () => {
@@ -5665,23 +6123,38 @@ export function apply(ctx, config) {
     installing = true
     appendInstall(`\n=== ${new Date().toISOString()} 开始装依赖 ===\n`)
     ;(async () => {
+      const venvRoot = join(stateDir, '.venv')
+      let backup = '', keepNewEnvironment = false
       try {
         const reqFile = join(pluginDir, 'vendor', 'bilibili-mcp', 'requirements.txt')
         const mirror = process.env.BILI_DUTY_PIP_MIRROR || 'https://pypi.tuna.tsinghua.edu.cn/simple'
         const venvPy = venvPython()
         const py = String(cfg.pythonPath || 'python')
-          const uvCmd = await resolveUv()   // ⭐ 系统里的 → 家里下好的 → 自己下一份
-        if (!existsSync(venvPy) && !uvCmd && !(await probeCmd(py))) {
-          const msg = '这台机器上没有 uv，也没有可用的 python（试过 "' + py + '"），而且我自动下 uv 也没成功'
-            + '（大概是网络到不了 GitHub / PyPI 镜像）。⇒ 请手动装 uv（单个 exe：https://docs.astral.sh/uv/）'
-            + '或 Python 3.10+（安装时勾 Add to PATH），然后回来再点一次「装依赖」。'
-          appendInstall(msg + '\n'); log(msg); installing = false; return
+        if (existsSync(venvRoot) && lstatSync(venvRoot).isSymbolicLink()) throw new Error('插件 .venv 指向符号链接或目录联接；为保护外部环境，本次不安装。请先手动迁移为插件独立环境。')
+        const before = mainEnvironment()
+        const compatibleInterpreter = before.pythonCompatible && await probeCmd(venvPy, ['-c', PYTHON_COMPATIBILITY_CHECK])
+        const needsCreation = !existsSync(venvRoot) || !compatibleInterpreter
+        const uvCmd = await resolveUv()
+        let bootstrapPython = ''
+        if (needsCreation && !uvCmd) {
+          for (const candidate of [...new Set([py, 'python', 'python3'])]) {
+            if (candidate === venvPy) continue
+            if (await probeCmd(candidate, ['-c', PYTHON_COMPATIBILITY_CHECK])) { bootstrapPython = candidate; break }
+          }
+          if (!bootstrapPython) throw new Error('没有可用的 uv 或 Python 3.11–3.13。请安装 uv 或兼容的 Python 后重试；现有环境未改动。')
         }
-        if (!existsSync(venvPy)) {
-          // ⭐ 2026-10-17（issue #8③）：ASR 那个环境带了 --seed，主环境却漏了 ⇒ uv 建的 venv 默认不含 pip，
-          //    一旦镜像失败、回退 `python -m pip` 就是 `No module named pip` ⇒ 连补救的路都没有 ✗
-          if (uvCmd) await spawnLogged(uvCmd, ['venv', '--seed', join(stateDir, '.venv')])
-          if (!existsSync(venvPy) && !uvCmd) await spawnLogged(py, ['-m', 'venv', join(stateDir, '.venv')])
+        if (needsCreation) {
+          if (existsSync(venvRoot)) {
+            const destination = `${venvRoot}.backup-${randomUUID()}`
+            appendInstall(`需要升级 Python（${before.pythonVersion || '版本无法确认'} → 3.11–3.13）；先保留旧环境：${destination}\n`)
+            if (mcp) { mcp.stop(); mcp = null; mcpKey = '' }
+            renameSync(venvRoot, destination)
+            backup = destination
+          }
+          const created = uvCmd
+            ? await spawnLogged(uvCmd, ['venv', '--python', MAIN_PYTHON_RANGE, '--seed', venvRoot])
+            : await spawnLogged(bootstrapPython, ['-m', 'venv', venvRoot])
+          if (created !== 0 || !existsSync(venvPy) || !(await probeCmd(venvPy, ['-c', PYTHON_COMPATIBILITY_CHECK]))) throw new Error('未能创建 Python 3.11–3.13 环境；未继续安装依赖。')
         }
         let code = 1
         // ⭐ 2026-10-17（issue #8②）：镜像也会整站拒绝（清华对部分 IP 回 403，而 pip 的报错写成"这个包不存在"，很误导）
@@ -5690,16 +6163,21 @@ export function apply(ctx, config) {
         for (let i = 0; i < mirrors.length && code !== 0; i++) {
           const m = mirrors[i]
           if (i > 0) appendInstall(`\n--- 换个镜像再试：${m} ---\n`)
-          if (uvCmd) code = await spawnLogged(uvCmd, ['pip', 'install', '--python', venvPy, '-i', m, '-r', reqFile])
-          if (code !== 0) code = await spawnLogged(venvPy, ['-m', 'pip', 'install', '-i', m, '-r', reqFile])
+          if (uvCmd) code = await spawnLogged(uvCmd, ['pip', 'install', '--require-hashes', '--python', venvPy, '-i', m, '-r', reqFile])
+          if (code !== 0) code = await spawnLogged(venvPy, ['-m', 'pip', 'install', '--require-hashes', '-i', m, '-r', reqFile])
         }
-        if (code === 0 && existsSync(venvPy)) {
+        const candidate = inspectMainEnvironment(venvRoot, { ignoreRuntimeFailure: true })
+        const runtimeOk = code === 0 && candidate.ready && await probeCmd(venvPy, ['-c', MAIN_RUNTIME_CHECK])
+        if (candidate.exists) atomicWriteFileSync(join(venvRoot, 'deepmoyu-health.json'), JSON.stringify({ ok: runtimeOk, at: new Date().toISOString() }))
+        if (runtimeOk) {
           // ⚠️ 光写 config.json 不够：DSH 原生设置里那份旧值（"python"）会在 loadCfg 时压回来
           //    （已由 loadCfg 的 HOST_WINS_EXCLUDED 解决 ✓）；这里再把宿主的同步结果说清楚，
           //    免得以后再出现"日志说设好了、实际没生效" ✗
           const r = await persistCfg({ pythonPath: venvPy })
+          keepNewEnvironment = true
           appendInstall(`已把 pythonPath 设为 ${venvPy}（DSH 那边${r?.host?.ok ? '已同步' : '没写成：' + (r?.host?.error || '未知原因')}）\n`)
-        }
+          if (backup) appendInstall(`升级完成；旧环境保留在 ${backup}，未自动删除。\n`)
+        } else throw new Error(`主环境安装或运行校验失败（exit ${code}）：${mainEnvironment().upgradeHint || 'Python 或 Pillow 实际导入未通过'}；不会标记为就绪。`)
         {
           const miss = missingVenvDeps()
           appendInstall(`=== 结束（exit ${code}，venvReady=${venvReadyNow()}${miss.length ? '，缺：' + miss.join(' / ') : ''}）===\n`)
@@ -5708,9 +6186,23 @@ export function apply(ctx, config) {
       } catch (e) {
         appendInstall(`装依赖崩了：${e?.stack ?? e}\n`)
         log(`装依赖崩了：${e?.message ?? e}`)
-      } finally { installing = false }
+      } finally {
+        if (backup && !keepNewEnvironment && existsSync(backup)) {
+          try {
+            if (existsSync(venvRoot)) {
+              const failed = `${venvRoot}.failed-${randomUUID()}`
+              renameSync(venvRoot, failed)
+              appendInstall(`未完成的新环境保留在 ${failed}\n`)
+            }
+            renameSync(backup, venvRoot)
+            appendInstall('本次升级未完成，已恢复原环境；仍需升级 Python / Pillow，未报告就绪。\n')
+          } catch (error) { appendInstall(`自动恢复失败；原环境仍保留在 ${backup}，请手动恢复：${error?.message || error}\n`) }
+        }
+        installing = false
+      }
     })()
-    return { ok: true, started: true, log: installLogFile, hint: '正在后台装依赖 —— 进度就显示在下面（走国内镜像，通常几十秒到一两分钟）' }
+    return { ok: true, started: true, log: installLogFile, pythonRange: MAIN_PYTHON_RANGE, pillowMinimum: '13.0',
+      upgradeRequired: mainEnvironment().upgradeRequired, hint: '正在安装并校验 Python 3.11–3.13 与 Pillow 13.0+；旧 Python 环境升级前会保留备份，进度显示在下面。' }
   }
 
   /** 「测一下」：真跑一次查询再下结论（判据落在载荷上，不看自报） */
@@ -5780,6 +6272,16 @@ export function apply(ctx, config) {
     } catch { return '' }
   }
 
+  const recoverySnapshot = ({ feiyu, schedule, state }) => {
+    let videoRows = []
+    try { videoRows = videoStudio.list() } catch { videoRows = [] }
+    let lastBackground = null
+    try { lastBackground = tokenLedgerSnapshot(stateDir, { limit: 40 }).entries.find((row) => row?.kind === 'background' && row?.endedAt) || null } catch { lastBackground = null }
+    return buildRecoverySnapshot({ now: Date.now(), feiyu, background: backgroundRun, backgroundAlive: Boolean(dutyChild), lastBackground, schedule,
+      scheduleEnabled: Boolean(cfg.scheduleEnabled), window: { start: String(cfg.backgroundWindowStart || ''), end: String(cfg.backgroundWindowEnd || ''), active: Boolean(String(cfg.backgroundWindowStart || '') && String(cfg.backgroundWindowEnd || '') && backgroundWindowActive(cfg.backgroundWindowStart, cfg.backgroundWindowEnd)), holdUntil: Number(state?.bgWindowHold) || 0 },
+      videoSessions: videoRows, lastRunAt: state?.lastRunAt || null })
+  }
+
   /**
    * ⭐ /status 增量短路（2026-10-27）：前端 5 秒一问，99% 的时候什么都没变。
    *    statusRev() 只用**便宜信号**拼一个签名（一次 state.json + 几个 statSync + 内存扫描），
@@ -5804,7 +6306,10 @@ export function apply(ctx, config) {
         JSON.stringify(st.pace || {}).length, JSON.stringify(st.seenVideos || {}).length,
         JSON.stringify(st.repliedComments || {}).length, Number(st.lastRunAt) || 0)
       bits.push(JSON.stringify(st.tokenDays || {}), Number(st.activeDays) || 0)
+      bits.push(JSON.stringify(st.asrInstall || {}))
+      bits.push(JSON.stringify((Array.isArray(st.sendReview) ? st.sendReview : []).map(row => [row?.id, row?.state, row?.hash, row?.updatedAt])))
       bits.push(Number(st.bgWindowHold) || 0, Number(st.petEvent && st.petEvent.at) || 0)
+      bits.push(String(st.tasteAt || ''), JSON.stringify(st.taste || {}))
       /* ⏱️ 时钟派生字段的通解（2026-10-28 审查补漏）：bgWindow.active / schedule 的
        *    due·nextRunAt / pace 倒计时 / attention 额度阈值都随墙钟走而账面不变 ——
        *    分钟桶让 rev 每分钟翻一次，UI 的倒计时不再冻结。 */
@@ -5833,9 +6338,12 @@ export function apply(ctx, config) {
     for (const file of [installLogFile, asrLogFile, join(stateDir, SOUL_FILE), join(stateDir, 'bili_credential.json')]) {
       try { const s = statSync(file); bits.push(s.size, s.mtimeMs) } catch { bits.push(0) }
     }
+    try { const s = statSync(join(stateDir, 'pv-sessions.json')); bits.push(s.size, s.mtimeMs) } catch { bits.push(0) }
+    try { const p = pv.status(); bits.push(String(p.id || ''), String(p.stage || ''), p.running ? 1 : 0, String(p.error || '').length) } catch { bits.push('pv!') }
     try { bits.push(learnStats(asBook(snapshot.state.learn)).pending) } catch { bits.push('learn!') }
     try { bits.push(String(snapshot.mirrorManifest?.at || '')) } catch { bits.push('mirror!') }
     bits.push(modelCatalog.length, myVersion(), installing ? 1 : 0, installingAsr ? 1 : 0)
+    bits.push(JSON.stringify(roleTools.snapshot()))
     // All previous inputs remain covered without echoing the full config/ledger into the polling URL.
     return createHash('sha256').update(JSON.stringify(bits)).digest('hex')
   }
@@ -5847,6 +6355,11 @@ export function apply(ctx, config) {
     // ⭐ findFeiyuAgent 要扫全部 agent，一次 status 只扫一遍（以前 feiyu/modelNow/tokenUsage 各扫一次）
     let feiyuAgentNow = null
     try { feiyuAgentNow = findFeiyuAgent() } catch { feiyuAgentNow = null }
+    let feiyuNow
+    try { feiyuNow = feiyuAgentNow ? feiyuStatus(feiyuAgentNow) : { ok: true, active: false, model: currentModel() } }
+    catch { feiyuNow = { ok: true, active: false, model: '' } }
+    const scheduleNow = scheduleSnapshot()
+    const asrNow = asrEnvironment()
     return {
       ok: true,
       home: stateDir,
@@ -5859,7 +6372,9 @@ export function apply(ctx, config) {
       lastWhy: st.lastWhy || null,
       loggedIn: hasCredential(),
       venvReady: venvReadyNow(),
+      environment: mainEnvironment(),
       version: myVersion(),
+      toolScope: roleTools.snapshot(),
       // 2026-10-18：这几项"本地存了、但没能同步到 DSH 原生设置" ⇒ 设置页要告诉用户
       // （DSH 0.2.1 某些启动方式会拒写：profile reload requires the root Include entry）
       notSynced: Object.keys(readOverride()),
@@ -5869,9 +6384,12 @@ export function apply(ctx, config) {
       installFailed: !installing && !venvReadyNow() && (() => { try { return statSync(installLogFile).size > 0 } catch { return false } })(),
       installing,
       // ── 本地转写那一套的状态（设置页要显示进度）──
-      asrReady: asrReadyNow(),
+      asrReady: asrNow.ready,
+      asrEnvironment: asrNow,
+      asrInstall: asrNow.install,
       // 模型下没下（免得界面写"就绪"、其实还得现下）
-      asrModelReady: (() => { try { return existsSync(join(stateDir, '.hf-cache', 'hub')) } catch { return false } })(),
+      asrModelReady: existsSync(join(stateDir, '.hf-cache', 'hub')) && (asrNow.install.state === 'unknown'
+        || asrNow.install.ok === true && asrNow.install.modelReady === true && asrNow.install.model === String(cfg.asrModel || 'small')),
       asrInstalling: installingAsr,
       asrLog: asrLogFile,
       asrTail: tailText(asrLogFile),
@@ -5889,12 +6407,16 @@ export function apply(ctx, config) {
       bgWindow: { start: String(cfg.backgroundWindowStart || ''), end: String(cfg.backgroundWindowEnd || ''), active: Boolean(String(cfg.backgroundWindowStart || '') && String(cfg.backgroundWindowEnd || '') && backgroundWindowActive(cfg.backgroundWindowStart, cfg.backgroundWindowEnd)), holdUntil: Number(st.bgWindowHold) || 0 },
       /* 🗨️🎨 显示层：petEvent 是桌宠「说话」的通道（收工小结/闲聊），mood 是心情色，
        *    attention 是「需要你」提醒 —— 三者都不影响任何行为。 */
-      petEvent: st.petEvent && st.petEvent.at ? { at: Number(st.petEvent.at) || 0, text: String(st.petEvent.text || ''), tone: String(st.petEvent.tone || 'info') } : null,
+      petEvent: st.petEvent && st.petEvent.at ? { at: Number(st.petEvent.at) || 0, text: String(st.petEvent.text || ''), tone: String(st.petEvent.tone || 'info'), kind: String(st.petEvent.kind || 'note') } : null,
+      companion: companionPolicy(cfg),
       mood: moodOf(),
       attention: (() => {
         const reasons = []
         try {
           if (!venvReadyNow()) reasons.push('主依赖还没装好 —— 「账号与环境」页点「装主依赖」')
+          const previews = reviewSnapshot(false)
+          if (previews.unknown > 0) reasons.push(`有 ${previews.unknown} 条发送结果需要核对 —— 「互动与投递」查看，别直接重发`)
+          else if (previews.pending > 0) reasons.push(`有 ${previews.pending} 条内容等你预览 —— 「互动与投递」逐条批准或拒绝`)
           const pending = Number(learnStats(learnLedger()).pending) || 0
           if (pending >= 5) reasons.push(`学习队列积了 ${pending} 条待审 —— 顺手去「学习与记忆」翻一翻`)
           const book = st.pace
@@ -5903,19 +6425,18 @@ export function apply(ctx, config) {
         } catch { /* 读不到就不提醒，别让提醒本身变成故障 */ }
         return { level: reasons.length ? 'soft' : 'none', reasons }
       })(),
-      schedule: scheduleSnapshot(),
+      schedule: scheduleNow,
       learnReview: learningReviewStatus(),
+      sendReview: (() => { try { return reviewSnapshot(false) } catch (error) { return { ok: false, enabled: Boolean(cfg.sendReview), error: String(error?.message ?? error), pending: null } } })(),
+      retrospective: sevenDayRetrospective(st),
+      recovery: recoverySnapshot({ feiyu: feiyuNow, schedule: scheduleNow, state: st }),
       petShow: Boolean(cfg.petShow),
       // ── 🐟 鲸鱼摸鱼模式（设置页要显示"现在是不是在刷"）──
       // ⭐ 用 findFeiyuAgent() 而不是裸 `feiyuAgent`：进程重启后这个变量是 null，
       //    只认它会让设置页在真的还在刷的时候谎报「没在刷」（那个 goal 是活着的）。
       // ⚠️ currentModel / tokensOf 都要**把 agent 传进去**：不传只能拿到全局默认模型，
       //    界面上那个「当前对话在用的模型」就会是假的。
-      feiyu: (() => {
-        try {
-          return feiyuAgentNow ? feiyuStatus(feiyuAgentNow) : { ok: true, active: false, model: currentModel() }
-        } catch { return { ok: true, active: false, model: '' } }
-      })(),
+      feiyu: feiyuNow,
       modelNow: currentModel(feiyuAgentNow || undefined),
       // ⭐「指定已有模型」用：宿主手上真有的那些模型（取不到就是空数组，前端退回手填）
       models: listModels(),
@@ -5992,7 +6513,8 @@ export function apply(ctx, config) {
        * 「现在能不能发、还要等多久、风控冷却到几点」，不然使用者只会觉得"它卡住了"。 */
       pace: (() => {
         try {
-          return { ok: true, factor: paceFactor(), ...paceSummary(paceRead(), Date.now(), paceFactor()) }
+          const factor = paceFactor(), now = Date.now(), book = st.pace
+          return { ok: true, factor, ...paceSummary(book, now, factor), explanation: paceExplain(book, now, factor) }
         } catch (e) { return { ok: false, error: String(e?.message ?? e) } }
       })(),
       /* 🪞 她自己的账（2026-10-21 使用者第 3 条「更有人情味、能不断成长」）——
@@ -6000,6 +6522,26 @@ export function apply(ctx, config) {
        * ⚠️ text 就是真会进提示词的那段（已剥注释、已按预算截断），不另编一份。 */
       soul: (() => {
         try { return soulSnapshot() } catch (e) { return { ok: false, empty: true, text: '', error: String(e?.message ?? e) } }
+      })(),
+      /* 🧠 记忆中心：把学习、心情、口味和判重账本放进同一份只读快照。
+       * 文案由客户端组合，服务端只暴露经过 lib/taste.mjs 脱敏和阈值过滤的统计，
+       * 不把整本 taste/state 原样塞进状态轮询。 */
+      taste: (() => {
+        try {
+          const ledger = st.taste && typeof st.taste === 'object' ? st.taste : {}
+          const stats = tasteStats(ledger)
+          const digest = tasteDigest(ledger)
+          return {
+            sample: Number(stats.sample) || 0,
+            checked: Number(stats.checked) || 0,
+            minN: Number(stats.minN) || TASTE_MIN_N,
+            enough: Boolean(digest.enough),
+            lines: Array.isArray(digest.lines) ? digest.lines.slice(0, 4) : [],
+            rows: Array.isArray(stats.rows) ? stats.rows.slice(0, 8) : [],
+            top: tasteTop(ledger, 3),
+            updatedAt: String(st.tasteAt || ''),
+          }
+        } catch (e) { return { sample: 0, checked: 0, minN: TASTE_MIN_N, enough: false, lines: [], rows: [], top: [], updatedAt: '', error: String(e?.message ?? e) } }
       })(),
     }
   }
@@ -6011,11 +6553,14 @@ export function apply(ctx, config) {
     try {
       const origin = String(req.headers?.origin || '')
       if (origin) {
-        let host = ''
-        try { host = new URL(origin).hostname } catch { host = '' }
+        let host = '', parsed = null
+        try { parsed = new URL(origin); host = parsed.hostname } catch { host = '' }
         if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1' && host !== '[::1]') {
           return sendJson(res, 403, { ok: false, error: 'cross-origin request rejected' })
         }
+        // Another localhost port is another application's origin. Browser
+        // requests carry Host; legacy in-process adapters may omit it.
+        if (req.headers?.host && parsed?.host.toLowerCase() !== String(req.headers.host).toLowerCase()) return sendJson(res, 403, { ok: false, error: 'cross-origin request rejected' })
       }
     } catch { /* 判不了就按老样子继续 */ }
     refreshCfg()
@@ -6030,15 +6575,44 @@ export function apply(ctx, config) {
       return sendJson(res, 200, { ...status(snapshot), rev })
     }
 
+    if (req.method === 'GET' && path === '/api/bili-duty/send-review/image') {
+      const hash = String(url.searchParams.get('hash') || '')
+      if (!/^[a-f0-9]{64}$/.test(hash)) return sendJson(res, 404, { ok: false, error: 'unknown preview image' })
+      const item = reviewBook().flatMap(row => row.attachments || []).find(image => image.kind === 'dynamic' && image.hash === hash)
+      if (!item) return sendJson(res, 404, { ok: false, error: 'unknown preview image' })
+      try {
+        if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(item.fmt)) return sendJson(res, 404, { ok: false, error: 'preview image format invalid' })
+        const bytes = readFileSync(join(stateDir, 'send-review-media', hash + '.' + item.fmt))
+        if (createHash('sha256').update(bytes).digest('hex') !== hash) return sendJson(res, 404, { ok: false, error: 'preview image changed' })
+        res.writeHead(200, { 'content-type': item.mime, 'content-length': bytes.length, 'x-content-type-options': 'nosniff', 'cache-control': 'private, no-store' }); res.end(bytes); return
+      } catch { return sendJson(res, 404, { ok: false, error: 'preview image missing' }) }
+    }
+    if (path === '/api/bili-duty/send-review') {
+      if (req.method === 'GET') return sendJson(res, 200, reviewSnapshot())
+      if (req.method === 'POST') {
+        let body
+        try { body = await readBody(req, { strict: true }) }
+        catch (error) { return sendJson(res, error.status || 400, { ok: false, code: error.code || 'INVALID_JSON', error: error.message }) }
+        if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(res, 400, { ok: false, error: '请求必须是对象' })
+        const result = await decideSendReview(body.id, String(body.decision || ''), body.expectedHash)
+        return sendJson(res, result.ok ? 200 : result.already ? 409 : 400, { ...reviewSnapshot(), ...result })
+      }
+    }
+
     if (req.method === 'GET' && path === '/api/bili-duty/stickers') {
-      try { return sendJson(res, 200, stickerGallery()) }
+      const status = url.searchParams.get('status') || 'approved'
+      if (!['approved', 'pending', 'all'].includes(status)) return sendJson(res, 400, { ok: false, error: 'status 只认 approved / pending / all' })
+      try { return sendJson(res, 200, stickerGallery(status)) }
       catch (error) { return sendJson(res, 200, { ok: false, error: String(error?.message || error) }) }
     }
     if (req.method === 'GET' && path === '/api/bili-duty/stickers/image') {
       try {
-        const image = readStickerImage(stateDir, url.searchParams.get('name'), url.searchParams.get('source') || undefined)
-        if (!image) return sendJson(res, 404, { ok: false, error: 'unknown sticker' })
-        const headers = { 'content-type': image.mime, 'x-content-type-options': 'nosniff', 'cache-control': 'private, max-age=300', etag: image.etag }
+        const status = url.searchParams.get('status') || 'approved'
+        if (!['approved', 'pending', 'all'].includes(status)) return sendJson(res, 404, { ok: false, error: 'unknown sticker' })
+        const image = readStickerImage(stateDir, url.searchParams.get('name'), url.searchParams.get('source') || undefined, { status })
+        const hash = url.searchParams.get('hash')
+        if (!image || (hash && image.etag !== '"' + hash + '"')) return sendJson(res, 404, { ok: false, error: 'unknown sticker' })
+        const headers = { 'content-type': image.mime, 'x-content-type-options': 'nosniff', 'cache-control': image.status === 'pending' ? 'private, no-store' : 'private, max-age=300', etag: image.etag }
         if (req.headers?.['if-none-match'] === image.etag) { res.writeHead(304, headers); res.end(); return }
         res.writeHead(200, { ...headers, 'content-length': image.bytes.length })
         res.end(image.bytes)
@@ -6049,10 +6623,12 @@ export function apply(ctx, config) {
       const body = await readBody(req)
       // The UI accepts public image URLs; library copying remains the private tool's existing capability.
       const result = await collectSticker(stateDir, { name: body?.name, url: body?.url,
-        description: body?.description, tags: body?.tags, bvid: body?.bvid, rpid: body?.rpid, capacity: cfg.stickerCapacity })
+        description: body?.description, tags: body?.tags, bvid: body?.bvid, rpid: body?.rpid, capacity: cfg.stickerCapacity,
+        get stickerReview() { refreshCfg(); return cfg.stickerReview } })
       if (!result.ok) return sendJson(res, 200, result)
-      return sendJson(res, 200, { ok: true, name: result.name, bytes: result.bytes, sourceUrl: result.sourceUrl,
-        imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(result.name)}&source=collected` })
+      return sendJson(res, 200, { ok: true, name: result.name, bytes: result.bytes, sourceUrl: result.sourceUrl, status: result.status,
+        imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(result.name)}&source=collected`
+          + (result.status === 'pending' ? `&status=pending&hash=${encodeURIComponent(result.hash)}` : '') })
     }
     if (req.method === 'POST' && path === '/api/bili-duty/stickers/upload') {
       let body
@@ -6061,6 +6637,7 @@ export function apply(ctx, config) {
       const result = uploadSticker(stateDir, body && typeof body === 'object' && !Array.isArray(body) ? {
         name: body.name, filename: body.filename, dataBase64: body.dataBase64,
         description: body.description, tags: body.tags, capacity: cfg.stickerCapacity,
+        get stickerReview() { refreshCfg(); return cfg.stickerReview },
       } : null)
       if (!result.ok) {
         const status = result.code === 'STICKER_TOO_LARGE' ? 413 : result.code === 'STICKER_IMAGE_INVALID' ? 415
@@ -6068,8 +6645,23 @@ export function apply(ctx, config) {
           : result.code === 'STICKER_STORAGE' ? 500 : 400
         return sendJson(res, status, result)
       }
-      return sendJson(res, 200, { ok: true, name: result.name, bytes: result.bytes, mime: result.mime, source: 'collected',
-        imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(result.name)}&source=collected` })
+      return sendJson(res, 200, { ok: true, name: result.name, bytes: result.bytes, mime: result.mime, source: 'collected', status: result.status,
+        imageUrl: `/api/bili-duty/stickers/image?name=${encodeURIComponent(result.name)}&source=collected`
+          + (result.status === 'pending' ? `&status=pending&hash=${encodeURIComponent(result.hash)}` : '') })
+    }
+    // These decisions belong to the manual settings UI, never to bili_sticker/automatic tools.
+    if (req.method === 'POST' && ['/api/bili-duty/stickers/approve', '/api/bili-duty/stickers/reject'].includes(path)) {
+      let body
+      try { body = await readBody(req, { strict: true }) }
+      catch (error) { return sendJson(res, error.status || 400, { ok: false, code: error.code || 'INVALID_JSON', error: error.message }) }
+      if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.expectedHash !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedHash)) {
+        return sendJson(res, 400, { ok: false, code: 'STICKER_INPUT', error: '请提供待审核表情的 name 和 expectedHash，重新查看图片后再决定' })
+      }
+      const decide = path.endsWith('/approve') ? approveSticker : rejectSticker
+      const result = decide(stateDir, body.name, { expectedHash: body.expectedHash })
+      const status = result.ok ? 200 : result.code === 'STICKER_INPUT' ? 400 : result.code === 'STICKER_NOT_FOUND' ? 404
+        : result.code === 'STICKER_STORAGE' ? 500 : 409
+      return sendJson(res, status, result)
     }
     if (req.method === 'POST' && path === '/api/bili-duty/stickers/forget') {
       const body = await readBody(req)
@@ -6118,6 +6710,96 @@ export function apply(ctx, config) {
       return sendJson(res, 200, { ok: true, row })
     }
 
+
+    /* Combined memory search is explicitly requested by the settings page.
+     * Ordinary status polling never loads voice/history or walks every memory row. */
+    if (path === '/api/bili-duty/memory') {
+      const readText = (name) => {
+        const file = join(stateDir, name)
+        try {
+          const info = statSync(file)
+          if (info.size > 128 * 1024) throw new Error('MEMORY_FILE_TOO_LARGE: ' + name)
+          return { text: readFileSync(file, 'utf8'), at: info.mtime.toISOString() }
+        } catch (error) { if (error?.code === 'ENOENT') return { text: '', at: '' }; throw error }
+      }
+      const projection = (options = {}) => {
+        const state = readJsonFileSync(dutyStateFile, {})
+        const soul = readText(SOUL_FILE), voice = readText('voice.md')
+        return memoryCenterSnapshot({ learn: state.learn, soulText: soul.text, soulAt: soul.at,
+          voiceText: voice.text, voiceAt: voice.at, taste: state.taste, seen: state.seenVideos,
+          events: [...readRecordEvents(stateDir, { type: 'memory', limit: 50, maxBytes: 128 * 1024 }),
+            ...readRecordEvents(stateDir, { type: 'learning', limit: 50, maxBytes: 128 * 1024 })]
+            .sort((a, b) => String(b.at || b.recordedAt).localeCompare(String(a.at || a.recordedAt))).slice(0, 100),
+        }, options)
+      }
+      if (req.method === 'GET') {
+        const source = String(url.searchParams.get('source') || 'all')
+        if (!MEMORY_SOURCES.includes(source)) return sendJson(res, 400, { ok: false, error: 'MEMORY_SOURCE_INVALID' })
+        try { return sendJson(res, 200, projection({ source, filter: url.searchParams.get('filter'), offset: url.searchParams.get('offset'), limit: url.searchParams.get('limit') || 20 })) }
+        catch (error) { return sendJson(res, 200, { ok: false, error: String(error?.message || error) }) }
+      }
+      if (req.method === 'POST') {
+        const body = await readBody(req)
+        const source = String(body?.source || ''), id = String(body?.id || ''), action = String(body?.action || '')
+        const expected = String(body?.version || '')
+        if (!['learning', 'soul', 'voice', 'taste'].includes(source) || !['forget', 'revoke'].includes(action) || !id || !/^[a-f0-9]{64}$/.test(expected)) {
+          return sendJson(res, 400, { ok: false, error: 'MEMORY_ACTION_INVALID' })
+        }
+        try {
+          if (source === 'learning') {
+            const result = await learnMutate((book) => {
+              const row = book?.items?.[id]
+              if (!row || memoryFingerprint(row) !== expected) return { ok: false, error: 'MEMORY_CHANGED_REFRESH_REQUIRED' }
+              if (action === 'revoke' && row.state !== 'approved') return { ok: false, error: 'MEMORY_NOT_APPROVED' }
+              return action === 'revoke' ? learnDecide(book, id, 'reject', '使用者从记忆中心撤销批准') : learnForget(book, { id })
+            })
+            if (result.ok === false) return sendJson(res, 409, { ok: false, error: result.error })
+          } else if (source === 'soul' || source === 'voice') {
+            if (action !== 'forget') return sendJson(res, 400, { ok: false, error: 'MEMORY_ACTION_INVALID' })
+            const filename = source === 'soul' ? SOUL_FILE : 'voice.md'
+            const result = withFileLockSync(join(stateDir, filename), () => {
+              const current = readText(filename).text
+              let next
+              if (source === 'soul') {
+                const match = /^(mood|crave|self|next):(\d{1,4})$/.exec(id)
+                if (!match) return { ok: false, error: 'MEMORY_ACTION_INVALID' }
+                const lines = soulSectionBody(current, match[1]).split(/\r?\n/)
+                const index = Number(match[2])
+                if (index >= lines.length || memoryFingerprint(lines[index]) !== expected) return { ok: false, error: 'MEMORY_CHANGED_REFRESH_REQUIRED' }
+                lines.splice(index, 1)
+                next = soulSetSection(current, match[1], lines.join('\n'))
+                captureMemorySnapshot(stateDir, filename, current, { mode: 'dafeiyu', operation: 'before-manual-forget' })
+                return writeSoul(stateDir, next)
+              }
+              if (!/^\d{1,5}$/.test(id)) return { ok: false, error: 'MEMORY_ACTION_INVALID' }
+              const lines = current.split(/\r?\n/), index = Number(id)
+              if (index >= lines.length || memoryFingerprint(lines[index]) !== expected) return { ok: false, error: 'MEMORY_CHANGED_REFRESH_REQUIRED' }
+              lines.splice(index, 1); next = lines.join('\n')
+              captureMemorySnapshot(stateDir, filename, current, { mode: 'dafeiyu', operation: 'before-manual-forget' })
+              atomicWriteFileSync(join(stateDir, filename), next)
+              return captureMemorySnapshot(stateDir, filename, next, { mode: 'dafeiyu', operation: 'manual-forget' })
+            })
+            if (!result.ok) return sendJson(res, 409, { ok: false, error: result.error })
+          } else {
+            if (action !== 'forget' || !/^\d{1,32}$/.test(id)) return sendJson(res, 400, { ok: false, error: 'MEMORY_ACTION_INVALID' })
+            const result = await withStateLock(() => {
+              const state = readJsonFileSync(dutyStateFile, {}), row = state.taste?.[id]
+              if (!row || memoryFingerprint(row) !== expected) return { ok: false, error: 'MEMORY_CHANGED_REFRESH_REQUIRED' }
+              const next = { ...state.taste }; delete next[id]
+              state.taste = next; state.tasteAt = new Date().toISOString()
+              writeJson(dutyStateFile, state)
+              return { ok: true }
+            })
+            if (!result.ok) return sendJson(res, 409, { ok: false, error: result.error })
+          }
+          const audit = act('note', `记忆中心：使用者${action === 'revoke' ? '撤销批准' : '忘记'}了一条 ${source} 记录（${id}），历史版本保留`,
+            { memoryAction: { source, id, action, version: expected, manual: true } })
+          queueMirror('记忆中心更新')
+          return sendJson(res, 200, { ok: true, source, id, action, auditRetained: Boolean(audit),
+            ...(audit ? {} : { warning: '当前记忆已更新，但本次操作审计没有成功归档，请查看运行日志' }) })
+        } catch (error) { return sendJson(res, 200, { ok: false, error: String(error?.message || error) }) }
+      }
+    }
 
     /* 🪞 她自己的账 —— 设置页能看、也能替她划掉一节（写是鱼自己的事，人不代笔）。
      * ⚠️ 只开放「忘掉」：让人能替她写心情，这本账立刻就不真了。 */
@@ -6217,7 +6899,12 @@ export function apply(ctx, config) {
     }
 
     if (req.method === 'POST' && path === '/api/bili-duty/config') {
-      const body = await readBody(req)
+      const body = await readBody(req, { strict: true })
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(res, 400, { ok: false, error: '配置 PATCH 必须是对象' })
+      if (Object.hasOwn(body, 'resetTokensTotal') && typeof body.resetTokensTotal !== 'boolean') return sendJson(res, 400, { ok: false, error: 'resetTokensTotal 必须是 true 或 false' })
+      for (const key of Object.keys(body)) {
+        if (Object.hasOwn(DEFAULTS, key) && typeof DEFAULTS[key] === 'boolean' && typeof body[key] !== 'boolean') return sendJson(res, 400, { ok: false, error: key + ' 必须是 true 或 false' })
+      }
       const patch = {}
       /* ⭐ 「一共花了多少」清零：它不是配置项（不落 config.json，也不进 DSH 设置页），
        *    只是一次动作 ⇒ 在这里单独处理，别混进 clampPatch/persistCfg 那套。 */
@@ -6261,13 +6948,13 @@ export function apply(ctx, config) {
           act('note', '把「一共花了多少 token」清零了')
         } catch (e) { log(`总 token 清零失败：${e?.message ?? e}`) }
       }
-      for (const k of ['perDay', 'peakValley', 'noon', 'night', 'autoComment', 'transcribe', 'asrModel', 'idleChatter',
+      for (const k of ['perDay', 'peakValley', 'noon', 'night', 'autoComment', 'sendReview', 'transcribe', 'asrModel', 'idleChatter',
         ...Object.keys(STICKER_DEFAULTS),
         'commentPerRound', 'mentionName', 'dmMode', 'dmUid',
         'autoReplyDm', 'dmReplyPerDay', 'dmReplyFollowedOnly',
         'keywords', 'pythonPath', 'dshBin', 'headlessProfile', 'workspace', 'reportLevel', 'replyToComments', 'replyPerRound',
         // 🐟 鲸鱼摸鱼模式那几个
-        'persona', 'focus', 'autoMoment', 'momentPerDay', 'momentStyle', 'modelId', 'tokenBudget', 'totalTokenBudget', 'maxRounds',
+        'persona', 'focus', 'autoMoment', 'momentPerDay', 'momentStyle', 'interactionStyle', 'modelId', 'tokenBudget', 'totalTokenBudget', 'maxRounds',
         // ⏱️ 出手节奏的松紧（2026-10-21 m18802 第 1、2 条）
         //    ⚠️ 漏在这张表里 = 设置页画得出来、点了保存却被静默丢掉（dmReplyFollowedOnly 就漏过一次；
         //    2026-10-26 复查又发现 pv 整组 8 个键 + overlayMcp 漏掉 ⇒ 自动做视频开关从来没存上过）
@@ -6278,6 +6965,8 @@ export function apply(ctx, config) {
         'mirrorDir',
         // 🎬 视频日报那组（clampPatch 都逐个处理了，这里不认就永远存不上）
         'pvAuto', 'pvAt', 'pvVoice', 'pvDir',
+        // 制作整条视频的模型；旧 pvModelId 只在读取配置时迁移。
+        'videoModelId',
         // 🎙 GPT-SoVITS 三件套 + 跑它的 python
         'pvGsvRepo', 'pvGsvRef', 'pvGsvPrompt', 'pvGsvPython',
         // 🐾 桌宠显隐（2026-10-26 桌宠化改造）：桌宠菜单「隐藏桌宠」→ 存这里。
@@ -6285,6 +6974,7 @@ export function apply(ctx, config) {
         'petShow',
         ...Object.keys(RUN_DEFAULTS),
         ...Object.keys(AUTOMATION_DEFAULTS),
+        ...Object.keys(COMPANION_DEFAULTS),
         // 🔗 headless 那一轮挂不挂原生 MCP
         'overlayMcp']) {
         if (k in body) patch[k] = body[k]
@@ -6292,7 +6982,10 @@ export function apply(ctx, config) {
       // ⭐ 范围钳制 + 两份都写（config.json / DSH 原生设置页），统一走 persistCfg —— 见文件上方
       // ⭐ 私信那两个字段的合法值（2026-10-17 摘 PR #9；其余范围钳制统一在 persistCfg 里）
       if ('dmMode' in patch) patch.dmMode = ['off', 'only', 'both'].includes(String(patch.dmMode)) ? String(patch.dmMode) : 'off'
-      if ('dmUid' in patch) patch.dmUid = Math.max(0, Math.min(Number(patch.dmUid) || 0, Number.MAX_SAFE_INTEGER))
+      if ('dmUid' in patch) {
+        try { patch.dmUid = configuredUid(patch.dmUid) }
+        catch { return sendJson(res, 400, { ok: false, code: 'CONFIG_UID_INVALID', error: '收件 UID 必须是十进制字符串或安全非负整数；不接受已丢失精度的 number。' }) }
+      }
       const { clean, host, clamped } = await persistCfg(patch)
       log(`设置已更新：${JSON.stringify(clean)}（DSH 那边${host.ok ? '已同步' : '没写成：' + host.error}）`)
       return sendJson(res, 200, { ok: true, config: cfg, host, clamped: clamped || [], limits: LIMITS })
@@ -6513,6 +7206,7 @@ export function apply(ctx, config) {
         '（本包不含登录凭证；贴给别人前可以再自查一遍）',
         '',
         `插件版本：v${myVersion()}  ·  家目录：${stateDir}`,
+        `工具作用域：${JSON.stringify(roleTools.snapshot())}`,
         `dsh 命令：${line(dshCliCached()?.command || '(找不到)')}  ok=${line(dshCliCached()?.ok)}`,
         `pythonPath：${line(cfg.pythonPath)}  ·  venvReady=${venvReadyNow()}  缺依赖：${missingVenvDeps().join(',') || '无'}`,
         `登录：${hasCredential() ? '已登录' : '未登录'}  ·  headlessProfile：${line(cfg.headlessProfile)}  overlayMcp=${Boolean(cfg.overlayMcp)}`,
@@ -6539,41 +7233,25 @@ export function apply(ctx, config) {
       return sendJson(res, 200, { ok: true, text, file: logFile })
     }
 
-    // 「打开文件夹」：浏览器开不了本地目录 ⇒ 让宿主去开（只认 out / home 两个，别的不受理）
+    // Only fixed server-owned directory selectors are accepted, never a client-supplied path.
     if (req.method === 'POST' && path === '/api/bili-duty/open') {
       const body = await readBody(req)
-      const what = String(body?.what || 'out')
+      const what = body?.what === undefined ? 'out' : body.what
+      if (typeof what !== 'string' || !['out', 'home', 'mirror', 'pv'].includes(what)) return sendJson(res, 400, { ok: false, code: 'OPEN_TARGET_INVALID', error: 'what 只认 out / home / mirror / pv' })
       /* ⭐ `mirror`（m12873-3）：打开「记录镜像」那个目录 ——
-       * 它跟 out/digest 是两个地方（镜像在工作区根，产物在 bili-work 下），不能混。 */
+       * 它跟 out/digest 是两个地方（镜像在工作区根，产物在 bili-work 下），不能混。
+       * ⭐ `pv`：视频工作室的成片目录；只算服务端自己的 pvDirsOf，不接受任意路径。 */
       const dir = what === 'home'
         ? stateDir
         : what === 'mirror'
           ? (resolveMirrorDir(stateDir, cfg.mirrorDir) || outDir)
-          : outDir
-      if (process.platform !== 'win32') return sendJson(res, 200, { ok: false, error: '这个按钮目前只做了 Windows' })
-      // ⭐ 三种方式依次试（PATH 不全时 explorer.exe 会找不到 ✗；spawn 的失败是**异步**的，
-      //    try/catch 抓不到 ⇒ 必须挂 'error' 监听，否则会升级成未捕获异常）
-      // ⭐ 顺序很重要：把**最可能真的弹出窗口**的放第一（cmd start 走 shell 的 ShellExecute ✓）
-      //    并且**不要再传 windowsHide**（2026-10-15 实测：传了以后"成功"但窗口不出现 ✗）
-      const attempts = [
-        ['cmd.exe', ['/c', 'start', '', dir]],
-        [join(process.env.SystemRoot || 'C:\\Windows', 'explorer.exe'), [dir]],
-        ['powershell.exe', ['-NoProfile', '-Command', "Start-Process -FilePath '" + dir.replace(/'/g, "''") + "'"]],
-      ]
-      let lastErr = ''
-      for (const [cmd, args] of attempts) {
-        const err = await new Promise((resolve) => {
-          let done = false
-          let child
-          try { child = spawn(cmd, args, { detached: true, stdio: 'ignore' }) } catch (e) { resolve(String(e?.message ?? e)); return }
-          child.on('error', (e) => { if (!done) { done = true; resolve(String(e?.message ?? e)) } })
-          setTimeout(() => { if (!done) { done = true; try { child.unref() } catch { /* 无所谓 */ } resolve('') } }, 500)
-        })
-        if (!err) { log('打开文件夹：用了 ' + cmd + '（没报错；窗口不一定真弹出来了）'); return sendJson(res, 200, { ok: true, opened: dir, via: cmd }) }
-        lastErr = err
-        log('打开文件夹失败（' + cmd + '）：' + err)
-      }
-      return sendJson(res, 200, { ok: false, error: lastErr, dir })
+          : what === 'pv'
+            ? pvDirsOf().out
+            : outDir
+      const result = await openDirectory(dir)
+      if (result.ok) log('打开目录请求已由系统接收：' + result.via)
+      else log('打开目录失败：' + result.error)
+      return sendJson(res, 200, result)
     }
 
     /* 🚫 2026-10-21（使用者 m18802 第 4 条「把这个插件封装一下，改成一个新插件，删除掉他的更新」）：
@@ -6596,19 +7274,20 @@ export function apply(ctx, config) {
 
     // ── 扫码登录（设置页用）──
     if (req.method === 'POST' && path === '/api/bili-duty/login/start') {
-      const { key, url } = await loginStart()
+      const attempt = await loginSession.start(), { key, url } = attempt
       const png = await renderQrPng(cfg.pythonPath, stateDir, url)
+      if (!loginSession.current(attempt)) return sendJson(res, 409, { ok: false, error: '登录请求已被新的二维码替代，请重新查看最新二维码' })
       let qr = null
       if (png) { try { qr = 'data:image/png;base64,' + readFileSync(png).toString('base64') } catch { qr = null } }
-      log(`出码：${url}${qr ? '（已画成 PNG）' : '（没画出 PNG —— venv 里大概还没有 qrcode）'}`)
+      log(qr ? '已生成登录二维码（不记录登录 key 或 URL）' : '二维码图片未生成，请检查 qrcode 依赖（不记录登录 key 或 URL）')
       return sendJson(res, 200, { ok: true, key, url, qr })
     }
 
     if (req.method === 'POST' && path === '/api/bili-duty/login/poll') {
       const body = await readBody(req)
-      const r = await loginPoll(String(body.key || ''))
+      const r = await loginSession.poll(String(body.key || ''))
       if (r.state === 'ok') {
-        const file = saveCredential(stateDir, r.credential)
+        const file = r.file
         log(`登录成功，凭证已写入 ${file}`)
         return sendJson(res, 200, { ok: true, state: 'ok', file })
       }
@@ -6629,33 +7308,32 @@ export function apply(ctx, config) {
         gsvRepo: cfg.pvGsvRepo || '', gsvRef: cfg.pvGsvRef || '',
         gsvPrompt: cfg.pvGsvPrompt || '', gsvPython: cfg.pvGsvPython || '',
         yesterday: pvYesterday(), out: d.out, work: d.work, root: d.root,
+        modelId: cfg.videoModelId || '', sessions: videoStudio.list(),
         ...s,
       })
     }
+    if (req.method === 'POST' && path === '/api/bili-duty/pv/session-new') {
+      const body = await readBody(req)
+      return sendJson(res, 200, await videoStudio.start(body))
+    }
     if (req.method === 'POST' && path === '/api/bili-duty/pv') {
       const body = await readBody(req)
-      const what = String(body?.action || 'make').toLowerCase()
-      if (what === 'stop') return sendJson(res, 200, pv.stop())
+      const what = String(body?.action || 'session').toLowerCase()
+      if (what === 'stop') return sendJson(res, 200, videoStudio.stop(String(body?.sessionId || '')))
       refreshCfg()
-      if (what === 'make') {
-        const day = String(body?.date || '').trim() || pvYesterday()
-        if (!pvDateOk(day)) return sendJson(res, 200, { ok: false, error: `日期得是 YYYY-MM-DD（拿到的是 "${day}"）` })
-        const dep = pv.needsCoverRepair(day) ? await pv.checkCoverDeps() : await pv.checkDeps()
-        if (!dep) return sendJson(res, 200, { ok: false, error: '渲染依赖没装齐（edge-tts / imageio-ffmpeg / Pillow），先点「装依赖」', python: pvPython() })
-        return sendJson(res, 200, pv.start(day, { force: body?.force === true, noNet: body?.noNet === true, voice: cfg.pvVoice }))
-      }
-      return sendJson(res, 200, { ok: false, error: `不认识的 action：${what}` })
+      if (what === 'make' || what === 'session') return sendJson(res, 200, await videoStudio.start(body))
+      return sendJson(res, 200, { ok: false, error: `不认识的 action：${what}；请用 session 新开制作会话` })
     }
     /* 把成品 mp4 递给浏览器 —— 设置页要能直接播。
      * ⚠️ **必须支持 Range**：`<video>` 拖动进度条发的就是 `Range: bytes=…`，
      *    不回 206 的话浏览器只能从头放到尾（大文件还会干脆不出画面）。
-     * ⚠️ 只认 `大肥鱼日报_YYYY-MM-DD.mp4` 这个命名，**不给任意路径** ——
-     *    否则这个接口就是"读服务器上任何文件"的后门。 */
+     * 只接受验证成片的 production id 或旧成片日期，不接受任意文件路径。 */
     if (req.method === 'GET' && path === '/api/bili-duty/pv/video') {
-      const day = String(url.searchParams.get('day') || '').replace(/[^0-9-]/g, '')
-      if (!pvDateOk(day)) return sendJson(res, 200, { ok: false, error: 'day 得是 YYYY-MM-DD' })
-      const file = pv.fileOf(day)
-      if (!file) return sendJson(res, 404, { ok: false, error: '这天还没有视频' })
+      const id = url.searchParams.get('id')
+      const day = String(url.searchParams.get('day') || '')
+      if (id === null && !pvDateOk(day)) return sendJson(res, 400, { ok: false, error: '请提供成片 id 或 YYYY-MM-DD 格式的 day' })
+      const file = id === null ? pv.fileOf(day) : pv.productionFileOf(id)
+      if (!file) return sendJson(res, 404, { ok: false, error: '还没有可播放的已完成视频' })
       let size = 0
       try { size = statSync(file).size } catch { return sendJson(res, 404, { ok: false, error: '这天还没有视频' }) }
       const range = String(req.headers?.range || '')
@@ -6682,7 +7360,9 @@ export function apply(ctx, config) {
           rs.on('error', () => { try { res.destroy() } catch { /* 对端走了 */ } })
           return rs.pipe(res)
         }
-        res.writeHead(200, { 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'content-length': String(size), 'cache-control': 'no-store' })
+        const download = url.searchParams.get('download') === '1'
+        res.writeHead(200, { 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'content-length': String(size), 'cache-control': 'no-store',
+          ...(download ? { 'content-disposition': `attachment; filename="DeepMoYu-${String(day || id).replace(/[^0-9A-Za-z-]/g, "")}.mp4"` } : {}) })
         const rs = createReadStream(file)
         rs.on('error', () => { try { res.destroy() } catch { /* 对端走了 */ } })
         return rs.pipe(res)
@@ -6715,13 +7395,15 @@ export function apply(ctx, config) {
       path: '/api/bili-duty',
       handler: async (req, res) => {
         try { await handle(req, res, new URL(req.url, 'http://127.0.0.1')) } catch (e) {
-          sendJson(res, 500, { ok: false, error: e?.message ?? String(e) })
+          const status = Number.isInteger(e?.status) && e.status >= 400 && e.status < 500 ? e.status : 500
+          sendJson(res, status, { ok: false, error: e?.message ?? String(e) })
         }
       },
     }), 'bili-duty: /api/bili-duty 路由')
   } catch (e) { log(`HTTP 路由没挂上：${e?.message ?? e}`) }
 
   ctx.effect(() => () => {
+    loginSession.dispose()
     stickerAutomation.stop()
     for (const scope of stickerSessionScopes.values()) scope.abort(new Error('插件已卸载'))
     stickerSessionScopes.clear()
@@ -6773,10 +7455,11 @@ export function apply(ctx, config) {
         const due = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0)
         if (now < due) return                               // 还没到点
         const y = pvYesterday(now)
-        if (!pv.needsWork(y)) return                    // 成片和两比例封面都已齐
-        if (!(await pv.checkDeps())) { log('🎬 自动做视频：渲染依赖没装齐（edge-tts/imageio-ffmpeg/Pillow），先跳过'); return }
-        const r = pv.start(y, { voice: cfg.pvVoice })
-        log(r.ok ? `🎬 自动做 ${y} 的视频：已开做` : `🎬 自动做 ${y} 的视频没起来：${r.error}`)
+        if (!pv.needsWork(y) || pv.productions().some(item => item.mode === 'daily' && item.date === y)) return
+        // A durable session, including failed/paused authoring, prevents another paid request every tick.
+        if (videoStudio.list().some(item => item.scheduled && item.date === y)) return
+        const r = await videoStudio.start({ date: y, mode: 'daily', targetDurationSec: 90, scheduled: true })
+        log(r.ok ? `🎬 自动制作 ${y}：已新开可见会话 ${r.sessionId}` : `🎬 自动做 ${y} 的视频没起来：${r.error}`)
       } catch (e) { log(`🎬 视频定时器这一跳出错（已兜住）：${e?.stack ?? e}`) }
     }
     const t = setInterval(() => { pvTick() }, 3 * 60_000)

@@ -8,11 +8,14 @@
  * 用法：`node selfcheck.mjs`（宿主依赖由 lib/hostdeps.mjs 自己解析，不需要解析钩子）
  * 退出码：0 = 两个半端都正常；1 = 有问题（宿主里就会 "entry did not activate" / 设置页空白）
  */
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-const SANDBOX_HOME = join(tmpdir(), 'dsh-deepmoyu-selfcheck')
+const SANDBOX_HOME = mkdtempSync(join(tmpdir(), 'dsh-deepmoyu-selfcheck-'))
+process.once('exit', () => {
+  try { rmSync(SANDBOX_HOME, { recursive: true, force: true }) } catch { /* Preserve the test result if cleanup is unavailable. */ }
+})
 const fail = (msg, e) => {
   console.error(`\n✗ ${msg}`)
   if (e) console.error(`  ${e?.name}: ${e?.message}`)
@@ -31,25 +34,37 @@ try {
 }
 
 const registered = []
+const listeners = new Map()
+const fishAgent = { id: 'selfcheck-fish', session: { id: 'selfcheck-fish', header: { agentPreset: 'dafeiyu' } },
+  ctx: { tools: { register(t) { const name = t?.name ?? String(t); registered.push(name); return () => { const at = registered.indexOf(name); if (at >= 0) registered.splice(at, 1) } } } } }
+const ordinaryAgent = { id: 'selfcheck-standard', session: { id: 'selfcheck-standard', header: { agentPreset: 'standard' } },
+  ctx: { tools: { register() { throw new Error('ordinary conversation must never receive fish schemas') } } } }
 const fakeCtx = {
   // ⭐ 宿主给的是**函数**（`dshHomePath(...segments)`），这里照样给函数 —— 别用字符串
-  get: (k) => (k === 'dshHomePath' ? (...seg) => join(SANDBOX_HOME, ...seg) : undefined),
+  get: (k) => (k === 'dshHomePath' ? (...seg) => join(SANDBOX_HOME, ...seg) : k === 'agents' ? { list: () => [fishAgent, ordinaryAgent] } : undefined),
   logger: { info: () => {}, warn: () => {} },
-  tools: { register: (t) => { registered.push(t?.name ?? String(t)); return t } },
+  tools: { register: () => { throw new Error('root/global tool registration is forbidden') } },
+  on(event, fn) { const set = listeners.get(event) || new Set(); set.add(fn); listeners.set(event, set); return () => set.delete(fn) },
   webServer: { register: () => ({ dispose() {} }) },
   effect: (fn) => { try { return fn() } catch { return undefined } },
   settings: { register: () => ({}) },
   slots: { inject: () => {}, register: () => ({}) },
 }
 
-try { rmSync(SANDBOX_HOME, { recursive: true, force: true }) } catch { /* 清不掉就留着 */ }
-mkdirSync(SANDBOX_HOME, { recursive: true })
 
 try {
   mod.apply(fakeCtx, {})
 } catch (e) {
   fail('host 半端 apply() 抛错了 —— 宿主里就是那句 `warning: 1 entry did not activate`', e)
 }
+if (registered.length < 30) fail('host 没有向鲸鱼会话作用域注册完整工具集')
+const expectedToolCount = registered.length
+fishAgent.session.header.agentPreset = 'standard'
+for (const fn of listeners.get('agent-preset/selected') || []) fn(fishAgent.id, 'standard')
+if (registered.length) fail('切出鲸鱼摸鱼模式后仍残留工具 schema')
+fishAgent.session.header.agentPreset = 'dafeiyu'
+for (const fn of listeners.get('agent-preset/selected') || []) fn(fishAgent.id, 'dafeiyu')
+if (registered.length !== expectedToolCount) fail('切回鲸鱼摸鱼模式后工具未恢复')
 console.log(`✓ host 半端 OK：name=${mod.name}  inject=${JSON.stringify(mod.inject)}  工具 ${registered.length} 个`)
 for (const n of registered) console.log(`    - ${n}`)
 
