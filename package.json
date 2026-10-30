@@ -1,1 +1,112 @@
-ewogICJuYW1lIjogImRzaC1kZWVwbW95dSIsCiAgInZlcnNpb24iOiAiMi40LjIiLAogICJwcml2YXRlIjogZmFsc2UsCiAgImRlc2NyaXB0aW9uIjogIvCfkIsgRGVlcE1vWXUg6bK46bG85pG46bG8IOKAlOKAlCDorqnkuIDlj6rpsrjpsbzlqJjoh6rlt7HpgJsgQuerme+8muiHquS4u+aQnOeJh+OAgeivu+Wtl+W5leOAgeWPkeivhOiuuuOAgeWPkeWKqOaAgeOAgeWbnuengeS/oe+8jOi/mOiDveWGmeaXpeaKpeOAgeWBmuinhumikeeahCBEU0gg5o+S5Lu277yIZHNoLWJpbGktc2Nyb2xsIDAuMS4xOSDliIblj4nvvJvlhoXnva4gbnBtIOabtOaWsOmAmumBk++8jOWvueacrOWcsOWIhuWPieiHquWKqOmUgeWumu+8iSIsCiAgImtleXdvcmRzIjogWwogICAgImRzaCIsCiAgICAiZHNoLXBsdWdpbiIsCiAgICAiZGVlcHNlZWstaGFybmVzcyIsCiAgICAiYmlsaWJpbGkiLAogICAgImRlZXBtb3l1IiwKICAgICLpsrjpsbzmkbjpsbwiLAogICAgImRhZmVpeXUiCiAgXSwKICAibGljZW5zZSI6ICJNSVQiLAogICJyZXBvc2l0b3J5IjogewogICAgInR5cGUiOiAiZ2l0IiwKICAgICJ1cmwiOiAiZ2l0K2h0dHBzOi8vZ2l0aHViLmNvbS9weXl4emkvZHNoLWRlZXBtb3l1LmdpdCIKICB9LAogICJob21lcGFnZSI6ICJodHRwczovL2dpdGh1Yi5jb20vcHl5eHppL2RzaC1kZWVwbW95dSNyZWFkbWUiLAogICJidWdzIjogewogICAgInVybCI6ICJodHRwczovL2dpdGh1Yi5jb20vcHl5eHppL2RzaC1kZWVwbW95dS9pc3N1ZXMiCiAgfSwKICAidHlwZSI6ICJtb2R1bGUiLAogICJtYWluIjogImluZGV4LmpzIiwKICAiZXhwb3J0cyI6IHsKICAgICIuIjogIi4vaW5kZXguanMiLAogICAgIi4vY2xpZW50IjogIi4vY2xpZW50LmpzIiwKICAgICIuL3BhY2thZ2UuanNvbiI6ICIuL3BhY2thZ2UuanNvbiIKICB9LAogICJmaWxlcyI6IFsKICAgICJBR0VOVFMubWQiLAogICAgIkNPTlRSSUJVVElORy5tZCIsCiAgICAiQ09OVFJJQlVUT1JTLm1kIiwKICAgICJMSUNFTlNFIiwKICAgICJOT1RJQ0UubWQiLAogICAgIlJFQURNRS5tZCIsCiAgICAiU0VDVVJJVFkubWQiLAogICAgIkNIQU5HRUxPRy5tZCIsCiAgICAiZG9jcyIsCiAgICAibWFya2V0cGxhY2UiLAogICAgInNjcmVlbnNob3RzLmpzb24iLAogICAgImFzc2V0cyIsCiAgICAiY2xpZW50LmpzIiwKICAgICJjb3JkaXMucGF0Y2gueW1sIiwKICAgICJpbmRleC5qcyIsCiAgICAibGliLyoubWpzIiwKICAgICJsaWIvKi5weSIsCiAgICAiIWxpYi9wdi13cml0ZXIubWpzIiwKICAgICJwcmVzZXRzIiwKICAgICJwcm9tcHRzIiwKICAgICJzZWxmY2hlY2subWpzIiwKICAgICJ2ZW5kb3IiLAogICAgIiEqKi9fX3B5Y2FjaGVfXy8qKiIsCiAgICAiISoqLyoucHljIiwKICAgICIhKiovKi5weW8iCiAgXSwKICAiZW5naW5lcyI6IHsKICAgICJkc2giOiAiPj0wLjEuNy1yYy4xIiwKICAgICJub2RlIjogIj49MjIiCiAgfSwKICAic2NyaXB0cyI6IHsKICAgICJjaGVjayI6ICJub2RlIHNlbGZjaGVjay5tanMiLAogICAgInRlc3QiOiAibm9kZSBzZWxmY2hlY2subWpzICYmIG5vZGUgc2NyaXB0cy90ZXN0LW5vZGUubWpzIiwKICAgICJ0ZXN0OnB5dGhvbiI6ICJub2RlIHNjcmlwdHMvdGVzdC1weXRob24ubWpzIiwKICAgICJ0ZXN0OnVpIjogIm5vZGUgc2NyaXB0cy9xYS9jaGVjay11aS5janMiLAogICAgInRlc3Q6YnJvd3NlciI6ICJub2RlIHNjcmlwdHMvcWEvY2hlY2stbWVudS1kb20uY2pzICYmIG5vZGUgc2NyaXB0cy9xYS9jaGVjay1wcm9kdWN0LWV4cGVyaWVuY2UuY2pzICYmIG5vZGUgc2NyaXB0cy9xYS9jaGVjay11aS1yYWNlcy5janMgJiYgbm9kZSBzY3JpcHRzL3FhL2NoZWNrLW1lbW9yeS11aS5janMgJiYgbm9kZSBzY3JpcHRzL3FhL2NoZWNrLXBhZ2VzLWJyb3dzZXIuY2pzICYmIG5vZGUgc2NyaXB0cy9xYS9jaGVjay1kbS11aWQtYnJvd3Nlci5janMiLAogICAgInRlc3Q6aXNvbGF0aW9uIjogIm5vZGUgc2NyaXB0cy9xYS9jaGVjay1wZXJzb25hLWlzb2xhdGlvbi5janMgJiYgbm9kZSBzY3JpcHRzL3FhL2NoZWNrLW1vZGUtZXhpdC1nb2FsLmNqcyIsCiAgICAicmVsZWFzZTpjaGVjayI6ICJub2RlIHNjcmlwdHMvcmVsZWFzZS9jaGVjay1tYW5pZmVzdC5tanMiLAogICAgInJlbGVhc2U6YnVpbGQiOiAibm9kZSBzY3JpcHRzL3JlbGVhc2UvYnVpbGQubWpzIiwKICAgICJyZWxlYXNlOnNtb2tlIjogIm5vZGUgc2NyaXB0cy9yZWxlYXNlL3Ntb2tlLWluc3RhbGwubWpzIiwKICAgICJ2ZXJpZnkiOiAibnBtIHRlc3QgJiYgbnBtIHJ1biB0ZXN0OnB5dGhvbiAmJiBucG0gcnVuIHRlc3Q6dWkgJiYgbnBtIHJ1biB0ZXN0OmJyb3dzZXIgJiYgbnBtIHJ1biByZWxlYXNlOmNoZWNrIiwKICAgICJ0ZXN0OmNvdmVyYWdlIjogIm5vZGUgc2NyaXB0cy90ZXN0LW5vZGUubWpzIC0tZXhwZXJpbWVudGFsLXRlc3QtY292ZXJhZ2UgLS10ZXN0LWNvdmVyYWdlLWluY2x1ZGU9aW5kZXguanMgLS10ZXN0LWNvdmVyYWdlLWluY2x1ZGU9bGliLyoubWpzIiwKICAgICJ0ZXN0Omhvc3QiOiAibm9kZSBzY3JpcHRzL3FhL2hvc3QtYnVuZGxlLXNtb2tlLm1qcyIsCiAgICAidGVzdDptY3AiOiAibm9kZSBzY3JpcHRzL3FhL2NoZWNrLXJlYWwtbWNwLm1qcyIKICB9LAogICJwZWVyRGVwZW5kZW5jaWVzIjogewogICAgIkBkZWVwc2Vlay1haS9kc2gtdG9vbHMiOiAiKiIsCiAgICAiQGRlZXBzZWVrLWFpL3NjaGVtYXN0ZXJ5IjogIjMuMTguNSIKICB9LAogICJkZXBlbmRlbmNpZXMiOiB7CiAgICAiQGRlZXBzZWVrLWFpL3NjaGVtYXN0ZXJ5IjogIjMuMTguNSIKICB9LAogICJwZWVyRGVwZW5kZW5jaWVzTWV0YSI6IHsKICAgICJAZGVlcHNlZWstYWkvZHNoLXRvb2xzIjogewogICAgICAib3B0aW9uYWwiOiB0cnVlCiAgICB9LAogICAgIkBkZWVwc2Vlay1haS9zY2hlbWFzdGVyeSI6IHsKICAgICAgIm9wdGlvbmFsIjogdHJ1ZQogICAgfQogIH0sCiAgImRzaCI6IHsKICAgICJidW5kbGUiOiB7CiAgICAgICJwYXRjaCI6IFsKICAgICAgICAiLi9jb3JkaXMucGF0Y2gueW1sIiwKICAgICAgICAiLi9wcmVzZXRzL2RlZXBtb3l1LnBhdGNoLnltbCIKICAgICAgXQogICAgfSwKICAgICJjbGllbnQiOiB7CiAgICAgICJwbGF0Zm9ybSI6ICJ3ZWIiLAogICAgICAiaW5qZWN0IjogWwogICAgICAgICJAZGVlcHNlZWstYWkvZHNoLWNsaWVudC1ydW50aW1lIgogICAgICBdCiAgICB9CiAgfSwKICAiZGV2RGVwZW5kZW5jaWVzIjogewogICAgInJlYWN0IjogIjE5LjEuMTAiLAogICAgInJlYWN0LWRvbSI6ICIxOS4xLjEwIiwKICAgICJzY2hlZHVsZXIiOiAiMC4yNi4wIiwKICAgICJ5YW1sIjogIjIuOS4xIgogIH0KfQo=
+{
+  "name": "dsh-deepmoyu",
+  "version": "2.4.2",
+  "private": false,
+  "description": "🐋 DeepMoYu 鲸鱼摸鱼 —— 让一只鲸鱼娘自己逛 B站：自主搜片、读字幕、发评论、发动态、回私信，还能写日报、做视频的 DSH 插件（dsh-bili-scroll 0.1.19 分叉；内置 npm 更新通道，对本地分叉自动锁定）",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "bilibili",
+    "deepmoyu",
+    "鲸鱼摸鱼",
+    "dafeiyu"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyyxzi/dsh-deepmoyu.git"
+  },
+  "homepage": "https://github.com/pyyxzi/dsh-deepmoyu#readme",
+  "bugs": {
+    "url": "https://github.com/pyyxzi/dsh-deepmoyu/issues"
+  },
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTORS.md",
+    "LICENSE",
+    "NOTICE.md",
+    "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "docs",
+    "marketplace",
+    "screenshots.json",
+    "assets",
+    "client.js",
+    "cordis.patch.yml",
+    "index.js",
+    "lib/*.mjs",
+    "lib/*.py",
+    "!lib/pv-writer.mjs",
+    "presets",
+    "prompts",
+    "selfcheck.mjs",
+    "vendor",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/*.pyo"
+  ],
+  "engines": {
+    "dsh": ">=0.1.7-rc.1",
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node selfcheck.mjs",
+    "test": "node selfcheck.mjs && node scripts/test-node.mjs",
+    "test:python": "node scripts/test-python.mjs",
+    "test:ui": "node scripts/qa/check-ui.cjs",
+    "test:browser": "node scripts/qa/check-menu-dom.cjs && node scripts/qa/check-product-experience.cjs && node scripts/qa/check-ui-races.cjs && node scripts/qa/check-memory-ui.cjs && node scripts/qa/check-pages-browser.cjs && node scripts/qa/check-dm-uid-browser.cjs",
+    "test:isolation": "node scripts/qa/check-persona-isolation.cjs && node scripts/qa/check-mode-exit-goal.cjs",
+    "release:check": "node scripts/release/check-manifest.mjs",
+    "release:build": "node scripts/release/build.mjs",
+    "release:smoke": "node scripts/release/smoke-install.mjs",
+    "verify": "npm test && npm run test:python && npm run test:ui && npm run test:browser && npm run release:check",
+    "test:coverage": "node scripts/test-node.mjs --experimental-test-coverage --test-coverage-include=index.js --test-coverage-include=lib/*.mjs",
+    "test:host": "node scripts/qa/host-bundle-smoke.mjs",
+    "test:mcp": "node scripts/qa/check-real-mcp.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "3.18.5"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.5"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/deepmoyu.patch.yml"
+      ]
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ]
+    }
+  },
+  "devDependencies": {
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "scheduler": "0.26.0",
+    "yaml": "2.9.1"
+  }
+}

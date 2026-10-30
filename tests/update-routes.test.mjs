@@ -1,1 +1,197 @@
-aW1wb3J0IHRlc3QgZnJvbSAnbm9kZTp0ZXN0JwppbXBvcnQgYXNzZXJ0IGZyb20gJ25vZGU6YXNzZXJ0L3N0cmljdCcKaW1wb3J0IHsgRXZlbnRFbWl0dGVyIH0gZnJvbSAnbm9kZTpldmVudHMnCmltcG9ydCB7IG1rZGlyU3luYywgbWtkdGVtcFN5bmMsIHJlYWRGaWxlU3luYywgcm1TeW5jLCB3cml0ZUZpbGVTeW5jIH0gZnJvbSAnbm9kZTpmcycKaW1wb3J0IHsgdG1wZGlyIH0gZnJvbSAnbm9kZTpvcycKaW1wb3J0IHsgam9pbiB9IGZyb20gJ25vZGU6cGF0aCcKaW1wb3J0IHsgY3JlYXRlUmVxdWlyZSwgc3luY0J1aWx0aW5FU01FeHBvcnRzIH0gZnJvbSAnbm9kZTptb2R1bGUnCmltcG9ydCB7IGNwU3luYyB9IGZyb20gJ25vZGU6ZnMnCmltcG9ydCB7IGZpbGVVUkxUb1BhdGgsIHBhdGhUb0ZpbGVVUkwgfSBmcm9tICdub2RlOnVybCcKCmNvbnN0IHJvb3QgPSBta2R0ZW1wU3luYyhqb2luKHRtcGRpcigpLCAnZmlzaC11cGRhdGUtcm91dGVzLScpKQpjb25zdCBidWlsdGluID0gam9pbihyb290LCAnYnVpbHRpbicpOyBta2RpclN5bmMoYnVpbHRpbikKY29uc3QgcHJpb3JCdWlsdGluID0gcHJvY2Vzcy5lbnYuREFGRUlZVV9TVElDS0VSX0RJUgpwcm9jZXNzLmVudi5EQUZFSVlVX1NUSUNLRVJfRElSID0gYnVpbHRpbgpjb25zdCB7IGFwcGx5IH0gPSBhd2FpdCBpbXBvcnQoJy4uL2luZGV4LmpzJykKY29uc3QgaW1tZWRpYXRlID0gKCkgPT4gbmV3IFByb21pc2UocmVzb2x2ZSA9PiBzZXRJbW1lZGlhdGUocmVzb2x2ZSkpCgovKioKICogUmVhbCBwbHVnaW4gSFRUUCByb3V0ZXMsIGlzb2xhdGVkIGhvbWUsIGZha2UgaG9zdCBzZXJ2aWNlcy4KICogVGhlIHBsdWdpbiBkaXJlY3RvcnkgaXRzZWxmIGlzIHRoZSByZWFsIHNvdXJjZSB0cmVlLCBzbyBgZGV0ZWN0SW5zdGFsbE1vZGVgIHNlZXMKICogYSBkaXJlY3Rvcnkgb3V0c2lkZSBhbnkgcHJvZmlsZSDih5IgY2FuVXBncmFkZT1mYWxzZS4gVGhhdCBpcyBleGFjdGx5IHRoZSBsb2NhbC1mb3JrCiAqIHNpdHVhdGlvbiB0aGlzIHJvdXRlIG11c3QgcmVmdXNlIHRvIGF1dG8tdXBncmFkZS4KICovCmFzeW5jIGZ1bmN0aW9uIGZpeHR1cmUoeyBjb25maWcgPSB7fSwgZHNoSG9tZSA9IGpvaW4ocm9vdCwgJ2RzaC1ob21lJyksIGFwcGx5Rm4gPSBhcHBseSB9ID0ge30pIHsKICAvLyBUaGUgcGx1Z2luIHJlYWRzIGl0cyBob21lIHZpYSBjdHguZ2V0KCdkc2hIb21lUGF0aCcpKCdiaWxpLWR1dHknKSDigJQgd3JpdGUgY29uZmlnIFRIRVJFLCBub3QgdG8gYSBzaWJsaW5nIGRpci4KICBjb25zdCBob21lID0gam9pbihkc2hIb21lLCAnYmlsaS1kdXR5JykKICBta2RpclN5bmMoaG9tZSwgeyByZWN1cnNpdmU6IHRydWUgfSkKICAvLyBfc2V0IOWQjeWNleWGs+WumiBjb25maWcuanNvbiDph4znmoTplK7mmK/lkKbljovov4flrr/kuLvpu5jorqTlgLwg4oCU4oCUIOS4jeWGmei/m+WOu+i/meevh+WkueWFt+eahCBkc2hCaW4g5qC55pys5LiN5Lya55Sf5pWI44CCCiAgd3JpdGVGaWxlU3luYyhqb2luKGhvbWUsICdjb25maWcuanNvbicpLCBKU09OLnN0cmluZ2lmeSh7IHJlcG9ydExldmVsOiAnb2ZmJywgbGVhcm5BdXRvUmV2aWV3OiBmYWxzZSwgX3NldDogT2JqZWN0LmtleXMoY29uZmlnKSwgLi4uY29uZmlnIH0pKQogIGxldCBoYW5kbGVyID0gbnVsbAogIGNvbnN0IGNsZWFudXBzID0gW10sIHNwYXducyA9IFtdLCBmZXRjaGVzID0gW10KICBjb25zdCBjdHggPSB7CiAgICBsb2dnZXI6IHsgaW5mbygpIHt9IH0sIHNldHRpbmdzOiB7IGRlc2NyaWJlOiAoKSA9PiBbXSB9LAogICAgZ2V0OiBrZXkgPT4ga2V5ID09PSAnZHNoSG9tZVBhdGgnID8gKC4uLnBhcnRzKSA9PiBqb2luKGRzaEhvbWUsIC4uLnBhcnRzKSA6IHVuZGVmaW5lZCwKICAgIHRvb2xzOiB7IHJlZ2lzdGVyOiBzcGVjID0+IHNwZWMgfSwgb246ICgpID0+ICgpID0+IHt9LAogICAgZWZmZWN0KGZuKSB7IGNvbnN0IG9mZiA9IGZuKCk7IGlmICh0eXBlb2Ygb2ZmID09PSAnZnVuY3Rpb24nKSBjbGVhbnVwcy5wdXNoKG9mZikgfSwKICAgIHdlYlNlcnZlcjogeyByZWdpc3Rlcihyb3V0ZSkgeyBoYW5kbGVyID0gcm91dGUuaGFuZGxlcjsgcmV0dXJuIHsgZGlzcG9zZSgpIHt9IH0gfSB9LAogIH0KICBjb25zdCBjcCA9IGNyZWF0ZVJlcXVpcmUoaW1wb3J0Lm1ldGEudXJsKSgnbm9kZTpjaGlsZF9wcm9jZXNzJykKICBjb25zdCBvcmlnaW5hbCA9IHsgc3Bhd246IGNwLnNwYXduLCBmZXRjaDogZ2xvYmFsVGhpcy5mZXRjaCB9CiAgY3Auc3Bhd24gPSAoY29tbWFuZCwgYXJncywgb3B0aW9ucykgPT4gewogICAgc3Bhd25zLnB1c2goeyBjb21tYW5kLCBhcmdzLCBvcHRpb25zIH0pCiAgICBjb25zdCBjaGlsZCA9IG5ldyBFdmVudEVtaXR0ZXIoKQogICAgY2hpbGQuc3Rkb3V0ID0gbmV3IEV2ZW50RW1pdHRlcigpOyBjaGlsZC5zdGRlcnIgPSBuZXcgRXZlbnRFbWl0dGVyKCk7IGNoaWxkLmtpbGwgPSAoKSA9PiB0cnVlOyBjaGlsZC51bnJlZiA9ICgpID0+IHt9CiAgICBxdWV1ZU1pY3JvdGFzaygoKSA9PiB7IGNoaWxkLmVtaXQoJ2Nsb3NlJywgMCkgfSkKICAgIHJldHVybiBjaGlsZAogIH0KICBzeW5jQnVpbHRpbkVTTUV4cG9ydHMoKQogIGdsb2JhbFRoaXMuZmV0Y2ggPSBhc3luYyAodXJsKSA9PiB7CiAgICBmZXRjaGVzLnB1c2goU3RyaW5nKHVybCkpCiAgICByZXR1cm4geyBvazogdHJ1ZSwgc3RhdHVzOiAyMDAsIHRleHQ6IGFzeW5jICgpID0+IEpTT04uc3RyaW5naWZ5KHsgJ2Rpc3QtdGFncyc6IHsgbGF0ZXN0OiAnOS45LjknIH0sIHRpbWU6IHsgJzkuOS45JzogJzIwMjYtMTAtMzBUMDA6MDA6MDAuMDAwWicgfSB9KSB9CiAgfQogIGFzeW5jIGZ1bmN0aW9uIHJlcXVlc3QocGF0aCwgYm9keSwgbWV0aG9kID0gJ0dFVCcpIHsKICAgIGNvbnN0IHJlcSA9IG5ldyBFdmVudEVtaXR0ZXIoKTsgcmVxLnVybCA9ICcvYXBpL2JpbGktZHV0eScgKyBwYXRoOyByZXEubWV0aG9kID0gbWV0aG9kOyByZXEuaGVhZGVycyA9IHt9OyByZXEuZGVzdHJveSA9ICgpID0+IHt9CiAgICBsZXQgZW5kZWQgPSBmYWxzZQogICAgY29uc3QgcmVzID0gewogICAgICB3cml0ZUhlYWQoY29kZSwgaGVhZGVycykgeyB0aGlzLmNvZGUgPSBjb2RlOyB0aGlzLmhlYWRlcnMgPSBoZWFkZXJzIH0sCiAgICAgIGVuZChkYXRhKSB7IGVuZGVkID0gdHJ1ZTsgdGhpcy5yYXcgPSBkYXRhOyB0cnkgeyB0aGlzLmJvZHkgPSBKU09OLnBhcnNlKGRhdGEpIH0gY2F0Y2ggeyB0aGlzLmJvZHkgPSBkYXRhIH0gfSwKICAgIH0KICAgIGNvbnN0IHBlbmRpbmcgPSBoYW5kbGVyKHJlcSwgcmVzKQogICAgaWYgKG1ldGhvZCA9PT0gJ1BPU1QnKSB7IHJlcS5lbWl0KCdkYXRhJywgQnVmZmVyLmZyb20oSlNPTi5zdHJpbmdpZnkoYm9keSA/PyB7fSkpKTsgcmVxLmVtaXQoJ2VuZCcpIH0KICAgIGF3YWl0IHBlbmRpbmcKICAgIGFzc2VydC5vayhlbmRlZCwgJ3JvdXRlIG11c3QgYWx3YXlzIGFuc3dlcicpCiAgICByZXR1cm4gcmVzCiAgfQogIHRyeSB7CiAgICBhcHBseUZuKGN0eCwge30pOyBhd2FpdCBpbW1lZGlhdGUoKQogIH0gY2F0Y2ggKGVycm9yKSB7IGNsZWFudXAoKTsgdGhyb3cgZXJyb3IgfQogIGZ1bmN0aW9uIGNsZWFudXAoKSB7CiAgICBmb3IgKGNvbnN0IG9mZiBvZiBjbGVhbnVwcy5yZXZlcnNlKCkpIHsgdHJ5IHsgb2ZmKCkgfSBjYXRjaCB7fSB9CiAgICBjcC5zcGF3biA9IG9yaWdpbmFsLnNwYXduOyBnbG9iYWxUaGlzLmZldGNoID0gb3JpZ2luYWwuZmV0Y2g7IHN5bmNCdWlsdGluRVNNRXhwb3J0cygpCiAgICBybVN5bmMoaG9tZSwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pCiAgfQogIHJldHVybiB7IGhvbWUsIHJlcXVlc3QsIHNwYXducywgZmV0Y2hlcywgY2xlYW51cCB9Cn0KCnRlc3QuYWZ0ZXIoKCkgPT4gewogIGlmIChwcmlvckJ1aWx0aW4gPT09IHVuZGVmaW5lZCkgZGVsZXRlIHByb2Nlc3MuZW52LkRBRkVJWVVfU1RJQ0tFUl9ESVIKICBlbHNlIHByb2Nlc3MuZW52LkRBRkVJWVVfU1RJQ0tFUl9ESVIgPSBwcmlvckJ1aWx0aW4KICBybVN5bmMocm9vdCwgeyByZWN1cnNpdmU6IHRydWUsIGZvcmNlOiB0cnVlIH0pCn0pCgp0ZXN0KCdHRVQgL3VwZGF0ZSByZXBvcnRzIHRoZSByZWFsIGN1cnJlbnQgdmVyc2lvbiBhbmQgcmVmdXNlcyB0byBjYWxsIGEgbG9jYWwgY2hlY2tvdXQgdXBncmFkYWJsZScsIGFzeW5jICgpID0+IHsKICBjb25zdCBmID0gYXdhaXQgZml4dHVyZSgpCiAgdHJ5IHsKICAgIGNvbnN0IHIgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGRhdGUnLCB1bmRlZmluZWQsICdHRVQnKQogICAgYXNzZXJ0LmVxdWFsKHIuY29kZSwgMjAwKQogICAgYXNzZXJ0LmVxdWFsKHIuYm9keS5vaywgdHJ1ZSkKICAgIGFzc2VydC5lcXVhbChyLmJvZHkuY3VycmVudCwgJzIuNC4yJykKICAgIGFzc2VydC5lcXVhbChyLmJvZHkubGF0ZXN0LCAnOS45LjknKQogICAgYXNzZXJ0LmVxdWFsKHIuYm9keS5vdXRkYXRlZCwgdHJ1ZSwgJ2EgbmV3ZXIgdmVyc2lvbiBtdXN0IHN0aWxsIGJlIHJlcG9ydGVkJykKICAgIGFzc2VydC5lcXVhbChyLmJvZHkuY2FuVXBncmFkZSwgZmFsc2UsICd0aGUgc291cmNlIHRyZWUgaXMgbm90IGEgcmVnaXN0cnkgaW5zdGFsbCcpCiAgICBhc3NlcnQubm90RXF1YWwoci5ib2R5Lmluc3RhbGwubW9kZSwgJ3JlZ2lzdHJ5JykKICAgIGFzc2VydC5vayhyLmJvZHkuYmxvY2tlciwgJ3RoZSBVSSBuZWVkcyBhIHJlYXNvbiB0byBkaXNhYmxlIHRoZSBidXR0b24nKQogICAgYXNzZXJ0Lm1hdGNoKHIuYm9keS5pbnN0YWxsLnJlYXNvbiwgL+aJi+WKqHzmupDnoIF8cHJvZmlsZXznm67lvZUvKQogICAgYXNzZXJ0LmVxdWFsKGYuc3Bhd25zLmxlbmd0aCwgMCwgJ2NoZWNraW5nIG11c3QgbmV2ZXIgc3Bhd24gYW55dGhpbmcnKQogICAgYXNzZXJ0LmVxdWFsKGYuZmV0Y2hlcy5sZW5ndGgsIDEpCiAgICAvLyBDYWNoZWQ6IGEgc2Vjb25kIHBvbGwgbXVzdCBub3QgaGl0IHRoZSBuZXR3b3JrIGFnYWluLgogICAgY29uc3QgYWdhaW4gPSBhd2FpdCBmLnJlcXVlc3QoJy91cGRhdGUnLCB1bmRlZmluZWQsICdHRVQnKQogICAgYXNzZXJ0LmVxdWFsKGFnYWluLmNvZGUsIDIwMCk7IGFzc2VydC5lcXVhbChmLmZldGNoZXMubGVuZ3RoLCAxKQogICAgLy8gcmV2PSBzaG9ydC1jaXJjdWl0cyB3aGVuIG5vdGhpbmcgY2hhbmdlZC4KICAgIGNvbnN0IHVuY2hhbmdlZCA9IGF3YWl0IGYucmVxdWVzdCgnL3VwZGF0ZT9yZXY9JyArIGVuY29kZVVSSUNvbXBvbmVudChhZ2Fpbi5ib2R5LnJldiksIHVuZGVmaW5lZCwgJ0dFVCcpCiAgICBhc3NlcnQuZXF1YWwodW5jaGFuZ2VkLmJvZHkudW5jaGFuZ2VkLCB0cnVlKQogIH0gZmluYWxseSB7IGYuY2xlYW51cCgpIH0KfSkKCnRlc3QoJ1BPU1QgL3VwZ3JhZGUgcmVmdXNlcyB3aXRob3V0IGV4cGxpY2l0IGNvbmZpcm1hdGlvbiBhbmQgbmV2ZXIgc3Bhd25zIGRzaCcsIGFzeW5jICgpID0+IHsKICBjb25zdCBmID0gYXdhaXQgZml4dHVyZSgpCiAgdHJ5IHsKICAgIGZvciAoY29uc3QgYm9keSBvZiBbe30sIHsgY29uZmlybTogZmFsc2UgfSwgeyBjb25maXJtOiAneWVzJyB9LCB7IGxhdGVzdDogJzkuOS45JyB9XSkgewogICAgICBjb25zdCByID0gYXdhaXQgZi5yZXF1ZXN0KCcvdXBncmFkZScsIGJvZHksICdQT1NUJykKICAgICAgYXNzZXJ0LmVxdWFsKHIuY29kZSwgNDAwLCBKU09OLnN0cmluZ2lmeShib2R5KSkKICAgICAgYXNzZXJ0LmVxdWFsKHIuYm9keS5jb2RlLCAnVVBHUkFERV9DT05GSVJNX1JFUVVJUkVEJykKICAgIH0KICAgIGFzc2VydC5lcXVhbChmLnNwYXducy5sZW5ndGgsIDApCiAgfSBmaW5hbGx5IHsgZi5jbGVhbnVwKCkgfQp9KQoKdGVzdCgnUE9TVCAvdXBncmFkZSByZWZ1c2VzIGFuIHVudXNhYmxlIGluc3RhbGwgZXZlbiB3aXRoIGNvbmZpcm06dHJ1ZScsIGFzeW5jICgpID0+IHsKICBjb25zdCBmID0gYXdhaXQgZml4dHVyZSgpCiAgdHJ5IHsKICAgIGNvbnN0IHIgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGdyYWRlJywgeyBjb25maXJtOiB0cnVlIH0sICdQT1NUJykKICAgIGFzc2VydC5lcXVhbChyLmNvZGUsIDIwMCkKICAgIGFzc2VydC5lcXVhbChyLmJvZHkub2ssIGZhbHNlKQogICAgYXNzZXJ0Lm9rKFsnVVBHUkFERV9CTE9DS0VEJywgJ05PX0RTSF9DTEknLCAnTk9fUFJPRklMRSddLmluY2x1ZGVzKHIuYm9keS5jb2RlKSB8fCByLmJvZHkuY29kZSA9PT0gdW5kZWZpbmVkKQogICAgYXNzZXJ0LmVxdWFsKGYuc3Bhd25zLmxlbmd0aCwgMCwgJ25vIGluc3RhbGwgbWF5IGJlIHRyaWdnZXJlZCBmb3IgYSBub24tcmVnaXN0cnkgbGF5b3V0JykKICAgIGFzc2VydC5vayhTdHJpbmcoci5ib2R5LmVycm9yIHx8ICcnKS5sZW5ndGggPiAwKQogIH0gZmluYWxseSB7IGYuY2xlYW51cCgpIH0KfSkKCnRlc3QoJ0dFVCAvdXBkYXRlIHN1cnZpdmVzIGFuIHVucmVhY2hhYmxlIHJlZ2lzdHJ5IHdpdGhvdXQgcHJldGVuZGluZyBhbnl0aGluZycsIGFzeW5jICgpID0+IHsKICBjb25zdCBmID0gYXdhaXQgZml4dHVyZSgpCiAgdHJ5IHsKICAgIGdsb2JhbFRoaXMuZmV0Y2ggPSBhc3luYyAoKSA9PiB7IHRocm93IG5ldyBFcnJvcignb2ZmbGluZScpIH0KICAgIGNvbnN0IHIgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGRhdGU/Zm9yY2U9MScsIHVuZGVmaW5lZCwgJ0dFVCcpCiAgICBhc3NlcnQuZXF1YWwoci5jb2RlLCAyMDApCiAgICBhc3NlcnQuZXF1YWwoci5ib2R5Lm9rLCBmYWxzZSkKICAgIGFzc2VydC5lcXVhbChyLmJvZHkub3V0ZGF0ZWQsIGZhbHNlKQogICAgYXNzZXJ0LmVxdWFsKHIuYm9keS5jYW5VcGdyYWRlLCBmYWxzZSkKICAgIGFzc2VydC5tYXRjaChyLmJvZHkuZXJyb3IsIC9vZmZsaW5lLykKICAgIGNvbnN0IHVwZ3JhZGUgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGdyYWRlJywgeyBjb25maXJtOiB0cnVlIH0sICdQT1NUJykKICAgIGFzc2VydC5lcXVhbCh1cGdyYWRlLmJvZHkub2ssIGZhbHNlKQogICAgYXNzZXJ0LmVxdWFsKGYuc3Bhd25zLmxlbmd0aCwgMCkKICB9IGZpbmFsbHkgeyBmLmNsZWFudXAoKSB9Cn0pCgp0ZXN0KCdhIHN1cHBvcnRlZCByZWdpc3RyeSBpbnN0YWxsIHJlYWxseSBzcGF3bnMgdGhlIGZpeGVkIHBsdWdpbiBhZGQgYW5kIHJlcG9ydHMgaXQgc3RhcnRlZCBvbmNlJywgYXN5bmMgKCkgPT4gewogIC8vIEhvbmVzdCBwb3NpdGl2ZSBwYXRoOiBjb3B5IHRoZSByZWFsIHBsdWdpbiBpbnRvIGEgZmFrZSBwcm9maWxlIGFzIGEgKnJlZ2lzdHJ5LXN0eWxlKiBpbnN0YWxsLAogIC8vIHRoZW4gaW1wb3J0IHRoYXQgY29weS4gTm8gcHJvZHVjdGlvbiBzZWFtIGlzIGZha2VkLgogIGNvbnN0IGRzaEhvbWUgPSBqb2luKHJvb3QsICdmYWtlLWhvbWUnKQogIGNvbnN0IGluc3RhbGxlZCA9IGpvaW4oZHNoSG9tZSwgJ3Byb2ZpbGVzJywgJ3dlYicsICdub2RlX21vZHVsZXMnLCAnZHNoLWRlZXBtb3l1JykKICBta2RpclN5bmMoaW5zdGFsbGVkLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KQogIGNvbnN0IHNvdXJjZVJvb3QgPSBmaWxlVVJMVG9QYXRoKG5ldyBVUkwoJy4uJywgaW1wb3J0Lm1ldGEudXJsKSkKICBmb3IgKGNvbnN0IG5hbWUgb2YgWydwYWNrYWdlLmpzb24nLCAnaW5kZXguanMnLCAnY2xpZW50LmpzJywgJ3NlbGZjaGVjay5tanMnLCAnY29yZGlzLnBhdGNoLnltbCddKSB7CiAgICB3cml0ZUZpbGVTeW5jKGpvaW4oaW5zdGFsbGVkLCBuYW1lKSwgcmVhZEZpbGVTeW5jKGpvaW4oc291cmNlUm9vdCwgbmFtZSkpKQogIH0KICBmb3IgKGNvbnN0IGRpciBvZiBbJ2xpYicsICdwcmVzZXRzJywgJ3Byb21wdHMnLCAndmVuZG9yJ10pIGNwU3luYyhqb2luKHNvdXJjZVJvb3QsIGRpciksIGpvaW4oaW5zdGFsbGVkLCBkaXIpLCB7IHJlY3Vyc2l2ZTogdHJ1ZSB9KQogIGNvbnN0IGNsaSA9IGpvaW4oZHNoSG9tZSwgJ2RzaC1iaW4uanMnKTsgd3JpdGVGaWxlU3luYyhjbGksICcvLyBuZXZlciBleGVjdXRlZDsgc3Bhd24gaXMgbW9ja2VkXG4nKQogIGNvbnN0IHsgYXBwbHk6IGFwcGx5SW5zdGFsbGVkIH0gPSBhd2FpdCBpbXBvcnQocGF0aFRvRmlsZVVSTChqb2luKGluc3RhbGxlZCwgJ2luZGV4LmpzJykpLmhyZWYpCiAgY29uc3QgZiA9IGF3YWl0IGZpeHR1cmUoeyBkc2hIb21lLCBjb25maWc6IHsgZHNoQmluOiBjbGkgfSwgYXBwbHlGbjogYXBwbHlJbnN0YWxsZWQgfSkKICB0cnkgewogICAgY29uc3QgY2hlY2sgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGRhdGU/Zm9yY2U9MScsIHVuZGVmaW5lZCwgJ0dFVCcpCiAgICBhc3NlcnQuZXF1YWwoY2hlY2suYm9keS5pbnN0YWxsLm1vZGUsICdyZWdpc3RyeScsIEpTT04uc3RyaW5naWZ5KGNoZWNrLmJvZHkuaW5zdGFsbCkpCiAgICBhc3NlcnQuZXF1YWwoY2hlY2suYm9keS5jYW5VcGdyYWRlLCB0cnVlKQogICAgYXNzZXJ0LmVxdWFsKGNoZWNrLmJvZHkuYmxvY2tlciwgJycpCiAgICBjb25zdCBjZmdOb3cgPSBhd2FpdCBmLnJlcXVlc3QoJy9jb25maWcnLCB1bmRlZmluZWQsICdHRVQnKQogICAgYXNzZXJ0LmVxdWFsKGNmZ05vdy5ib2R5LmNvbmZpZy5kc2hCaW4sIGNsaSkKICAgIGNvbnN0IHN0YXJ0ZWQgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGdyYWRlJywgeyBjb25maXJtOiB0cnVlIH0sICdQT1NUJykKICAgIGFzc2VydC5lcXVhbChzdGFydGVkLmNvZGUsIDIwMCkKICAgIGFzc2VydC5lcXVhbChzdGFydGVkLmJvZHkub2ssIHRydWUsIEpTT04uc3RyaW5naWZ5KHN0YXJ0ZWQuYm9keSkuc2xpY2UoMCwgNjAwKSkKICAgIGFzc2VydC5lcXVhbChzdGFydGVkLmJvZHkuc3RhcnRlZCwgdHJ1ZSkKICAgIGFzc2VydC5lcXVhbChzdGFydGVkLmJvZHkudG8sICc5LjkuOScpCiAgICBhc3NlcnQuZXF1YWwoZi5zcGF3bnMubGVuZ3RoLCAxKQogICAgY29uc3QgY2FsbCA9IGYuc3Bhd25zWzBdCiAgICBhc3NlcnQuZXF1YWwoY2FsbC5hcmdzWzBdLCBjbGkpCiAgICBhc3NlcnQuZGVlcEVxdWFsKGNhbGwuYXJncy5zbGljZSgxKSwgWydwbHVnaW4nLCAnLS1wcm9maWxlJywgJ3dlYicsICdhZGQnLCAnZHNoLWRlZXBtb3l1J10pCiAgICBhc3NlcnQuZXF1YWwoY2FsbC5vcHRpb25zLmVudi5ucG1fY29uZmlnX3JlZ2lzdHJ5LCAnaHR0cHM6Ly9yZWdpc3RyeS5ucG1taXJyb3IuY29tJykKICAgIGF3YWl0IGltbWVkaWF0ZSgpOyBhd2FpdCBpbW1lZGlhdGUoKQogICAgY29uc3QgYWZ0ZXIgPSBhd2FpdCBmLnJlcXVlc3QoJy91cGRhdGUnLCB1bmRlZmluZWQsICdHRVQnKQogICAgYXNzZXJ0LmVxdWFsKGFmdGVyLmJvZHkudXBncmFkaW5nLCBmYWxzZSkKICB9IGZpbmFsbHkgeyBmLmNsZWFudXAoKTsgcm1TeW5jKGRzaEhvbWUsIHsgcmVjdXJzaXZlOiB0cnVlLCBmb3JjZTogdHJ1ZSB9KSB9Cn0pCgp0ZXN0KCd0aGUgdXBkYXRlIGxvZyBzdGF5cyBpbnNpZGUgdGhlIHBsdWdpbiBob21lIGFuZCBvbmx5IHJlY29yZHMgdGhlIGF0dGVtcHQnLCBhc3luYyAoKSA9PiB7CiAgY29uc3QgZiA9IGF3YWl0IGZpeHR1cmUoKQogIHRyeSB7CiAgICBhd2FpdCBmLnJlcXVlc3QoJy91cGRhdGU/Zm9yY2U9MScsIHVuZGVmaW5lZCwgJ0dFVCcpCiAgICBhd2FpdCBmLnJlcXVlc3QoJy91cGdyYWRlJywgeyBjb25maXJtOiB0cnVlIH0sICdQT1NUJykKICAgIC8vIE5vdGhpbmcgd2FzIHNwYXduZWQsIHNvIG5vIGxvZyBsaW5lIGlzIHJlcXVpcmVkOyBidXQgaWYgb25lIGV4aXN0cyBpdCBtdXN0IGJlIGluIHRoZSBob21lLgogICAgbGV0IHRleHQgPSAnJwogICAgdHJ5IHsgdGV4dCA9IHJlYWRGaWxlU3luYyhqb2luKGYuaG9tZSwgJ3VwZGF0ZS5sb2cnKSwgJ3V0ZjgnKSB9IGNhdGNoIHsgdGV4dCA9ICcnIH0KICAgIGZvciAoY29uc3QgbGluZSBvZiB0ZXh0LnNwbGl0KC9ccj9cbi8pLmZpbHRlcihCb29sZWFuKSkgewogICAgICBhc3NlcnQubWF0Y2gobGluZSwgL1xbdXBkYXRlOlthLXpdK1xdLykKICAgICAgYXNzZXJ0Lm9rKCEvW0EtWmEtel06XFxVc2Vyc1xcfFtcXC9dXC5zc2hbXFwvXXx0b2tlbnxwYXNzd29yZC9pLnRlc3QobGluZSksICduZXZlciBsb2cgc2VjcmV0cyBvciB1c2VyIHBhdGhzJykKICAgIH0KICB9IGZpbmFsbHkgeyBmLmNsZWFudXAoKSB9Cn0pCg==
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createRequire, syncBuiltinESMExports } from 'node:module'
+import { cpSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const root = mkdtempSync(join(tmpdir(), 'fish-update-routes-'))
+const builtin = join(root, 'builtin'); mkdirSync(builtin)
+const priorBuiltin = process.env.DAFEIYU_STICKER_DIR
+process.env.DAFEIYU_STICKER_DIR = builtin
+const { apply } = await import('../index.js')
+const immediate = () => new Promise(resolve => setImmediate(resolve))
+
+/**
+ * Real plugin HTTP routes, isolated home, fake host services.
+ * The plugin directory itself is the real source tree, so `detectInstallMode` sees
+ * a directory outside any profile ⇒ canUpgrade=false. That is exactly the local-fork
+ * situation this route must refuse to auto-upgrade.
+ */
+async function fixture({ config = {}, dshHome = join(root, 'dsh-home'), applyFn = apply } = {}) {
+  // The plugin reads its home via ctx.get('dshHomePath')('bili-duty') — write config THERE, not to a sibling dir.
+  const home = join(dshHome, 'bili-duty')
+  mkdirSync(home, { recursive: true })
+  // _set 名单决定 config.json 里的键是否压过宿主默认值 —— 不写进去这篇夹具的 dshBin 根本不会生效。
+  writeFileSync(join(home, 'config.json'), JSON.stringify({ reportLevel: 'off', learnAutoReview: false, _set: Object.keys(config), ...config }))
+  let handler = null
+  const cleanups = [], spawns = [], fetches = []
+  const ctx = {
+    logger: { info() {} }, settings: { describe: () => [] },
+    get: key => key === 'dshHomePath' ? (...parts) => join(dshHome, ...parts) : undefined,
+    tools: { register: spec => spec }, on: () => () => {},
+    effect(fn) { const off = fn(); if (typeof off === 'function') cleanups.push(off) },
+    webServer: { register(route) { handler = route.handler; return { dispose() {} } } },
+  }
+  const cp = createRequire(import.meta.url)('node:child_process')
+  const original = { spawn: cp.spawn, fetch: globalThis.fetch }
+  cp.spawn = (command, args, options) => {
+    spawns.push({ command, args, options })
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => true; child.unref = () => {}
+    queueMicrotask(() => { child.emit('close', 0) })
+    return child
+  }
+  syncBuiltinESMExports()
+  globalThis.fetch = async (url) => {
+    fetches.push(String(url))
+    return { ok: true, status: 200, text: async () => JSON.stringify({ 'dist-tags': { latest: '9.9.9' }, time: { '9.9.9': '2026-10-30T00:00:00.000Z' } }) }
+  }
+  async function request(path, body, method = 'GET') {
+    const req = new EventEmitter(); req.url = '/api/bili-duty' + path; req.method = method; req.headers = {}; req.destroy = () => {}
+    let ended = false
+    const res = {
+      writeHead(code, headers) { this.code = code; this.headers = headers },
+      end(data) { ended = true; this.raw = data; try { this.body = JSON.parse(data) } catch { this.body = data } },
+    }
+    const pending = handler(req, res)
+    if (method === 'POST') { req.emit('data', Buffer.from(JSON.stringify(body ?? {}))); req.emit('end') }
+    await pending
+    assert.ok(ended, 'route must always answer')
+    return res
+  }
+  try {
+    applyFn(ctx, {}); await immediate()
+  } catch (error) { cleanup(); throw error }
+  function cleanup() {
+    for (const off of cleanups.reverse()) { try { off() } catch {} }
+    cp.spawn = original.spawn; globalThis.fetch = original.fetch; syncBuiltinESMExports()
+    rmSync(home, { recursive: true, force: true })
+  }
+  return { home, request, spawns, fetches, cleanup }
+}
+
+test.after(() => {
+  if (priorBuiltin === undefined) delete process.env.DAFEIYU_STICKER_DIR
+  else process.env.DAFEIYU_STICKER_DIR = priorBuiltin
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('GET /update reports the real current version and refuses to call a local checkout upgradable', async () => {
+  const f = await fixture()
+  try {
+    const r = await f.request('/update', undefined, 'GET')
+    assert.equal(r.code, 200)
+    assert.equal(r.body.ok, true)
+    assert.equal(r.body.current, '2.4.2')
+    assert.equal(r.body.latest, '9.9.9')
+    assert.equal(r.body.outdated, true, 'a newer version must still be reported')
+    assert.equal(r.body.canUpgrade, false, 'the source tree is not a registry install')
+    assert.notEqual(r.body.install.mode, 'registry')
+    assert.ok(r.body.blocker, 'the UI needs a reason to disable the button')
+    assert.match(r.body.install.reason, /手动|源码|profile|目录/)
+    assert.equal(f.spawns.length, 0, 'checking must never spawn anything')
+    assert.equal(f.fetches.length, 1)
+    // Cached: a second poll must not hit the network again.
+    const again = await f.request('/update', undefined, 'GET')
+    assert.equal(again.code, 200); assert.equal(f.fetches.length, 1)
+    // rev= short-circuits when nothing changed.
+    const unchanged = await f.request('/update?rev=' + encodeURIComponent(again.body.rev), undefined, 'GET')
+    assert.equal(unchanged.body.unchanged, true)
+  } finally { f.cleanup() }
+})
+
+test('POST /upgrade refuses without explicit confirmation and never spawns dsh', async () => {
+  const f = await fixture()
+  try {
+    for (const body of [{}, { confirm: false }, { confirm: 'yes' }, { latest: '9.9.9' }]) {
+      const r = await f.request('/upgrade', body, 'POST')
+      assert.equal(r.code, 400, JSON.stringify(body))
+      assert.equal(r.body.code, 'UPGRADE_CONFIRM_REQUIRED')
+    }
+    assert.equal(f.spawns.length, 0)
+  } finally { f.cleanup() }
+})
+
+test('POST /upgrade refuses an unusable install even with confirm:true', async () => {
+  const f = await fixture()
+  try {
+    const r = await f.request('/upgrade', { confirm: true }, 'POST')
+    assert.equal(r.code, 200)
+    assert.equal(r.body.ok, false)
+    assert.ok(['UPGRADE_BLOCKED', 'NO_DSH_CLI', 'NO_PROFILE'].includes(r.body.code) || r.body.code === undefined)
+    assert.equal(f.spawns.length, 0, 'no install may be triggered for a non-registry layout')
+    assert.ok(String(r.body.error || '').length > 0)
+  } finally { f.cleanup() }
+})
+
+test('GET /update survives an unreachable registry without pretending anything', async () => {
+  const f = await fixture()
+  try {
+    globalThis.fetch = async () => { throw new Error('offline') }
+    const r = await f.request('/update?force=1', undefined, 'GET')
+    assert.equal(r.code, 200)
+    assert.equal(r.body.ok, false)
+    assert.equal(r.body.outdated, false)
+    assert.equal(r.body.canUpgrade, false)
+    assert.match(r.body.error, /offline/)
+    const upgrade = await f.request('/upgrade', { confirm: true }, 'POST')
+    assert.equal(upgrade.body.ok, false)
+    assert.equal(f.spawns.length, 0)
+  } finally { f.cleanup() }
+})
+
+test('a supported registry install really spawns the fixed plugin add and reports it started once', async () => {
+  // Honest positive path: copy the real plugin into a fake profile as a *registry-style* install,
+  // then import that copy. No production seam is faked.
+  const dshHome = join(root, 'fake-home')
+  const installed = join(dshHome, 'profiles', 'web', 'node_modules', 'dsh-deepmoyu')
+  mkdirSync(installed, { recursive: true })
+  const sourceRoot = fileURLToPath(new URL('..', import.meta.url))
+  for (const name of ['package.json', 'index.js', 'client.js', 'selfcheck.mjs', 'cordis.patch.yml']) {
+    writeFileSync(join(installed, name), readFileSync(join(sourceRoot, name)))
+  }
+  for (const dir of ['lib', 'presets', 'prompts', 'vendor']) cpSync(join(sourceRoot, dir), join(installed, dir), { recursive: true })
+  const cli = join(dshHome, 'dsh-bin.js'); writeFileSync(cli, '// never executed; spawn is mocked\n')
+  const { apply: applyInstalled } = await import(pathToFileURL(join(installed, 'index.js')).href)
+  const f = await fixture({ dshHome, config: { dshBin: cli }, applyFn: applyInstalled })
+  try {
+    const check = await f.request('/update?force=1', undefined, 'GET')
+    assert.equal(check.body.install.mode, 'registry', JSON.stringify(check.body.install))
+    assert.equal(check.body.canUpgrade, true)
+    assert.equal(check.body.blocker, '')
+    const cfgNow = await f.request('/config', undefined, 'GET')
+    assert.equal(cfgNow.body.config.dshBin, cli)
+    const started = await f.request('/upgrade', { confirm: true }, 'POST')
+    assert.equal(started.code, 200)
+    assert.equal(started.body.ok, true, JSON.stringify(started.body).slice(0, 600))
+    assert.equal(started.body.started, true)
+    assert.equal(started.body.to, '9.9.9')
+    assert.equal(f.spawns.length, 1)
+    const call = f.spawns[0]
+    assert.equal(call.args[0], cli)
+    assert.deepEqual(call.args.slice(1), ['plugin', '--profile', 'web', 'add', 'dsh-deepmoyu'])
+    assert.equal(call.options.env.npm_config_registry, 'https://registry.npmmirror.com')
+    await immediate(); await immediate()
+    const after = await f.request('/update', undefined, 'GET')
+    assert.equal(after.body.upgrading, false)
+  } finally { f.cleanup(); rmSync(dshHome, { recursive: true, force: true }) }
+})
+
+test('the update log stays inside the plugin home and only records the attempt', async () => {
+  const f = await fixture()
+  try {
+    await f.request('/update?force=1', undefined, 'GET')
+    await f.request('/upgrade', { confirm: true }, 'POST')
+    // Nothing was spawned, so no log line is required; but if one exists it must be in the home.
+    let text = ''
+    try { text = readFileSync(join(f.home, 'update.log'), 'utf8') } catch { text = '' }
+    for (const line of text.split(/\r?\n/).filter(Boolean)) {
+      assert.match(line, /\[update:[a-z]+\]/)
+      assert.ok(!/[A-Za-z]:\\Users\\|[\\/]\.ssh[\\/]|token|password/i.test(line), 'never log secrets or user paths')
+    }
+  } finally { f.cleanup() }
+})

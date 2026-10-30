@@ -1,1 +1,77 @@
-IyDlip/og73kuI7pqozmlLbnn6npmLUKCuacrOihqOWvueW6lCAyLjQuMuOAguWujOaVtOe7k+aenOWSjOeOr+Wig+i+ueeVjOingSBb5Y+R5biD5a6h5p+l6K6w5b2VXShSRUxFQVNFX0FVRElULm1kKeOAgua1i+ivleS4reeahOKAnOWPkemAgeaIkOWKn+KAneaYr+WPl+aOpyBNQ1Ag55qE5YyF6KOF5Zmo5aWR57qm77yM5LiN5Luj6KGo5ZCR55yf5a6e6LSm5Y+35Y+R6YCB6L+H5YaF5a6544CCCgojIyDlhajpg6jop5LoibLlt6XlhbcKCmB0ZXN0cy90b29sLXN1cmZhY2UudGVzdC5tanNgIOS/neWtmOWPr+aJp+ihjOeahCBgVE9PTF9TVVJGQUNFX0VWSURFTkNFYOOAguWug+agoemqjOazqOWGjOW3peWFt+a4heWNleS4juato+WQkeaJp+ihjOmbhuWQiOWujOWFqOebuOetie+8jOW5tumAkOmhueaguOWvueacieaEj+S5ieeahOi+k+WFpeOAgeWHhuehruS4i+a4uOiwg+eUqOWSjOi/lOWbnuWtl+aute+8m+WPpuWkluWvueWFqOmDqOW3peWFt+aJp+ihjOaZrumAmuaooeW8j+WSjOmAgOWHuuWQjueahOaXp+WPpeafhOaLkue7neajgOafpeOAggoKfCDlt6XlhbcgfCDlt7Lpqozor4HnmoTlip/og70gfAp8IC0tLSB8IC0tLSB8CnwgYGJpbGlfd2hvYW1pYCB8IOeZu+W9lei6q+S7veivu+WPluOAgeWujOaVtOmVvyBNSUQgfAp8IGBiaWxpX3NlYXJjaGAgfCDlhbPplK7or43jgIHmjpLluo/jgIHojIPlm7Qv5pWw6YeP6L6555WM44CB5bey6K+76L+H5rukIHwKfCBgYmlsaV9zdWJ0aXRsZWAgfCDlrZfluZXljp/mlofjgIHml7bpl7Tlj4LmlbDjgIHmiJDlip/lkI7lt7Lor7vorrDlvZUgfAp8IGBiaWxpX2Rhbm1ha3VgIHwg5pWw6YeP5LiK6ZmQ44CB5pe26Ze06IGa5ZCI44CB5qC35pys5LiO6Lez6L2sIHwKfCBgYmlsaV9idXp6d29yZHNgIHwg54Ot6K+N44CB54Ot5bqm5ZKM5Zu+54mH5a2X5q615pig5bCEIHwKfCBgYmlsaV92aWRlb19pbmZvYCB8IEJW44CB5L2c6ICF44CB5YiGIFDjgIHplb8gQ0lEIHwKfCBgYmlsaV9yYW5rYCB8IOWIhuWMuuS4juamnOWNleaXtumXtOOAgeW3suivu+i/h+a7pCB8CnwgYGJpbGlfaG90X3ZpZGVvc2AgfCDliIbpobXjgIHkuIrpmZDkuI7lt7Lor7vov4fmu6QgfAp8IGBiaWxpX3VzZXJfdmlkZW9zYCB8IOmVvyBVSUTjgIHliIbpobXjgIHmjpLluo/jgIHlhbPplK7or40gfAp8IGBiaWxpX3NlZW5gIHwg6KGl6K6w5LiO5YaN5qyh5p+l6K+i5ZG95LitIHwKfCBgYmlsaV9yZWNlaXZlZF9yZXBsaWVzYCB8IOmVvyBycGlkL3Jvb3TjgIHlm57lpI3otYTmoLwgfAp8IGBiaWxpX215X25vdGljZXNgIHwg54K56LWe44CBQCDkuI7mnaHmlbDkuIrpmZAgfAp8IGBiaWxpX2xlYXJuYCB8IOaWsOWinuW+heWuoeOAgeW3peWFt+S4jeiDveiHquihjOaJueWHhiB8CnwgYGJpbGlfcmVjb3Jkc2AgfCDmtLvliqjmnaXmupDjgIHnqLPlrprkuovku7bmoIfor4YgfAp8IGBiaWxpX3NvdWxgIHwg5oyH5a6a56ug6IqC6L+95Yqg5ZKM6K+75ZueIHwKfCBgYmlsaV90YXN0ZWAgfCDnu5/orqHkuI7moLfmnKzkuI3otrPnirbmgIEgfAp8IGBiaWxpX215X2R5bmFtaWNzYCB8IOWKqOaAgeWIl+ihqOOAgemVvyBJROOAgeivhOiuuueKtuaAgSB8CnwgYGJpbGlfb3B1c19jb21tZW50c2AgfCDplb/liqjmgIEv6K+E6K665qCH6K+G5LiO5Zue5aSN6LWE5qC8IHwKfCBgYmlsaV9teV92aWRlb19jb21tZW50c2AgfCDop4bpopEv6K+E6K665pWw6YeP6ZmQ5Yi25LiO5pys5Lq66K+E6K665o6S6ZmkIHwKfCBgYmlsaV9yZXBseV9vcHVzYCB8IOW8gOWFs+WFgeiuuOWQjueahOWPl+aOp+WPkemAgeS4jueyvuehruebruaghyB8CnwgYGJpbGlfZG1faW5ib3hgIHwg5pS25Lu2566x44CB6ZW/IFVJRC/mtojmga/luo/lj7fjgIHotYTmoLwgfAp8IGBiaWxpX2RtX3RocmVhZGAgfCDlr7nor53nm67moIfjgIHmtojmga/mlbDkuI7mtojmga/moIfor4YgfAp8IGBiaWxpX2RtX3JlcGx5YCB8IOW9k+WJjei1hOagvOaguOWvueOAgeeyvuehriBVSUQv5bqP5Y+35Y+R6YCBIHwKfCBgYmlsaV9kZWxpdmVyYCB8IOWQkeW3suS6uuW3pemFjee9rueahOebruagh+aKlemAkiB8CnwgYGJpbGlfY29tbWVudHNgIHwg6K+E6K665pWw6YeP44CB5q2j5paH44CB6ZW/6K+E6K66L+S9nOiAheagh+ivhiB8CnwgYGJpbGlfc3RpY2tlcmAgfCDlm77lupPliJfooajvvJvkuIrkvKAv5a6h5qC45Y+m5pyJ5LiT6aG5IHwKfCBgYmlsaV9yZXBseWAgfCDor4TorrrljIXoo4XlmajjgIHnuq/mloflrZfkuI4gQlYg5Y+R6YCBIHwKfCBgYmlsaV9zdGF0dXNgIHwg55m75b2V44CB5p2D6ZmQ44CB6ZW/IFVJRCDkuI7ov5DooYznirbmgIEgfAp8IGBiaWxpX3BhY2VgIHwg5oyH5a6a6YCa6YGT55qE5Y+q6K+76IqC5aWP54q25oCBIHwKfCBgYmlsaV9zYXlgIHwg5pyJ5pWI5peB55m96K6w5b2V5Y+K5p2l5rqQ5YWz6IGUIHwKfCBgYmlsaV9ydW5gIHwg5Y+X5o6n5ZCO5Y+w5ZCv5Yqo5LiO57uT5p2fIHwKfCBgYmlsaV9mZWl5dWAgfCDlu7rnq4vjgIHmn6Xor6LjgIHmmoLlgZzjgIHmgaLlpI3kuI7muIXnkIboh6rmnInnm67moIcgfAp8IGBiaWxpX3B2YCB8IOaIkOeJh+OAgeWItuS9nOS7u+WKoeWPiuS8muivneWIl+ihqO+8m+WItuS9nOWPpuacieWunua4suafkyB8CnwgYGJpbGlfbW9tZW50YCB8IOW3suaOiOadg+WQjueahOWPl+aOp+WKqOaAgeWPkemAgSB8CnwgYGJpbGlfbG9naW5fc3RhcnRgIHwg5pys6L2u5LqM57u056CB5LiOIGtleSB8CnwgYGJpbGlfbG9naW5fcG9sbGAgfCDlvZPliY3kuoznu7TnoIHlrozmiJDkuI7lh63or4Hnp4Hlr4bmjIHkuYXljJYgfAp8IGBiaWxpX3NldHVwYCB8IOWuieijhea1geawtOe6v+WujOaIkOS4juecn+Wunui/kOihjOagoemqjOeKtuaAgSB8CnwgYGJpbGlfY29uZmlnYCB8IOWuieWFqOWBj+WlveS/ruaUue+8m+S6uuW3peaOiOadg+Wtl+auteS4jeiDveiiq+aooeWei+aUueWPmCB8CgojIyDmt7HlsYLkuJPpobkKCnwg5Yqf6IO96IyD5Zu0IHwg5Li76KaB6Ieq5Yqo6K+B5o2uIHwKfCAtLS0gfCAtLS0gfAp8IOaooeW8j+OAgeaXp+WPpeafhOS4juWFqOWxgOacjeWKoeWIq+WQjSB8IGBtb2RlLXNjb3BlLnRlc3QubWpzYOOAgWB0b29sLXNjb3BlLWFsaWFzLnRlc3QubWpzYOOAgWBob3N0LXRvb2wtc2NvcGUudGVzdC5tanNg44CB5Lik6aG55Lq65qC8L2dvYWwgUUEgfAp8IOaZrumAmuWuv+S4u+S8muivneS4jeWPl+W9seWTjSB8IGBob3N0LWJ1bmRsZS1zbW9rZS5tanNgIOecn+WuniBidW5kbGUv6aKE6K6+5aOw5piO57uE5ZCI5LiO5Zue546v5qih5Z6L5pmu6YCa6K+35rGCIHwKfCDmlrDkvJror53jgIHlt6XkvZzljLrlkozmnInmlYjmnYPpmZAgfCBgcGV0LXNlc3Npb24udGVzdC5tanNg44CBYHBldC1ydW4tcm91dGVzLnRlc3QubWpzYOOAgWBwZXQtcnVuLXNldHRpbmdzLnRlc3QubWpzYCB8Cnwg5ZCO5Y+w5qGl5o6l44CB5Y+W5raI44CB6K6h6YePIHwgYGJhY2tncm91bmQtdG9vbHMudGVzdC5tanNg44CBYG1vZGVsLXJlbGF5LnRlc3QubWpzYOOAgWBtYW51YWwtYnJvd3NpbmcudGVzdC5tanNg44CB55yf5a6eIGhlYWRsZXNzIHJlbGF5IHwKfCDml7bmrrXjgIHlrprml7bkuI7mgaLlpI0gfCBgYXV0b21hdGlvbioudGVzdC5tanNg44CBYGJhY2tncm91bmQtd2luZG93LnRlc3QubWpzYOOAgWBwcm9kdWN0LXN0YXR1cyoudGVzdC5tanNgIHwKfCDphY3nva7kuovliqHjgIHmjojmnYPkuI7pmLLmiqQgfCBgY29uZmlnLXNhZmV0eS50ZXN0Lm1qc2DjgIFgYXV0aG9yaXphdGlvbi50ZXN0Lm1qc2DjgIFgc2VuZC1yZXZpZXctcm91dGVzLnRlc3QubWpzYCB8Cnwg55m75b2V5LiO546v5aKD5Y2H57qnIHwgYGxvZ2luLnRlc3QubWpzYOOAgWBweXRob24tZW52LnRlc3QubWpzYOOAgWBpbnN0YWxsLXJvdXRlcy50ZXN0Lm1qc2AgfAp8IOecn+WuniBQeXRob24gTUNQIHwgYGNoZWNrLXJlYWwtbWNwLm1qc2DvvIzlrp7pmYUgRmFzdE1DUCDmj6HmiYvkuI7mnKzlnLAgU1FMaXRlIOWuiOWNqyB8Cnwg6IqC5aWP44CB5rC45LmF5Yik6YeN5Y+K5Y+R6YCB5aSN5qC4IHwgYHBhY2UqLnRlc3QubWpzYOOAgWBkdXAtY3Jvc3MtY2hhbm5lbC50ZXN0Lm1qc2DjgIFgcmVwbHkudGVzdC5tanNg44CBYHZlcmlmeSoudGVzdC5tanNg44CBYHRlc3RfZ3VhcmRfY3Jvc3NfY2hhbm5lbC5weWAgfAp8IOerr+WIsOerr+mVvyBJRCB8IGBtY3AtaWRzLnRlc3QubWpzYOOAgWB0b29sLXN1cmZhY2UudGVzdC5tanNg44CBYGNoZWNrLWRtLXVpZC1icm93c2VyLmNqc2AgfAp8IOWtpuS5oOOAgeiusOW/huS4jumakOengSB8IGBtZW1vcnktY2hhaW4udGVzdC5tanNg44CBYG1lbW9yeS1jZW50ZXIqLnRlc3QubWpzYOOAgWBiYWNrZ3JvdW5kLW91dHB1dC50ZXN0Lm1qc2AgfAp8IOihqOaDheS4juWbvueJhyB8IGBzdGlja2VyKi50ZXN0Lm1qc2DjgIFgdGVzdF9yZXBseV9waWN0dXJlcy5weWDvvJvljIXmi6zmoLzlvI/jgIHlrZfoioLlrqHmoLjjgIHlhazlvIDlnLDlnYDjgIHlrrnph4/jgIHlj5bmtojlkozlubblj5EgfAp8IOi0puacrOOAgeWbnumhvuS4jumZquS8tCB8IGB0b2tlbi1sZWRnZXIudGVzdC5tanNg44CBYHByb2R1Y3Qtc3RhdHVzKi50ZXN0Lm1qc2DjgIFgY29tcGFuaW9uKi50ZXN0Lm1qc2AgfAp8IOinhumikee8luaOkuOAgee7iOaAgeS4juWqkuS9kyB8IGBwdi0qLnRlc3QubWpzYOOAgWB0ZXN0X3B2XyoucHlg44CB5a6e6ZmF6YWN6Z+zL+Wwgemdoi/muLLmn5Mv5qCh6aqM5YWo6ZO+IHwKfCDlj6/pgIkgQVNSIOS4juaUtuiXj+i+uei9piB8IGB0ZXN0X29wdGlvbmFsX3NpZGVjYXJzLnB5YO+8muacrOWcsOi+k+WFpeS/neeVmeOAgeeLrOWNoOa4heeQhuOAgeWQjOinhumikeW5tuWPkeOAgeWPguaVsOS4juWksei0pe+8m+WklumDqOacjeWKoeS4uiBmYWtlIHwKfCDmoYzlrqDkuI7lhajpg6jpobXpnaIgfCBgY2hlY2stdWkuY2pzYOOAgeWFremhuea1j+iniOWZqCBRQe+8jOWQq+WNgeS4quS4uy/lrZDpobXjgIHkuInop4blj6PjgIHoj5zljZXjgIHorrDlv4bjgIHor7fmsYLnq57mgIHkuI4gVUlEIHwKfCDkuIvovb3kuI7kvpvnu5npk74gfCBgdXZmZXRjaC50ZXN0Lm1qc2DjgIHlrp7pmYXlrpjmlrkgdXYg5LiL6L29L+agoemqjO+8m25wbSDkuI7kuLsgUHl0aG9uIOS+nei1luWuoeiuoSB8Cnwg5YiG5Y+R5a6M5pW05oCnIHwgYHJlbGVhc2UtY29udHJhY3QudGVzdC5tanNg44CBYHRlc3RfcmVsZWFzZV9hcmNoaXZlcy5weWDjgIFgcmVsZWFzZTpjaGVjay9idWlsZC9zbW9rZWAgfAoKIyMg6L6555WMCgotIOS7o+eggeihjOimhueblueOh+S4jeetieS6juaJgOacieihjOS4uumDveW3sumqjOivge+8m+efqemYteS4juWunumZhee7k+aenOWIhuWIq+S/neeVme+8jOS4jeeUqOa1i+ivleaAu+aVsOabv+S7o+WKn+iDveivgeaYjuOAggotIOecn+WunuW5s+WPsOWPkemAgeOAgeengeS6uui0puWPt+eZu+W9leOAgUdQVS/nlKjmiLfoh6rphY3pn7PoibLlkozlpKflnosgV2hpc3BlciDmqKHlnovnmoTor4bliKvotKjph4/vvIzkuI3pgJrov4fmnKzova7oh6rliqjmtYvor5XlhpLlhYXpqozor4HjgIIKLSDnm67lvZXmiZPlvIDlt7LmtYvkuInkuKrlubPlj7DnmoTov5vnqIvlj4LmlbDkuI7mlYXpmpzooYzkuLrvvIzmnKzmnLrku6XlpJbmoYzpnaLmnKrlrp7mnLrmtYvor5XvvJtHaXRIdWIgQ0kg6YWN572u5LiN562J5LqO6L+c56iLIENJIOW3sue7j+i/kOihjOOAggo=
+# 功能与验收矩阵
+
+本表对应 2.4.2。完整结果和环境边界见 [发布审查记录](RELEASE_AUDIT.md)。测试中的“发送成功”是受控 MCP 的包装器契约，不代表向真实账号发送过内容。
+
+## 全部角色工具
+
+`tests/tool-surface.test.mjs` 保存可执行的 `TOOL_SURFACE_EVIDENCE`。它校验注册工具清单与正向执行集合完全相等，并逐项核对有意义的输入、准确下游调用和返回字段；另外对全部工具执行普通模式和退出后的旧句柄拒绝检查。
+
+| 工具 | 已验证的功能 |
+| --- | --- |
+| `bili_whoami` | 登录身份读取、完整长 MID |
+| `bili_search` | 关键词、排序、范围/数量边界、已读过滤 |
+| `bili_subtitle` | 字幕原文、时间参数、成功后已读记录 |
+| `bili_danmaku` | 数量上限、时间聚合、样本与跳转 |
+| `bili_buzzwords` | 热词、热度和图片字段映射 |
+| `bili_video_info` | BV、作者、分 P、长 CID |
+| `bili_rank` | 分区与榜单时间、已读过滤 |
+| `bili_hot_videos` | 分页、上限与已读过滤 |
+| `bili_user_videos` | 长 UID、分页、排序、关键词 |
+| `bili_seen` | 补记与再次查询命中 |
+| `bili_received_replies` | 长 rpid/root、回复资格 |
+| `bili_my_notices` | 点赞、@ 与条数上限 |
+| `bili_learn` | 新增待审、工具不能自行批准 |
+| `bili_records` | 活动来源、稳定事件标识 |
+| `bili_soul` | 指定章节追加和读回 |
+| `bili_taste` | 统计与样本不足状态 |
+| `bili_my_dynamics` | 动态列表、长 ID、评论状态 |
+| `bili_opus_comments` | 长动态/评论标识与回复资格 |
+| `bili_my_video_comments` | 视频/评论数量限制与本人评论排除 |
+| `bili_reply_opus` | 开关允许后的受控发送与精确目标 |
+| `bili_dm_inbox` | 收件箱、长 UID/消息序号、资格 |
+| `bili_dm_thread` | 对话目标、消息数与消息标识 |
+| `bili_dm_reply` | 当前资格核对、精确 UID/序号发送 |
+| `bili_deliver` | 向已人工配置的目标投递 |
+| `bili_comments` | 评论数量、正文、长评论/作者标识 |
+| `bili_sticker` | 图库列表；上传/审核另有专项 |
+| `bili_reply` | 评论包装器、纯文字与 BV 发送 |
+| `bili_status` | 登录、权限、长 UID 与运行状态 |
+| `bili_pace` | 指定通道的只读节奏状态 |
+| `bili_say` | 有效旁白记录及来源关联 |
+| `bili_run` | 受控后台启动与结束 |
+| `bili_feiyu` | 建立、查询、暂停、恢复与清理自有目标 |
+| `bili_pv` | 成片、制作任务及会话列表；制作另有实渲染 |
+| `bili_moment` | 已授权后的受控动态发送 |
+| `bili_login_start` | 本轮二维码与 key |
+| `bili_login_poll` | 当前二维码完成与凭证私密持久化 |
+| `bili_setup` | 安装流水线完成与真实运行校验状态 |
+| `bili_config` | 安全偏好修改；人工授权字段不能被模型改变 |
+
+## 深层专项
+
+| 功能范围 | 主要自动证据 |
+| --- | --- |
+| 模式、旧句柄与全局服务别名 | `mode-scope.test.mjs`、`tool-scope-alias.test.mjs`、`host-tool-scope.test.mjs`、两项人格/goal QA |
+| 普通宿主会话不受影响 | `host-bundle-smoke.mjs` 真实 bundle/预设声明组合与回环模型普通请求 |
+| 新会话、工作区和有效权限 | `pet-session.test.mjs`、`pet-run-routes.test.mjs`、`pet-run-settings.test.mjs` |
+| 后台桥接、取消、计量 | `background-tools.test.mjs`、`model-relay.test.mjs`、`manual-browsing.test.mjs`、真实 headless relay |
+| 时段、定时与恢复 | `automation*.test.mjs`、`background-window.test.mjs`、`product-status*.test.mjs` |
+| 配置事务、授权与防护 | `config-safety.test.mjs`、`authorization.test.mjs`、`send-review-routes.test.mjs` |
+| 登录与环境升级 | `login.test.mjs`、`python-env.test.mjs`、`install-routes.test.mjs` |
+| 真实 Python MCP | `check-real-mcp.mjs`，实际 FastMCP 握手与本地 SQLite 守卫 |
+| 节奏、永久判重及发送复核 | `pace*.test.mjs`、`dup-cross-channel.test.mjs`、`reply.test.mjs`、`verify*.test.mjs`、`test_guard_cross_channel.py` |
+| 端到端长 ID | `mcp-ids.test.mjs`、`tool-surface.test.mjs`、`check-dm-uid-browser.cjs` |
+| 学习、记忆与隐私 | `memory-chain.test.mjs`、`memory-center*.test.mjs`、`background-output.test.mjs` |
+| 表情与图片 | `sticker*.test.mjs`、`test_reply_pictures.py`；包括格式、字节审核、公开地址、容量、取消和并发 |
+| 账本、回顾与陪伴 | `token-ledger.test.mjs`、`product-status*.test.mjs`、`companion*.test.mjs` |
+| 视频编排、终态与媒体 | `pv-*.test.mjs`、`test_pv_*.py`、实际配音/封面/渲染/校验全链 |
+| 可选 ASR 与收藏边车 | `test_optional_sidecars.py`：本地输入保留、独占清理、同视频并发、参数与失败；外部服务为 fake |
+| 桌宠与全部页面 | `check-ui.cjs`、六项浏览器 QA，含十个主/子页、三视口、菜单、记忆、请求竞态与 UID |
+| 下载与供给链 | `uvfetch.test.mjs`、实际官方 uv 下载/校验；npm 与主 Python 依赖审计 |
+| 分发完整性 | `release-contract.test.mjs`、`test_release_archives.py`、`release:check/build/smoke` |
+
+## 边界
+
+- 代码行覆盖率不等于所有行为都已验证；矩阵与实际结果分别保留，不用测试总数替代功能证明。
+- 真实平台发送、私人账号登录、GPU/用户自配音色和大型 Whisper 模型的识别质量，不通过本轮自动测试冒充验证。
+- 目录打开已测三个平台的进程参数与故障行为，本机以外桌面未实机测试；GitHub CI 配置不等于远程 CI 已经运行。
