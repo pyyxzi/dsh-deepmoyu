@@ -1,5 +1,19 @@
 # 更新记录
 
+## 2.5.0
+
+本节对应当前源码，不能据此推断 npm 或插件市场已更新。
+
+- 修 `2026-11-02` 真机事故：自动发说说一直发不出去，日志里连拦截记录都没有。根因是「当日计数」的跨天归零在三处各写了一份（`bumpState`、私信记账、`bumpMomentBy`），前两处都漏了 `moments`，跨天之后 `state.json` 里 `day` 已经是今天而 `moments` 还留着昨天的 20，`bili_moment` 于是判定 `used >= cap` 并**静默**返回 `blocked`。现在归零名单只有一份（`lib/state.mjs` 的 `DAY_COUNTER_FIELDS`／`dayResetPatch`），并给 `moments` 加了 `momentsDay` 自证日期、无该字段时按 `lastMomentAt` 判断，历史脏状态也能自己恢复。
+- 说说的每一种拦截（自动发说说未开、每日上限为 0、额度已满）现在都会写进 `duty.log`，不再有"什么都不发生"的黑洞。
+- 新增 `bili_comment`：**直接发在视频下面的新评论**，参数里没有 `rpid`/`root`，模型想留言时不必再拐进"回复某人"的语义。同一套质量、判重、节奏、审核、风控闸；同一条视频仍只发一条新评论。
+- `bili_reply` 收敛为纯楼层回复，描述里明确"想给这条视频留言、想让更多人看见 ⇒ 用 `bili_comment`"。工具清单 39 项，`docs/tool-evidence.json`、`TEST_MATRIX.md` 同步。
+- 提示词改为默认在视频下发新评论：`lib/prompts.mjs` 的【在视频下面怎么说话】、`lib/persona.mjs` 的回复守则第 1 条、`prompts/duty.md` 的【想说才说】都点明"楼层回复只有对方看得见，那不是默认开口方式"。
+- 降噪：表情收集区满 60 张的 `collect-skipped` 从"每几分钟一条"改为 6 小时只提示一次（其它跳过原因照旧逐条记录）。
+- 后台模型桥接：`RELAY_BUSY` 不再由元数据查询（`resolve`）抢占，只有流式请求才占连接，撞车时先等最多 30 秒再判；日志里 10-30 两次、11-01、11-02 的 learn-review 全部失败就是这里。
+- 后台模型线路没注册时，报错会列出宿主**当前真正可用的线路**，而不是只说"没有注册"。
+- 新增 `tests/moment-quota.test.mjs`：锁住跨天重置名单、陈数不拦今天的说说、同一天额度仍然生效、无 `momentsDay` 的历史状态靠 `lastMomentAt` 判定、以及 `bili_comment` 绝不写成楼层回复。
+
 ## 2.4.2
 
 本节对应当前源码，不能据此推断 npm 或插件市场已更新。

@@ -481,7 +481,7 @@ const FAKE_PERSONA = '本鱼是一只测试用的电子鱼，只在被点名的�
     setState({ day, picked: 5 })
     const second = runText({ agent })
     ok(second.includes('今天挑中 5/29') && second.includes('最多还能挑 24'), '⑯ 不重启、不重建goal，下一请求立即变29/已挑5', clip(second))
-    ok(second.includes('评论：开，想说再说'), '⑯ 发送开关变化随下一请求刷新')
+    ok(second.includes('评论：开，想说就在视频下面发新评论（bili_comment），想说再说'), '⑯ 发送开关变化随下一请求刷新')
     goalsGet = () => null
     const before = auditBytes()
     const goalWritesBefore = goalWrites

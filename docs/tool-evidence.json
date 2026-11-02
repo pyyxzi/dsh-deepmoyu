@@ -1,5 +1,5 @@
 {
-  "version": "2.4.2",
+  "version": "2.5.0",
   "scope": "Isolated positive contracts, not real platform sends",
   "tools": [
     {
@@ -134,6 +134,11 @@
     },
     {
       "tool": "bili_reply",
+      "category": "send",
+      "specialist": "send-review-routes.test.mjs"
+    },
+    {
+      "tool": "bili_comment",
       "category": "send",
       "specialist": "send-review-routes.test.mjs"
     },

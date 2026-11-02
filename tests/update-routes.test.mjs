@@ -86,7 +86,8 @@ test('GET /update reports the real current version and refuses to call a local c
     const r = await f.request('/update', undefined, 'GET')
     assert.equal(r.code, 200)
     assert.equal(r.body.ok, true)
-    assert.equal(r.body.current, '2.4.2')
+    // 别把版本号写死：每次发版都会撞。读真实 package.json 才是在验"报的是真实当前版本"。
+    assert.equal(r.body.current, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version)
     assert.equal(r.body.latest, '9.9.9')
     assert.equal(r.body.outdated, true, 'a newer version must still be reported')
     assert.equal(r.body.canUpgrade, false, 'the source tree is not a registry install')

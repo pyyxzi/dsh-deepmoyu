@@ -35,6 +35,7 @@
 | `bili_comments` | 评论数量、正文、长评论/作者标识 |
 | `bili_sticker` | 图库列表；上传/审核另有专项 |
 | `bili_reply` | 评论包装器、纯文字与 BV 发送 |
+| `bili_comment` | 直接发在视频下的新评论：无 rpid/root、同视频判重、不写楼层账本 |
 | `bili_status` | 登录、权限、长 UID 与运行状态 |
 | `bili_pace` | 指定通道的只读节奏状态 |
 | `bili_say` | 有效旁白记录及来源关联 |

@@ -27,7 +27,7 @@ const TEXT = '镜头停在倒影上的那几秒，水面和光线的变化特别
 const immediate = () => new Promise(resolve => setImmediate(resolve))
 const successfulContracts = new Set()
 
-/** Executable 38-tool inventory. Every entry runs successfully below and is fenced in ordinary mode.
+/** Executable 39-tool inventory. Every entry runs successfully below and is fenced in ordinary mode.
  * The specialist suites additionally prove the deeper lifecycle/policy named in the final column.
  * New registration without a real contract fails the exact inventory assertion.
  */
@@ -59,6 +59,7 @@ export const TOOL_SURFACE_EVIDENCE = Object.freeze({
   bili_comments: [{ bvid: BV, num: 12 }, 'readonly', 'sticker-routes.test.mjs'],
   bili_sticker: [{ action: 'list' }, 'local', 'sticker-review-routes.test.mjs'],
   bili_reply: [{ bvid: BV, text: TEXT, picture: '' }, 'send', 'send-review-routes.test.mjs'],
+  bili_comment: [{ bvid: BV, text: TEXT, picture: '' }, 'send', 'send-review-routes.test.mjs'],
   bili_status: [{}, 'local', 'product-status-routes.test.mjs'],
   bili_pace: [{ kind: 'reply' }, 'local', 'pace-routes.test.mjs'],
   bili_say: [{ text: '这次合成片段的倒影细节值得保留。', bvid: BV }, 'local', 'manual-browsing.test.mjs'],
@@ -181,7 +182,7 @@ async function fixture(run, { permissions = false, worker = false, login = false
   }
   try {
     apply(ctx, {}); await immediate()
-    assert.deepEqual([...tools.keys()].sort(), Object.keys(TOOL_SURFACE_EVIDENCE).sort()); assert.equal(tools.size, 38)
+    assert.deepEqual([...tools.keys()].sort(), Object.keys(TOOL_SURFACE_EVIDENCE).sort()); assert.equal(tools.size, 39)
     await run({ root, home, fish, normal, goals, tools, calls, subprocesses, fetches, execute, request, child: () => child, async select(preset) { fish.session.header.agentPreset = preset; for (const fn of events.get('agent-preset/selected') || []) await fn(fish.id, preset); await immediate() } })
     if (!worker && !login && !installer) assert.deepEqual(subprocesses, [], 'read/local/send fixture must not run Python or any subprocess')
     if (!login) assert.deepEqual(fetches, [], 'MCP fixtures must not call a network endpoint')
@@ -229,14 +230,15 @@ test('local memory, ledgers, content preferences, status and video listing execu
   assert.deepEqual(f.calls, [])
 }))
 
-const downstreamSend = { bili_reply: 'bili_reply', bili_reply_opus: 'bili_reply_opus', bili_dm_reply: 'bili_send_message', bili_deliver: 'bili_send_message', bili_moment: 'bili_send_dynamic' }
+const downstreamSend = { bili_reply: 'bili_reply', bili_comment: 'bili_reply', bili_reply_opus: 'bili_reply_opus', bili_dm_reply: 'bili_send_message', bili_deliver: 'bili_send_message', bili_moment: 'bili_send_dynamic' }
 for (const [name, downstream] of Object.entries(downstreamSend)) test(`${name} succeeds through its real wrapper with controlled sending and retains exact target IDs`, async () => fixture(async f => {
   const out = await f.execute(name)
-  if (name === 'bili_reply') assert.equal(out.success, true, JSON.stringify(out))
+  if (name === 'bili_reply' || name === 'bili_comment') assert.equal(out.success, true, JSON.stringify(out))
   else assert.equal(out.ok, true, JSON.stringify(out))
   const sent = f.calls.find(row => row.name === downstream); assert.ok(sent, name + ' must perform its intended controlled MCP send')
   assert.equal(sent.args.text, TOOL_SURFACE_EVIDENCE[name][0].text)
-  if (name === 'bili_reply') assert.equal(sent.args.bvid, BV)
+  if (name === 'bili_reply' || name === 'bili_comment') assert.equal(sent.args.bvid, BV)
+  if (name === 'bili_comment') assert.equal(sent.args.rpid, '0', 'bili_comment must never become a floor reply')
   if (name === 'bili_reply_opus') assert.deepEqual(sent.args, { opus_id: OPUS, rpid: RPID, root: ROOT, text: TEXT })
   if (name === 'bili_dm_reply' || name === 'bili_deliver') assert.equal(sent.args.receiver_uid, UID)
   if (name === 'bili_dm_reply') assert.equal(sent.args.msg_seqno, SEQ)
@@ -297,7 +299,7 @@ test('bili_setup executes the actual installer to completion using only mocked p
   assert.fail('the controlled setup tool did not finish')
 }, { installer: true }))
 
-test('all 38 ordinary-session and post-exit stale handles fail mode_required before account, network or process IO', async () => fixture(async f => {
+test('all 39 ordinary-session and post-exit stale handles fail mode_required before account, network or process IO', async () => fixture(async f => {
   const handles = new Map(f.tools)
   for (const [name, spec] of handles) {
     const out = await spec.execute(structuredClone(TOOL_SURFACE_EVIDENCE[name][0]), { agent: f.normal })
@@ -308,8 +310,8 @@ test('all 38 ordinary-session and post-exit stale handles fail mode_required bef
   assert.deepEqual(f.calls, []); assert.deepEqual(f.fetches, []); assert.deepEqual(f.subprocesses, [])
 }))
 
-test('the 38-item evidence matrix references existing portable specialist suites', () => {
-  assert.equal(Object.keys(TOOL_SURFACE_EVIDENCE).length, 38)
+test('the 39-item evidence matrix references existing portable specialist suites', () => {
+  assert.equal(Object.keys(TOOL_SURFACE_EVIDENCE).length, 39)
   assert.deepEqual([...successfulContracts].sort(), Object.keys(TOOL_SURFACE_EVIDENCE).sort(), 'every registered tool must have completed a positive contract, not merely an invalid-input refusal')
   for (const [name, [args, category, file]] of Object.entries(TOOL_SURFACE_EVIDENCE)) {
     assert.ok(args && typeof args === 'object' && !Array.isArray(args), name)

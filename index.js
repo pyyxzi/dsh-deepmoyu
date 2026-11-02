@@ -50,7 +50,8 @@ import { withFileLockSync, readJsonFileSync, atomicWriteFileSync } from './lib/r
 import { MEMORY_SOURCES, memoryCenterSnapshot, memoryFingerprint } from './lib/memory-center.mjs'
 import { normalizeId, optionalId, readableId, replyTargetId } from './lib/ids.mjs'
 import { verifyRecent, appendVerifyToReport } from './lib/verify.mjs'
-import { WINDOWS, stateDirOf, readJson, writeJson, ensureHomeFiles, ensureCharter, charterPath, inWindow, dayKey } from './lib/state.mjs'
+import { WINDOWS, stateDirOf, readJson, writeJson, ensureHomeFiles, ensureCharter, charterPath, inWindow,
+  dayKey, dayResetPatch, resetDayCounters } from './lib/state.mjs'
 import { loginStart, loginPoll, saveCredential, renderQrPng } from './lib/login.mjs'
 import { createLoginSession } from './lib/login-session.mjs'
 import { modelConfigDecision, modelForceDecision } from './lib/config-policy.mjs'
@@ -497,7 +498,8 @@ export function apply(ctx, config) {
       case 'bili_dm_inbox': return '跑去私信收件箱瞅瞅有没有人找我'
       case 'bili_dm_thread': return `翻翻和 ${String(arg.uid || '')} 的聊天记录`
       case 'bili_dm_reply': return `给 ${String(arg.uid || '')} 回一条私信`
-      case 'bili_reply': return `在 ${bv} 下面冒个泡`
+      case 'bili_reply': return `在 ${bv} 的评论下面接话`
+      case 'bili_comment': return `在 ${bv} 下面留一句话`
       case 'bili_reply_opus': return `在动态 ${String(arg.opus_id || '')} 下面接话`
       case 'bili_moment': return '发一条说说～'
       case 'bili_danmaku': return `看 ${bv} 的弹幕`
@@ -958,7 +960,7 @@ export function apply(ctx, config) {
     }
     assertScope()
     signal?.throwIfAborted()
-    const sending = ['bili_reply', 'bili_reply_opus', 'bili_send_message', 'bili_send_dynamic'].includes(toolName)
+    const sending = ['bili_reply', 'bili_comment', 'bili_reply_opus', 'bili_send_message', 'bili_send_dynamic'].includes(toolName)
     const reviewed = sending ? approvedReviewExecutions.get(toolExecution.getStore()) : null
     if (sending) {
       for (const file of [cfgFile, dutyStateFile]) {
@@ -1012,12 +1014,28 @@ export function apply(ctx, config) {
     if (!scope) { scope = new AbortController(); stickerSessionScopes.set(key, scope) }
     return exec.signal ? AbortSignal.any([exec.signal, scope.signal]) : scope.signal
   }
+  /* 📉 2026-11-02 降噪：`collect-skipped` 里"收集区满了"是**预期内且不会自愈**的状态 —— 册子满了就一直是
+   *   满的，直到本人 forget 一张。原来每几分钟往 duty.log 写一行，11-01 全天刷了几百条，把真正要看的东西
+   *   埋了（使用者 m00002 让"顺手把日志里其他问题修一下"）。所以这里只对"容量满"这个原因限流：
+   *   同一个错误文本 6 小时内只写一次，且不记 act（桌宠流水里也不重复冒泡）。
+   *   其它原因（下载失败、格式不支持、URL 不安全…）是真异常，照旧每条都写。 */
+  const stickerSkipLoggedAt = new Map()
+  const logStickerSkip = (value) => {
+    const text = String(value.error || '')
+    const capacity = value.code === 'STICKER_CAPACITY' || /收集区满了/.test(text)
+    if (!capacity) { log(`表情自动化（collect-skipped）：${text}`); return }
+    const now = Date.now()
+    for (const [key, at] of stickerSkipLoggedAt) if (now - at > 6 * 3600_000) stickerSkipLoggedAt.delete(key)
+    if (stickerSkipLoggedAt.has(text)) return
+    stickerSkipLoggedAt.set(text, now)
+    log(`表情自动化（collect-skipped）：${text}（这条 6 小时内只提示一次；想继续收就 forget 一张）`)
+  }
   const stickerAutomation = createStickerAutomation({
     stateDir,
     getConfig: () => { refreshCfg(); return cfg },
     onEvent: (kind, value) => {
       if (kind === 'collected') act('note', `收了一张表情「${value.name}」${value.status === 'pending' ? '，等你审核后再用' : ''}`, { bvid: value.bvid })
-      else log(`表情自动化（${kind}）：${value.error || ''}`)
+      else logStickerSkip(value)
     },
   })
   // Only the manual gallery explicitly opts into pending. Public/tool defaults remain sendable-only.
@@ -1085,7 +1103,7 @@ export function apply(ctx, config) {
   const browsingTools = new Set(['bili_search', 'bili_subtitle', 'bili_danmaku', 'bili_buzzwords',
     'bili_video_info', 'bili_rank', 'bili_hot_videos', 'bili_user_videos', 'bili_comments',
     'bili_received_replies', 'bili_my_notices', 'bili_my_dynamics', 'bili_opus_comments',
-    'bili_my_video_comments', 'bili_reply', 'bili_reply_opus', 'bili_dm_inbox',
+    'bili_my_video_comments', 'bili_reply', 'bili_comment', 'bili_reply_opus', 'bili_dm_inbox',
     'bili_dm_thread', 'bili_dm_reply', 'bili_moment', 'bili_deliver'])
   const tool = (spec) => {
     const wrapped = {
@@ -1095,7 +1113,7 @@ export function apply(ctx, config) {
     async execute(args, exec) {
       const manuallyApproved = exec && approvedReviewExecutions.has(exec)
       if (!manuallyApproved && !isFishExecution(exec)) return { ok: false, blocked: true, reason: 'mode_required', hint: 'DeepMoYu 工具仅在鲸鱼摸鱼模式内生效；普通会话不会启用角色工具或记忆。' }
-      if (['bili_reply', 'bili_reply_opus', 'bili_dm_reply', 'bili_moment', 'bili_deliver'].includes(spec.name)) {
+      if (['bili_reply', 'bili_comment', 'bili_reply_opus', 'bili_dm_reply', 'bili_moment', 'bili_deliver'].includes(spec.name)) {
         const unauthorized = modelForceDecision(args)
         if (unauthorized) return unauthorized
       }
@@ -2284,7 +2302,8 @@ export function apply(ctx, config) {
         perUser[String(uid)] = { day: today, n: base + 1 }
         writeJson(dutyStateFile, {
           ...st,
-          ...(crossDay ? { count: 0, picked: 0, windows: {} } : {}),
+          // 跨天归零走统一名单（原先是手写的 `{count,picked,windows}`，漏了 moments）
+          ...(crossDay ? dayResetPatch(today) : {}),
           day: today,
           dmReplied: replied,
           dmPerUser: perUser,
@@ -2444,9 +2463,19 @@ export function apply(ctx, config) {
     },
   })
 
-  tool({
+  /* ⭐ 2026-11-02（使用者 m00002 第 2 条原话：「在视频下面评论，要直接评论啊，不要在别人的评论下评论，
+   *    直接视频下评论就行，更多人才能看到」）：
+   *    以前只有 `bili_reply` 一只工具，而且描述里大半篇幅在讲"回复别人的评论时 rpid/root 怎么填"，
+   *    判重那边又是"同一条视频只发一条新评论"（比回复严得多）—— 结构上就等于在推模型去楼层回复。
+   *    真机账本也印证了：repliedComments 1941 条里 1148 条是楼中楼、只有 396 条是视频下的新评论。
+   *    现在把"发新评论"拆成独立的一只 `bili_comment`（下面注册），没有 rpid/root 参数，
+   *    默认动作就是"在视频下面说话"；`bili_reply` 保留给"确实有人跟你说话、要接他那一句"。
+   *    两者共用同一段实现（`replyTool.execute`），所以开关、质量、判重、节奏、审核、风控闸全都不变。 */
+  const replyTool = {
     name: 'bili_reply',
-    description: '在视频下发评论或回复某条评论。正文简短，按当前会话的语气自然接话。\n'
+    description: '在视频下方**回复某一条已有的评论**（楼中楼/楼层回复）。正文简短，按当前会话的语气自然接话。\n'
+      + '⭐ **想给这条视频留言、想让更多人看见 ⇒ 用 `bili_comment`（发新评论），不要用这只。**'
+      + '这只只在"有人先跟你说话了、你要接他那一句"时用：楼层回复只有对方和点进楼里的人看得到。\n'
       + '回复别人的评论时：`rpid` 填他那条的 rpid，`root` 填你自己那条主评论的 rpid（`bili_received_replies` 的 '
       + '`how_to_reply` 直接照抄就行）。没有条数上限，但**回过的不再回**（宿主记着账本）。\n'
       + '✍️ **内容要有东西，不是为发而发**：光喊「awsl / 太强了 / 哈哈哈哈」这类话会被打回 —— '
@@ -2468,11 +2497,14 @@ export function apply(ctx, config) {
       picture: { type: 'string', description: '（可选，仅发新评论）表情图名字，最多 2 张、用逗号或空格分隔；bili_sticker({action:"list"}) 查；回复楼层不支持图片' },
       force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
-    async execute(args) {
+    /* `presetRpid` 是 `bili_comment` 用的：传 '0' 就锁定"发新评论"这条分支。
+       ⚠️ 必须复用**同一个 args 对象**（不要 `{...args}`）—— 审批路径靠 `approvedReviewArgs` 这个
+       WeakMap 认身份，复制一份就等于把"预览时那张图的字节指纹"丢了。 */
+    async execute(args, exec, presetRpid) {
       const bvid = String(args.bvid ?? '').trim()
-      const rpid = optionalId(args.rpid)
+      const rpid = presetRpid === undefined ? optionalId(args.rpid) : String(presetRpid)
       const isReply = rpid !== '0'
-      const root = optionalId(args.root)
+      const root = isReply ? optionalId(args.root) : '0'
       /* 🔴 2026-10-20：模型拿着「动态（opus）下面的评论」来调这只 —— 那儿根本没有 BV 号。
        * 原来不校验，直接往下传，MCP 抛「bvid 提供错误，必须是以 BV 开头的…12 位字符串」，
        * 报错暴露在流水里像插件坏了；更要紧的是它会被当成"这条回不了"而放弃，
@@ -2741,6 +2773,39 @@ export function apply(ctx, config) {
       if (riskNote && out && typeof out === 'object') return { ...out, riskNote }
       return out
     },
+  }
+  // 回复通道（楼中楼）：只在"有人先跟你说话"时用
+  tool(replyTool)
+
+  /* 🗣️ 发新评论（= 直接发在视频下面，所有人点开视频都能看见）——
+   *    使用者 m00002 第 2 条要的就是这个动作，所以把它独立成一只**没有 rpid/root 参数**的工具：
+   *    模型想留言时不必再拐进"回复某人"的语义里，参数面也不给它走错的机会。 */
+  tool({
+    name: 'bili_comment',
+    description: '🗣️ **在视频下方发一条新评论** —— 直接挂在视频下面，点开视频的人都能看见。'
+      + '想让更多人看到你的话，就是用这只（不要用 bili_reply 去回复别人，那只有对方看得见）。\n'
+      + '什么时候发：看完这条视频真有话说就发（哪一下、哪一秒、哪个说法打动你，或者你不同意哪儿）。'
+      + '**没有想说的就不发 —— 配额不是催办；同一条视频只发一条新评论**（发过就换下一条视频）。\n'
+      + '✍️ **内容要有东西，不是为发而发**：光喊「awsl / 太强了 / 哈哈哈哈」这类话会被打回。'
+      + '按当前会话的语气自然说话，不要求固定词、表情或自称。\n'
+      + '🖼️ 想配图就传 `picture`（表情库里的名字，`bili_sticker({action:"list"})` 查，最多 2 张）；'
+      + '小表情码如 [doge] 直接写进正文就行，不算图。\n'
+      + '⏱️ 发之前先 `bili_pace({kind:"comment"})` 问一句 —— 说等就等，别试探性重发（那是 -352 的最短路径）。\n'
+      + '🔴 安全闸：桌宠设置「自动化」里的「自动评论视频」**默认是关的**；关着的时候这个工具会拒绝 —— '
+      + '需要本人在工作台手动打开权限；模型不能用 force 或配置 PATCH 绕过。\n'
+      + '📌 动态（opus）下面没有 BV 号，那种要用 `bili_reply_opus`。',
+    parameters: {
+      bvid: { type: 'string', description: 'BV号（视频下方发评论）' },
+      text: { type: 'string', description: '评论正文（短、干净、像真人在说话；别写敏感词）' },
+      picture: { type: 'string', description: '（可选）表情图名字，最多 2 张、用逗号或空格分隔；bili_sticker({action:"list"}) 查' },
+      force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
+    },
+    async execute(args) {
+      // 复用回复工具的实现：`presetRpid='0'` 强制走"发新评论"分支，
+      // 质量/判重/节奏/审核/风控闸全都是同一套，不另起一条会跑偏的路。
+      // ⚠️ 传**原对象**（不是副本）：审批路径用 `approvedReviewArgs` WeakMap 认身份。
+      return replyTool.execute(args, undefined, '0')
+    },
   })
 
   tool({
@@ -2959,6 +3024,7 @@ export function apply(ctx, config) {
       if (text.length > 300) return { ok: false, error: `正文 ${text.length} 字，B站动态上限约 300 字，先砍短` }
       const gateOn = Boolean(cfg.autoMoment)
       if (!gateOn && args?.force !== true) {
+        log('🚫 说说被拦：工作台「自动发说说」未开启')
         return {
           ok: false, blocked: true,
           hint: '工作台中的「自动发说说」未开启，请本人手动打开。模型不能通过 force 或配置 PATCH 自授权限。',
@@ -2969,9 +3035,13 @@ export function apply(ctx, config) {
       const cap = Number.isFinite(capNum) ? Math.max(0, capNum) : 1
       const used = countMomentsToday()
       if (cap <= 0 && args?.force !== true) {
+        // ⚠️ 2026-11-02：以前这几种拦截**只回给模型、不写日志** —— 于是 duty.log 里
+        //    "动态怎么不发了"完全查不到线索（连一条 blocked 都没有）。拦截也是事件，必须留痕。
+        log(`🚫 说说被拦：工作台的每日上限是 0（不发）`)
         return { ok: false, blocked: true, hint: '工作台中的动态每日上限是 0（不发），请本人手动调整；模型不能绕过额度。' }
       }
       if (used >= cap && args?.force !== true) {
+        log(`🚫 说说被拦：今天已发 ${used}/${cap} 条（额度满），明天再聊`)
         return { ok: false, blocked: true, hint: `今天已经发了 ${used}/${cap} 条说说了，明天再聊。` }
       }
       /* ⏱️ 出手节奏（2026-10-21 m18802 第 1、2 条）：发动态是最"显眼"的动作 ——
@@ -3099,7 +3169,7 @@ export function apply(ctx, config) {
    * `sendReview` 只对鱼模式的自动发送生效。默认关闭，旧发送语义不变。
    * 队列落在 state.json，重启后仍能看到待处理内容；批准时重新走原工具，
    * 进程内 WeakMap 只通过预览排队这一层，原开关、质量、判重、节奏和风控闸都不跳过。 */
-  const SEND_REVIEW_TOOLS = new Set(['bili_reply', 'bili_reply_opus', 'bili_dm_reply', 'bili_moment', 'bili_deliver'])
+  const SEND_REVIEW_TOOLS = new Set(['bili_reply', 'bili_comment', 'bili_reply_opus', 'bili_dm_reply', 'bili_moment', 'bili_deliver'])
   const SEND_REVIEW_MAX = 80
   const approvedReviewArgs = new WeakMap()
   const approvedReviewExecutions = new WeakMap()
@@ -3158,11 +3228,13 @@ export function apply(ctx, config) {
     try { clean = validateToolArguments(toolInputSchema(backgroundToolRegistry.get(toolName)?.parameters || {}), reviewArgs(args)) }
     catch (error) { return { ok: false, blocked: true, error: String(error?.message ?? error) } }
     if (JSON.stringify(clean).length > 16000) return { ok: false, blocked: true, error: '预览参数过长，未保存内容' }
-    if (toolName === 'bili_reply' && !Object.hasOwn(clean, 'picture')) clean.picture = ''
+    // `bili_comment` 是 `bili_reply` 的"只发新评论"通道，picture 语义完全一致，一起走这段
+    const pictureTool = toolName === 'bili_reply' || toolName === 'bili_comment'
+    if (pictureTool && !Object.hasOwn(clean, 'picture')) clean.picture = ''
     const now = Date.now()
     const id = reviewIdOf(toolName, clean, now)
     const attachments = []
-    if (toolName === 'bili_reply' && clean.picture) {
+    if (pictureTool && clean.picture) {
       const names = String(clean.picture).split(/[,，、]+|\s+/).filter(Boolean)
       if (names.length > 2) return { ok: false, blocked: true, error: '发送预览最多选择 2 张表情' }
       for (const name of names) {
@@ -3401,8 +3473,10 @@ export function apply(ctx, config) {
    */
   const bumpState = (patch) => withStateLock(() => {
     const st = readJson(dutyStateFile, {})
-    const today = dayKey()
-    if (st.day !== today) { st.day = today; st.count = 0; st.picked = 0; st.windows = {}; st.tokensToday = 0 }
+    // ⚠️ 跨天归零只走 lib/state.mjs 那一份名单（`resetDayCounters`）——
+    //    这里原先手写 `count/picked/windows/tokensToday`，**漏了 moments**，
+    //    导致跨天后 `moments` 还是昨天的数 ⇒ `bili_moment` 静默判定"今天额度满了"、永不再发（2026-11-02 的事故）。
+    if (st.day !== dayKey()) resetDayCounters(st)
     writeJson(dutyStateFile, { ...st, ...(typeof patch === 'function' ? patch(st) : patch) })
     return st
   })
@@ -5190,30 +5264,43 @@ export function apply(ctx, config) {
     } catch { return { ok: false, hh: 0, mm: 0, wd: '', part: '', text: '', line: '' } }
   }
 
-  /** 今天发了几条说说（从 state.json 数；宿主记账，不靠模型自觉） */
+  /** 今天发了几条说说（从 state.json 数；宿主记账，不靠模型自觉）
+   *  ⚠️ 2026-11-02 加固：`moments` 只跟 `st.day` 绑在一起是不够的 —— 只要有**任何**一条跨天写路径
+   *     没重置它（当时 `bumpState`、私信记账就都漏了），今天就会读到昨天的数、然后永久"额度已满"。
+   *     现在再加一道自证的 `momentsDay`：记账时一起写，读的时候对不上就按 0 算、顺手把陈数清掉。
+   */
   const countMomentsToday = (now = new Date()) => {
     const st = readJson(dutyStateFile, {})
-    return st.day === dayKey(now) ? Number(st.moments || 0) : 0
+    const today = dayKey(now)
+    if (st.day !== today) return 0
+    // 老状态没有 momentsDay：那 `moments` 可能是翻篇前留下的陈数 —— 只有在 day 也不对时才可疑，
+    // 这里 day 已经对上了，就信 `momentsDay`；没有 momentsDay 时退回看 lastMomentAt 是不是今天。
+    const stamp = typeof st.momentsDay === 'string' ? st.momentsDay : ''
+    if (stamp) return stamp === today ? Number(st.moments || 0) : 0
+    const at = Date.parse(String(st.lastMomentAt || ''))
+    if (Number.isFinite(at) && dayKey(new Date(at)) !== today) return 0
+    return Number(st.moments || 0)
   }
   /**
    * 记说说账（delta 可正可负）。⚠️ 走 stateLock（`bili_moment` 里是 await 发出去之后才记账，中间能插进别的写）。
    * ⭐ 2026-10-26 改成可加可减：`bili_moment` 现在**发送前先在锁内预占一个名额**（并发不会再双发突破上限），
    *    发送失败再用 -1 把名额退回去；force（不占额）成功后仍走 +1 补记。
-   * ⚠️ 跨天时必须连 count/picked/windows 一起重置：`bumpState` 有这段重置，这里原来没有，
-   *    结果是「跨天后发一条说说 ⇒ day 变成今天但 picked 还是昨天的数 ⇒
-   *    countPickedToday() 把昨天的额度算到今天头上 ⇒ 今天一开局就"额度已满"」。
+   * ⚠️ 跨天时必须连 count/picked/windows/moments 一起重置 —— 现在统一走 lib/state.mjs 的 `dayResetPatch`，
+   *    那边是**唯一**的当日计数名单，别再在这里手写一份（手写漏字段就是 2026-11-02 那次事故）。
    */
   const bumpMomentBy = (delta = 1) => withStateLock(() => {
     const st = readJson(dutyStateFile, {})
     const today = dayKey()
-    const crossDay = st.day !== today
-    const base = crossDay ? 0 : Number(st.moments || 0)
+    // 陈数（没有 momentsDay 或对不上今天）一律当 0 起算，绝不把昨天的额度带进今天
+    const stale = st.momentsDay !== today || st.day !== today
+    const base = stale ? 0 : Number(st.moments || 0)
     const next = Math.max(0, base + delta)
     writeJson(dutyStateFile, {
       ...st,
-      ...(crossDay ? { count: 0, picked: 0, windows: {}, moments: 0, tokensToday: 0 } : {}),
+      ...(st.day !== today ? dayResetPatch(today) : {}),
       day: today,
       moments: next,
+      momentsDay: today,
       lastMomentAt: new Date().toISOString(),
     })
     return next
