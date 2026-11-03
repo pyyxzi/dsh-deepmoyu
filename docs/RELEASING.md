@@ -64,6 +64,13 @@ npm whoami --registry=https://registry.npmjs.org
 npm publish ./release/dsh-deepmoyu-<版本>.tgz --registry=https://registry.npmjs.org --access public
 ```
 
+两个容易踩的坑（2026-11-03 实测）：
+
+- 本包在 npm 上的维护者是 `tzl666`，不是 GitHub 的 `pyyxzi`。`~/.npmrc` 里必须有 `//registry.npmjs.org/:_authToken=`，且 token 属于有发布权限的账号；`npm whoami` 返回 401 就是 token 过期，换好后重试。默认 registry 若指向 npmmirror，`whoami`、`publish` 都必须显式带 `--registry=https://registry.npmjs.org`。
+- `npm publish` 有时在**上传成功之后**仍以 `You cannot publish over the previously published versions` 报错退出。不要据此判定失败，也不要用改版本号的方式绕过：先 `Invoke-RestMethod https://registry.npmjs.org/dsh-deepmoyu` 查 `versions` 与 `time.<版本>`，再下载 registry tarball 比对 SHA-256 与本地归档是否一致，以 registry 的实际内容为准。
+
+版本号一经上传不可覆盖。`2.5.0` 只在 GitHub 上有标签，从未发布到 npm，因此 npm 上 `2.4.2` 之后直接是 `2.6.0`；如需补齐序列，必须另起一个未被占用的版本号重新构建。
+
 发布完成后查询指定版本的 `dist.integrity`、`dist.shasum` 和仓库信息，下载 registry tarball 并核对内容；本地构建通过不能替代发布后检查。npm 版本不可覆盖，不应为发布失败临时篡改归档内容。
 
 ## 5. 插件市场
