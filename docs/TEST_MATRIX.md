@@ -63,7 +63,8 @@
 | 节奏、永久判重及发送复核 | `pace*.test.mjs`、`dup-cross-channel.test.mjs`、`reply.test.mjs`、`verify*.test.mjs`、`test_guard_cross_channel.py` |
 | 端到端长 ID | `mcp-ids.test.mjs`、`tool-surface.test.mjs`、`check-dm-uid-browser.cjs` |
 | 学习、记忆与隐私 | `memory-chain.test.mjs`、`memory-center*.test.mjs`、`background-output.test.mjs` |
-| 表情与图片 | `sticker*.test.mjs`、`test_reply_pictures.py`；包括格式、字节审核、公开地址、容量、取消和并发 |
+| 表情与图片 | `sticker*.test.mjs`、`test_reply_pictures.py`；包括格式、字节审核、公开地址、容量、取消、并发、大模型判趣味与淘汰 |
+| 表情判趣味与淘汰 | `sticker-judge.test.mjs`：本地词表拦截、模型回复宽容解析、fail open 三态、低分拒绝、只在自动收集且关审核时淘汰、同分不换、被判不合适的图不下载、判图故障不影响收集 |
 | 账本、回顾与陪伴 | `token-ledger.test.mjs`、`product-status*.test.mjs`、`companion*.test.mjs` |
 | 视频编排、终态与媒体 | `pv-*.test.mjs`、`test_pv_*.py`、实际配音/封面/渲染/校验全链 |
 | 可选 ASR 与收藏边车 | `test_optional_sidecars.py`：本地输入保留、独占清理、同视频并发、参数与失败；外部服务为 fake |

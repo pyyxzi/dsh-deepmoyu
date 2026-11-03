@@ -2412,7 +2412,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const reading = React.useRef(false)
       const writing = React.useRef(false)
       const [loading, setLoading] = React.useState(false)
-      const defaults = { stickerCollectProbability: 35, stickerCollectCooldown: 60, stickerSendProbability: 30, stickerSendCooldown: 180, stickerCapacity: 60 }
+      const defaults = { stickerCollectProbability: 35, stickerCollectCooldown: 60, stickerSendProbability: 30, stickerSendCooldown: 180, stickerCapacity: 100 }
       const field = (key) => draft[key] ?? cfg[key] ?? data?.settings?.[key] ?? defaults[key]
       const pull = async () => {
         if (reading.current || writing.current) return
@@ -2445,7 +2445,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const save = async (kind) => {
         try {
           const p = kind === 'collect' ? {
-            stickerCollectProbability: integer('stickerCollectProbability', 0, 100), stickerCollectCooldown: integer('stickerCollectCooldown', 0, 86400), stickerCapacity: integer('stickerCapacity', 1, 60),
+            stickerCollectProbability: integer('stickerCollectProbability', 0, 100), stickerCollectCooldown: integer('stickerCollectCooldown', 0, 86400), stickerCapacity: integer('stickerCapacity', 1, 100),
           } : { stickerSendProbability: integer('stickerSendProbability', 0, 100), stickerSendCooldown: integer('stickerSendCooldown', 0, 86400) }
           if (await patch(p, kind === 'collect' ? '自动收集参数' : '自动配图参数')) setDraft((old) => Object.fromEntries(Object.entries(old).filter(([key]) => !(key in p))))
         } catch (e) { say(String(e?.message ?? e), 'warn') }
@@ -2544,9 +2544,10 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         h('div', { 'data-bd-pghead': '' }, h('div', {}, h('b', {}, '表情收藏'), h('p', {}, '管理表情收集、上传、审核和评论配图。'))),
         h('div', { 'data-bd-pet-grid': '', 'data-bd-sticker-controls': '' },
           h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '表情收集')),
-            ToggleRow({ label: '从评论区自动收集', on: Boolean(cfg.stickerAutoCollect), disabled, note: '读取评论时，按设定概率收集附图。相同图片不重复收集，达到容量后停止。', onChange: (v) => patch({ stickerAutoCollect: v }, '自动收集表情') }),
+            ToggleRow({ label: '从评论区自动收集', on: Boolean(cfg.stickerAutoCollect), disabled, note: '读取评论时，按设定概率收集附图。相同图片不重复收集；收满后，关掉人工审核时新图分数更高会顶掉最低分的那张。', onChange: (v) => patch({ stickerAutoCollect: v }, '自动收集表情') }),
+            ToggleRow({ label: '大模型判断值不值得收', on: cfg.stickerJudge !== false, disabled, note: '收集前先让模型看这条评论的文字、发图人、点赞和尺寸，判「当表情值不值得收」并打分。广告、二维码、隐私这类本地词表直接拦下。模型没给结论时照旧收，只是没有分数。', onChange: (v) => patch({ stickerJudge: v }, '表情趣味判断') }),
             ToggleRow({ label: '新表情人工审核', on: Boolean(cfg.stickerReview), disabled, note: '新收集和上传的图片经批准后方可配图。关闭仅影响后续新增图片，已有待审图片仍需审核。', onChange: (v) => patch({ stickerReview: v }, '表情人工审核') }),
-            input('收集概率', 'stickerCollectProbability', 100, '%'), input('收集冷却（秒）', 'stickerCollectCooldown', 86400, '秒'), input('收集容量', 'stickerCapacity', 60, '张', 1),
+            input('收集概率', 'stickerCollectProbability', 100, '%'), input('收集冷却（秒）', 'stickerCollectCooldown', 86400, '秒'), input('收集容量', 'stickerCapacity', 100, '张', 1),
             h('button', { 'data-bd-btn': '', disabled, onClick: () => save('collect') }, '保存收集参数')),
           h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '评论配图')),
             ToggleRow({ label: '新评论自动配图', on: Boolean(cfg.stickerAutoSend), disabled, note: '评论权限已开启时，从可用图库选择配图。仅适用于支持图片的新评论。', onChange: (v) => patch({ stickerAutoSend: v }, '自动配图') }),

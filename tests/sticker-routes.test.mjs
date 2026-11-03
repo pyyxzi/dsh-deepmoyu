@@ -47,7 +47,7 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
     apply(ctx, {}); await new Promise(resolve => setImmediate(resolve))
     const gallery = await request('/stickers')
     assert.equal(gallery.body.ok, true); assert.deepEqual(gallery.body.counts, { total: 1, builtin: 1, collected: 0, pending: 0, approved: 1 })
-    assert.equal(gallery.body.settings.stickerCollectProbability, 35); assert.equal(gallery.body.capacity, 60)
+    assert.equal(gallery.body.settings.stickerCollectProbability, 35); assert.equal(gallery.body.capacity, 100)
     assert.equal(gallery.body.stickers[0].removable, false); assert.ok(!Object.hasOwn(gallery.body.stickers[0], 'file'))
     const image = await request(gallery.body.stickers[0].imageUrl.replace('/api/bili-duty', ''))
     assert.equal(image.code, 200); assert.equal(image.headers['content-type'], 'image/png'); assert.deepEqual(image.raw, png)
@@ -62,7 +62,7 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
     assert.equal((await request('/stickers')).body.counts.collected, 1)
     assert.equal((await request('/stickers/forget', { name: '别名' }, 'POST')).body.ok, true)
     const config = (await request('/config', { stickerCollectProbability: 123, stickerCapacity: 999, stickerAutoSend: true }, 'POST')).body
-    assert.equal(config.config.stickerCollectProbability, 100); assert.equal(config.config.stickerCapacity, 60)
+    assert.equal(config.config.stickerCollectProbability, 100); assert.equal(config.config.stickerCapacity, 100)
     const blocked = await reply({})
     assert.equal(blocked.blocked, true); assert.equal(calls.filter(x => x.name === 'bili_reply').length, 0)
     assert.equal((await reply({ force: true })).code, 'FORCE_NOT_AUTHORIZATION')

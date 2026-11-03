@@ -27,7 +27,7 @@
 | 主依赖审计 | 官方 npm audit：0 已知漏洞；pip-audit 2.10.1 对实际主 Python 环境：0 已知漏洞 |
 | `release:check/build/smoke` | bundle、文档链接、39工具证据、素材授权摘要、截图、凭证模式、归档内容与清洁 tarball 安装通过 |
 
-全工具逐项证据见 [功能矩阵](TEST_MATRIX.md) 与 `tool-evidence.json`。409 项 Node 测试包含正向的全部 39 个工具、模式切出后的 78 次旧句柄拒绝、长 ID 原始 MCP 传输和各深层专项，不用无效参数拒绝来代替成功路径覆盖。
+全工具逐项证据见 [功能矩阵](TEST_MATRIX.md) 与 `tool-evidence.json`。421 项 Node 测试包含正向的全部 39 个工具、模式切出后的 78 次旧句柄拒绝、长 ID 原始 MCP 传输和各深层专项，不用无效参数拒绝来代替成功路径覆盖。
 
 ## 发现与修复
 

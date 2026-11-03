@@ -110,6 +110,7 @@ import {
   sniffImageFormat,
 } from './lib/sticker.mjs'
 import { STICKER_DEFAULTS, STICKER_LIMITS, clampStickerSettings, stickerSettings, createStickerAutomation } from './lib/sticker-automation.mjs'
+import { judgeStickerCandidate } from './lib/sticker-judge.mjs'
 // 🧾 每轮任务的 token 账本（2026-10-27）：一次任务一条账 —— 会话精确计量、后台如实标"未计量"。
 import {
   tokenTaskStart, tokenTaskUpdate, tokenTaskEnd, tokenLedgerSnapshot, clearTokenLedger, tokenTaskLabel,
@@ -161,6 +162,8 @@ export const Config = !z ? undefined : z.object({
   stickerCapacity: z.natural().default(STICKER_DEFAULTS.stickerCapacity).extra('volatile', true),
   /** 新图先经本人批准；关闭只影响以后收的新图，不放行仍待审核的图片。 */
   stickerReview: z.boolean().default(STICKER_DEFAULTS.stickerReview).extra('volatile', true),
+  /** 收进库之前让模型判一次「这张当表情值不值得收」；关掉就只走本地词表，且不产生淘汰用的分数。 */
+  stickerJudge: z.boolean().default(STICKER_DEFAULTS.stickerJudge).extra('volatile', true),
   /** ⭐ 私信投递：off=只发评论（现状）· only=只私信（完全不公开评论）· both=评论 + 私信 */
   dmMode: z.string().default('off').extra('volatile', true),
   /** ⭐ 私信发给谁的 UID（数字）。要在 dmMode 不是 off 时填 */
@@ -1033,9 +1036,23 @@ export function apply(ctx, config) {
   const stickerAutomation = createStickerAutomation({
     stateDir,
     getConfig: () => { refreshCfg(); return cfg },
+    /* 🐟 2026-11-02（使用者 m00938 第 2 条）：收进库之前先让宿主自己的模型看一眼这条评论，
+     *   判"这张图当表情值不值得收"，给的分数同时是**淘汰机制**的依据（见 sticker.mjs）。
+     *   线路复用后台模型那条（backgroundModelId），不额外要密钥、不自动换模型；
+     *   没有线路或线路报错时 judgeStickerCandidate 一律 fail open —— 照老规矩收，只是没有分数。 */
+    judge: async ({ candidate, signal }) => {
+      const route = String(cfg.backgroundModelId || '').trim()
+      if (!route) return { suitable: true, score: null, description: '', tags: [], reason: '没有配置后台模型线路，这次只过本地词表', source: 'skip' }
+      let llm = null
+      try { llm = ctx.get('llm') } catch { llm = null }
+      return judgeStickerCandidate({ llm, route, candidate, signal })
+    },
     onEvent: (kind, value) => {
-      if (kind === 'collected') act('note', `收了一张表情「${value.name}」${value.status === 'pending' ? '，等你审核后再用' : ''}`, { bvid: value.bvid })
-      else logStickerSkip(value)
+      if (kind === 'collected') {
+        const tail = value.evicted ? `，顶掉了「${value.evicted.name}」` : ''
+        const score = Number.isFinite(Number(value.score)) ? `（${value.score} 分）` : ''
+        act('note', `收了一张表情「${value.name}」${score}${tail}${value.status === 'pending' ? '，等你审核后再用' : ''}`, { bvid: value.bvid })
+      } else logStickerSkip(value)
     },
   })
   // Only the manual gallery explicitly opts into pending. Public/tool defaults remain sendable-only.
