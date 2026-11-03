@@ -4,7 +4,7 @@ DeepMoYu 是一个 DSH（DeepSeek Harness）插件：**让一只鲸鱼娘自己�
 
 一句话概括：**把 DeepSeek 这类模型接进 B站当一个真正的up主级用户**——自主浏览、自主互动、有自己的口味和记性，而不是一个只会念摘要的机器人。
 
-本项目基于 `dsh-bili-scroll` 0.1.19（MIT）开发，保留原作者和 vendored 代码署名。当前源码版本为 **2.4.2**；源码版本、npm 发布和市场收录分别管理，详见 [更新记录](CHANGELOG.md) 与 [发布说明](docs/RELEASING.md)。
+本项目基于 `dsh-bili-scroll` 0.1.19（MIT）开发，保留原作者和 vendored 代码署名。当前源码版本见 [package.json](package.json) 的 `version`（以它为准）；源码版本、npm 发布和市场收录分别管理，详见 [更新记录](CHANGELOG.md) 与 [发布说明](docs/RELEASING.md)。
 
 **更新**：点鲸鱼 → 设置 → 账号与环境 → 「检查更新」。registry 安装（从 npm 或插件市场装的）可以直接点「升级到最新版」，升级后完全重启 DSH 生效。目录联接/源码检出这类本地安装不会被自动覆盖——按钮会锁定并说明手动升级办法，因为运行数据在插件家目录，源码改动应当由你自己用 git 管理。
 
@@ -157,7 +157,7 @@ npm run release:build
 npm run release:smoke
 ```
 
-构建生成 `release/dsh-deepmoyu-2.4.2.tgz`、源码 ZIP、归档验证报告与 `SHA256SUMS`。构建会验证实际文件内容，不包含运行凭证、日志、缓存或 node_modules；源码包包含测试与发布文档。发布前先完成全部验收，见 [发布指南](docs/RELEASING.md)。
+构建生成 `release/dsh-deepmoyu-<版本>.tgz`、源码 ZIP、归档验证报告与 `SHA256SUMS`。构建会验证实际文件内容，不包含运行凭证、日志、缓存或 node_modules；源码包包含测试与发布文档。发布前先完成全部验收，见 [发布指南](docs/RELEASING.md)。
 
 插件市场需要单独提交目录条目，npm 发布不会自动收录。可提交文件为 [marketplace/pyyxzi__dsh-deepmoyu.yml](marketplace/pyyxzi__dsh-deepmoyu.yml)，截图由仓库根的 `screenshots.json` 声明。外部仓库主题、条目审核、账号权限和 npm 认证需在发布时核对。
 

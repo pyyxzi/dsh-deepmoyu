@@ -22,6 +22,15 @@ export function validateDocs() {
       links++
     }
   }
+  // 版本漂移是发布事故：2.5.0/2.6.0 两次发版 README 都还写着 2.4.2，而目录站点
+  // 详情页正是渲染仓库 README，读者会把旧文案当成当前版本。这里只拦「声称本包版本」
+  // 的两种写法（依赖/引擎版本如 dsh-bili-scroll 0.1.19 不受影响）。
+  const pkgVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
+  const readme = readFileSync(join(root, 'README.md'), 'utf8')
+  const claimed = [...readme.matchAll(/dsh-deepmoyu-(\d+\.\d+\.\d+)/g), ...readme.matchAll(/当前源码版本为\s*\**\s*(\d+\.\d+\.\d+)/g)]
+    .map(match => match[1]).filter(version => version !== pkgVersion)
+  assert.deepEqual(claimed, [], 'README.md pins a version other than package.json (' + pkgVersion + '): ' + claimed.join(', ')
+    + '；改为链接 package.json，或在发版时同步这些数字')
   return { documents: documents.length, relativeLinks: links }
 }
 
