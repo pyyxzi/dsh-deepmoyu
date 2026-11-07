@@ -289,7 +289,10 @@ window.__ModuleLoader__.load({
   100%{opacity:0;transform:translate(var(--dx,10px),-48px) scale(1.3)}}
 /* ⭐ 弹出卡片（菜单/子面板共用）：毛玻璃、圆角、阴影、缩放进场；默认在鱼上方，
  *   鱼贴顶时翻到下方（data-flip）、贴右缘时右对齐（data-align）—— 都是 JS 算好挂属性。 */
-[data-bd-pet-card]{position:absolute;left:-4px;bottom:calc(100% + 14px);width:252px;border-radius:14px;overflow:hidden;
+[data-bd-pet-card]{position:absolute;left:-4px;bottom:calc(100% + 14px);width:252px;border-radius:14px;
+  /* 📖 使用指南展开后内容可能高过 maxHeight（矮窗口）：纵向兜底可滚（内容放得下时不出滚动条），
+     横向照旧裁掉；overscroll 别把滚动漏给页面。 */
+  overflow:hidden auto;overscroll-behavior:contain;
   background:rgba(16,28,40,.85);backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);
   border:1px solid rgba(255,255,255,.14);box-shadow:0 14px 44px rgba(2,12,22,.55),0 2px 8px rgba(2,12,22,.4);
   color:#e8f1f8;transform-origin:38px calc(100% + 14px);
@@ -316,6 +319,19 @@ window.__ModuleLoader__.load({
 [data-bd-pet-item] span{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}
 [data-bd-pet-item] span i{font-style:normal;font-size:10.5px;color:#8fabbf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 [data-bd-pet-sep]{height:1px;margin:3px 8px;border:0;background:rgba(255,255,255,.09);}
+/* 📖 使用指南（2026-11-07 使用者要求）：菜单卡片最末尾的折叠块，默认收起 ——
+ *   不挤占菜单高度；展开后列表自身限高滚动，卡片 maxHeight 裁不到内容。 */
+[data-bd-menu-guide]{border-top:1px solid rgba(255,255,255,.09);}
+[data-bd-menu-guide] summary{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:12.5px;cursor:pointer;list-style:none;color:#cfe3f0;}
+[data-bd-menu-guide] summary::-webkit-details-marker{display:none;}
+[data-bd-menu-guide] summary:hover{background:rgba(125,211,252,.13);}
+[data-bd-menu-guide] summary svg{flex:none;font-size:15px;width:20px;height:20px;}
+[data-bd-menu-guide] summary::after{content:'▸';margin-left:auto;color:#7fa0b5;font-size:10px;transition:transform .16s ease;}
+[data-bd-menu-guide][open] summary::after{transform:rotate(90deg);}
+[data-bd-menu-guide] ul{margin:0;padding:2px 12px 10px;max-height:180px;overflow:auto;display:flex;flex-direction:column;gap:5px;
+  font-size:11px;line-height:1.55;color:#a8c2d4;}
+[data-bd-menu-guide] li{list-style:none;}
+[data-bd-menu-guide] li b{color:#e8f1f8;font-weight:600;}
 [data-bd-pet-spin]{flex:none;width:12px;height:12px;border-radius:50%;display:inline-block;
   border:2px solid rgba(125,211,252,.3);border-top-color:#7dd3fc;animation:bdPetSpin .7s linear infinite;}
 @keyframes bdPetSpin{to{transform:rotate(360deg)}}
@@ -2552,7 +2568,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           h('section', { 'data-bd-sec': '' }, h('div', { 'data-bd-h': '' }, h('b', {}, '评论配图')),
             ToggleRow({ label: '新评论自动配图', on: Boolean(cfg.stickerAutoSend), disabled, note: '评论权限已开启时，从可用图库选择配图。仅适用于支持图片的新评论。', onChange: (v) => patch({ stickerAutoSend: v }, '自动配图') }),
             input('配图概率', 'stickerSendProbability', 100, '%'), input('配图冷却（秒）', 'stickerSendCooldown', 86400, '秒'),
-            h('p', { 'data-bd-note': '' }, '0% 表示不自动配图，100% 表示每次符合条件时尝试配图。指定表情优先，评论和私信权限独立控制。'),
+            h('p', { 'data-bd-note': '' }, '0% 表示不自动配图，100% 表示每次符合条件时尝试配图。指定表情优先，评论和私信权限独立控制。动图（gif）不参与自动配图，显式选 gif 也会被拦 —— 账号没有评论动图权限（49044）。'),
             h('button', { 'data-bd-btn': '', disabled, onClick: () => save('send') }, '保存配图参数'))),
         h('section', { 'data-bd-sec': '', 'data-bd-sticker-upload-card': '' },
           h('div', { 'data-bd-h': '' }, h('b', {}, '上传本地表情')),
@@ -4413,7 +4429,18 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           item('hide', 'hide', '隐藏桌宠', '', hidePet),
            h('footer', { 'data-bd-menu-token': '' },
              attention.length ? h('div', { 'data-bd-menu-attention': '' }, '⚠ ' + attention[0]) : null,
-             h('div', {}, h('span', {}, '本轮 token'), h('b', {}, tokenValue)), h('small', {}, tokenNote)))
+             h('div', {}, h('span', {}, '本轮 token'), h('b', {}, tokenValue)), h('small', {}, tokenNote)),
+          /* 📖 使用指南（2026-11-07）：收在菜单最末尾，展开才占地方。只写代码里真实存在的行为，
+             不写虚的 —— 双击开刷、拖动挪位、会话里说「刷B站」启动目标、灯色含义都核对过实现。 */
+          h('details', { 'data-bd-menu-guide': '' },
+            h('summary', {}, h(PetIcon, { name: 'spark' }), h('span', {}, '使用指南')),
+            h('ul', {},
+              h('li', {}, h('b', {}, '双击我'), ' —— 直接新开会话开刷；按住拖动 —— 挪位置；单击或右键 —— 开这个菜单。'),
+              h('li', {}, '在', h('b', {}, '鲸鱼摸鱼模式'), '的会话里，说一句「去刷B站」就是启动目标：它会自己搜片、读字幕、发评论、写日报。'),
+              h('li', {}, h('b', {}, '后台刷'), ' —— 挂机长跑不用盯着会话；想每天定时自动刷，去 工作台 → 运行方式。'),
+              h('li', {}, 'B站没登录？工作台 → 账号与环境 里', h('b', {}, '扫码登录'), '。'),
+              h('li', {}, '头顶小灯：', h('b', {}, '青绿'), '在刷、', h('b', {}, '琥珀'), '后台跑、', h('b', {}, '淡红'), '没登录或异常、蓝灰空闲；被藏起来后，从右下角小圆点点回来。'),
+              h('li', {}, '评论配图、表情收藏、token 预算、节奏快慢，都在 工作台 里调。'))))
       })() : null
 
       return h('div', { style: { position: 'absolute', left: '0', top: '0' } },

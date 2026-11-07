@@ -179,10 +179,14 @@ async def _guarded_send(guard, reservation, runner, record=None):
        不同版本的 bilibili_api 抛的异常类不一样，靠类名认会漏。
        重复发言比漏发糟得多 —— 漏发下一轮还能补，重复发言是当场掉信誉、还可能直接撞风控。
     """
-    reject_codes = (-101, -102, -111, -352, -400, -403, -404, -412, -509, -799, 12006, 12014)
+    reject_codes = (-101, -102, -111, -352, -400, -403, -404, -412, -509, -799, 49044, 12006, 12014)
     # 12014 = 已达到当前评论发送上限（额度用完，服务器明确没发出去）；
-    # 12006 = 没有该评论（对方自己删了）。这两个都是「确定没发出去」，必须释放坑位，
-    # 否则会被当成 unknown 永久封死同一条回复的重试机会（10-21 就踩过这个坑）。
+    # 12006 = 没有该评论（对方自己删了）；
+    # 49044 = 无评论动图发送权限（带 gif 配图被 B站 明确拒了，评论没发出去）。
+    # 这些都是「确定没发出去」，必须释放坑位，否则会被当成 unknown 永久封死同一条
+    # 评论的重试机会 —— 10-21 踩过 12006 的坑；11-07 又实测踩了 49044：一次 gif 配图
+    # 被拒之后，那条视频的评论坑位被标成 unknown，改成纯文字重发也被拦，
+    # 视频从此永远欠着一条评论（还顺手把「自动配图 80%」打成了「几乎没图」）。
     quota_codes = (12014,)
 
     def _code_of(value):
@@ -195,6 +199,9 @@ async def _guarded_send(guard, reservation, runner, record=None):
         pace = guard.reject_send(reservation, code)
         out = {"guard_status": "rejected", "error": error, "retry_blocked": False,
                "result": result, "code": code}
+        if code == 49044:
+            out["hint"] = ("这个账号没有「评论动图」权限（49044），这次**没发出去**，坑位已释放。"
+                           "把动图（gif）换成静态图（jpg/png）或干脆纯文字，就可以重发。")
         if not pace.get("allowed", True):
             out.update({name: pace[name] for name in ("pace", "reason", "pace_kind", "retry_at", "retryAt",
                         "wait_ms", "waitMs", "wait_seconds", "waitSec") if name in pace})

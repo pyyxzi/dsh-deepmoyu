@@ -107,6 +107,25 @@ test('terminal errors are shown and partial measured usage is not lost on interr
   } finally { relay.close() }
 })
 
+test('upstream finish failures expose code/status marks but never the message text', async () => {
+  const events = [], secret = '收件人的合成私信正文-fixture-private'
+  const llm = fakeLlm({ async prepareCall(config) { return { config, async *stream() {
+    yield { type: 'finish', reason: { kind: 'error', failure: { code: 'upstream_422', status: 422, message: `参数被拒：${secret}` } } }
+  } } } })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    const grant = relay.open(model, { onEvent: x => events.push(x) })
+    const adapter = createRelayAdapter(grant.env)
+    try { for await (const _ of adapter.stream({ provider: RELAY_PROVIDER, model, messages: [] })) {} } catch { /* caller sees its own failure */ }
+    const hit = events.find(e => e.stage === 'model-error')
+    assert.ok(hit, 'model-error event emitted')
+    assert.match(hit.text, /上游标记：code=upstream_422 status=422/)
+    assert.doesNotMatch(hit.text, /参数被拒/)
+    assert.ok(!JSON.stringify(events).includes(secret))
+  } finally { relay.close() }
+})
+
 test('model routes and usage validation never invent a route or estimate missing usage', () => {
   assert.deepEqual(splitModelRoute(' buddy/path/model '), { provider: 'buddy', model: 'path/model' })
   for (const route of ['', 'buddy', '/model', 'buddy/', 'buddy/model with space']) assert.throws(() => splitModelRoute(route))

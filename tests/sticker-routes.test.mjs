@@ -10,6 +10,7 @@ import { Readable } from 'node:stream'
 const root = mkdtempSync(join(tmpdir(), 'fish-sticker-routes-')), builtin = join(root, 'builtin'), home = join(root, 'bili-duty')
 mkdirSync(builtin); mkdirSync(home)
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=', 'base64')
+const gif = Buffer.from('R0lGODdhAgACAIEAAP8gQAAAAAAAAAAAACwAAAAAAgACAAAIBgABCAQQEAA7', 'base64')
 writeFileSync(join(builtin, '贴贴.png'), png)
 const priorBuiltin = process.env.DAFEIYU_STICKER_DIR; process.env.DAFEIYU_STICKER_DIR = builtin
 const { apply } = await import('../index.js')
@@ -80,6 +81,13 @@ test('gallery HTTP is safe and on demand; real reply wrapper auto-selects only e
     const beforeUnknown = calls.length
     assert.equal((await reply({ picture: '../private' })).sticker_unknown, true); assert.equal(calls.length, beforeUnknown)
     assert.equal((await reply({ rpid: '987654321', picture: '贴贴' })).picture_floor, true)
+    // 2026-11-07（49044 实测）：动图没有「评论动图」权限 —— 显式 picture 选到 gif 在本地就拦下，
+    // 不许它去 MCP 白耗一次发送坑位（B站会整条拒掉，图和文字一起没了）。
+    writeFileSync(join(builtin, '动图.gif'), gif)
+    const beforeGif = calls.length
+    const gifBlocked = await reply({ picture: '动图' })
+    assert.equal(gifBlocked.picture_gif, true)
+    assert.equal(calls.length, beforeGif, 'gif rejection happens before the MCP send')
     const status = (await request('/status')).body
     assert.ok(!Object.hasOwn(status, 'stickers')); assert.equal(status.tokensTotal, 0)
     const unchanged = (await request('/status?rev=' + encodeURIComponent(status.rev))).body

@@ -2667,7 +2667,7 @@ export function apply(ctx, config) {
         const files = [], snapshots = []
         for (const nm of names) {
           // Read approved bytes under the library lock and hand the sender a private
-          // snapshot. A forget + same-name pending upload then cannot swap the file
+          // snapshot. A forget + same-name pending upload during the send can no longer swap the file
           // while MCP is still doing its own IO.
           const shot = snapshotStickerForSend(stateDir, nm)
           if (!shot) {
@@ -2676,6 +2676,18 @@ export function apply(ctx, config) {
               ok: false, blocked: true, sticker_unknown: true,
               hint: `表情「${nm.slice(0, 40)}」不在已审核通过的库里 —— 用 bili_sticker({action:"list"}) 看现有的，`
                 + '或 bili_sticker({action:"collect", url:"…", name:"…"}) 先收进来。本条没发（怕你想要的就是那张图）。',
+            }
+          }
+          /* 🚫 2026-11-07（49044 实测）：动图（gif）要单独的「评论动图」权限，这个账号没有 ——
+           *   带上去整条评论被 B站 拒掉（49044），图和文字一起没了，还白耗一次节奏坑位。
+           *   在本地就拦下并说清楚，比让接口打回来便宜得多；自动配图那一路已在库里排除 gif。 */
+          if (/\.gif$/i.test(String(shot.file ?? ''))) {
+            shot.cleanup()
+            for (const made of snapshots) made.cleanup()
+            return {
+              ok: false, blocked: true, picture_gif: true,
+              hint: `「${shot.name}」是动图（gif）—— 这个账号没有评论动图权限（49044 实测被拒），`
+                + '带上去整条评论都发不出去。换一张静态图（jpg/png），或本条改纯文字。',
             }
           }
           const approved = approvedReviewArgs.get(args)

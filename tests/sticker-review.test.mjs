@@ -310,12 +310,13 @@ test('automatic collection forwards live review config at commit and does not re
   } finally { auto.stop() }
 })
 
-test('automation uses approved-only listing and never reserves a pending image even from a broad custom list', () => {
+test('automation uses approved-only listing, skips gif (49044) and never reserves a pending image even from a broad custom list', () => {
   const dir = home(), added = upload(dir, '待审自动图')
   const auto = createStickerAutomation({ stateDir: dir, getConfig: () => sendingCfg, random: () => 0 })
   try {
-    const before = auto.pickForSend('待审自动图')
-    assert.equal(before.name, '内置'); before.finish(false)
+    // 2026-11-07（49044 实测）：内置图这张是 gif —— 自动配图不再抽 gif，库里只剩 gif 时空手而回
+    assert.equal(auto.pickForSend('内置'), null)
+    assert.equal(auto.snapshot().lastSentAt, 0)
     assert.equal(approveSticker(dir, added.name).ok, true)
     const after = auto.pickForSend('待审自动图')
     assert.equal(after.name, added.name); assert.equal(after.file, added.file); after.finish(true)
