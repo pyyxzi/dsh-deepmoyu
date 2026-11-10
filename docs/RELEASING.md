@@ -69,6 +69,12 @@ npm publish ./release/dsh-deepmoyu-<版本>.tgz --registry=https://registry.npmj
 - 本包在 npm 上的维护者是 `tzl666`，不是 GitHub 的 `pyyxzi`。`~/.npmrc` 里必须有 `//registry.npmjs.org/:_authToken=`，且 token 属于有发布权限的账号；`npm whoami` 返回 401 就是 token 过期，换好后重试。默认 registry 若指向 npmmirror，`whoami`、`publish` 都必须显式带 `--registry=https://registry.npmjs.org`。
 - `npm publish` 有时在**上传成功之后**仍以 `You cannot publish over the previously published versions` 报错退出。不要据此判定失败，也不要用改版本号的方式绕过：先 `Invoke-RestMethod https://registry.npmjs.org/dsh-deepmoyu` 查 `versions` 与 `time.<版本>`，再下载 registry tarball 比对 SHA-256 与本地归档是否一致，以 registry 的实际内容为准。
 
+发布后的可见性有两段延迟（2026-11-10 实测 2.7.1）：
+
+- `npm publish` 打出 `+ dsh-deepmoyu@<版本>` 且退出码 0，只是 registry 回了 `PUT 202`（已收下、正在处理）。元数据要先渲染完才可读，**头几分钟 `https://registry.npmjs.org/dsh-deepmoyu/<版本>` 仍会 404、`dist-tags.latest` 也还是上一版**，这不是失败。实测约 3 分钟后 `/<版本>` 可取、`latest` 才切过去。
+- 排查时务必加缓存穿透参数（`?t=<ticks>` 加 `Cache-Control: no-cache`）；不带参数可能读到 CDN 上的旧 packument，把"还在处理"误判成"没发上去"。
+- 切换令牌可以直接用临时配置文件，不必改写 `~/.npmrc`：`npm publish ... --userconfig <临时文件> --registry=https://registry.npmjs.org`。临时文件用完即删，别把它留在仓库或家目录里。
+
 版本号一经上传不可覆盖。`2.5.0` 只在 GitHub 上有标签，从未发布到 npm，因此 npm 上 `2.4.2` 之后直接是 `2.6.0`；如需补齐序列，必须另起一个未被占用的版本号重新构建。
 
 发布完成后查询指定版本的 `dist.integrity`、`dist.shasum` 和仓库信息，下载 registry tarball 并核对内容；本地构建通过不能替代发布后检查。npm 版本不可覆盖，不应为发布失败临时篡改归档内容。
