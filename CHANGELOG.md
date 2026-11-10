@@ -1,5 +1,15 @@
 # 更新记录
 
+## 2.7.1
+
+本节对应当前源码，不能据此推断 npm 或插件市场已更新。
+
+- 修 `2026-11-10` 真机事故：DSH 升到 **0.12.1** 之后选「鲸鱼摸鱼模式」整个起不来，本轮直接 `unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`。根因是 `presets/deepmoyu.patch.yml` 里 persona 的 `suffix` 写着 `Your working directory is {{cwd}}.`：`dsh-persona` 把它原样注册成 `deployment:persona-suffix` 段，而 `dsh-system-prompt` 的 `interpolate()` 遇到**没注册过的变量会直接 throw**，整轮提示词组装跟着失败。DSH 0.12.1 全局只注册 `provider` / `model` 两个变量（`dsh-agent-loop` 注册），`{{cwd}}` 是旧版本的遗物。现在 `suffix` 留空 —— 工作目录本来由 `dsh-working-directory` 以 runtime context（`working-directory:current`）注入，段里不用再说一遍。
+- 插件自己注册的 `bili:dafeiyu` 提示词段加上 **`interpolate: false`**：这一段全是插件自己算出来的（人格 / soul / 陪伴档位 / 实时配额），本来就不该参与变量替换；关掉之后，以后哪怕文案里写出 `{{`，也炸不到整轮对话。同理 `text` 回调外面已经有一层 `try/catch` 兜成空串。
+- 新增 `tests/prompt-variables.test.mjs`：扫 `cordis.patch.yml` 与 `presets/deepmoyu.patch.yml` 里所有 `{{...}}`，只允许宿主真正注册的 `provider` / `model`（白名单是 `HOST_VARIABLES`，DSH 再升版时改这一处）；另外断言 persona 的 `suffix` 为空、插件注册的每个 `sp.section({` 都带 `interpolate: false`。以后再写回未知变量，`npm test` 就会红。
+- 新增 `lib/host-compat.mjs`：插件启动时就地扫一遍自己那两个 patch 文件，发现宿主不认识的 `{{变量}}` 立刻往 `duty.log` 写一条能照着改的告警（注释行不算，免得自己告警自己）。**只写日志、不抛错、不阻断加载** —— 自检本身不能变成新的风险。以前是靠使用者选模式、看到一句英文堆栈才知道坏了。
+- 顺带修了同一台机器上「profile 里那份 `preset-dafeiyu` 一直盖着插件这份」的老问题（不是代码，是本地 profile 的手写副本，已在备份后删除；仓库侧不受影响）。
+
 ## 2.7.0
 
 本节对应当前源码，不能据此推断 npm 或插件市场已更新。

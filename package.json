@@ -1,6 +1,6 @@
 {
   "name": "dsh-deepmoyu",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "private": false,
   "description": "🐋 DeepMoYu 鲸鱼摸鱼 —— 让一只鲸鱼娘自己逛 B站：自主搜片、读字幕、发评论、发动态、回私信，还能写日报、做视频的 DSH 插件（dsh-bili-scroll 0.1.19 分叉；内置 npm 更新通道，对本地分叉自动锁定）",
   "keywords": [

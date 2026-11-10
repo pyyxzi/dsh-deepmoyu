@@ -128,6 +128,8 @@ import {
   detectInstallMode, summarizeUpgrade, upgradeBlocker, upgradeCommand, upgradeLogLine,
 } from './lib/update.mjs'
 import { buildSevenDayRetrospective, buildRecoverySnapshot } from './lib/product-status.mjs'
+// 🧬 宿主兼容性自检：patch 里写了宿主不注册的 {{变量}} 会在每轮组装提示词时 throw（2026-11-10 事故）
+import { promptVariableWarnings } from './lib/host-compat.mjs'
 
 export const name = 'dafeiyu'
 export const inject = ['webServer', 'tools', 'settings']
@@ -401,6 +403,12 @@ export function apply(ctx, config) {
 
   // 宿主依赖是从哪儿取的（桌面版那次事故的排查看这里：duty.log 里会写明白）
   for (const n of hostDeps.notes) log(n)
+
+  /* ── 宿主兼容性自检：patch 里写了宿主不认识的 {{变量}} 就先喊一嗓子 ──
+   * 2026-11-10 的 `{{cwd}}` 事故就是这么坏的：错在 persona 段里，炸在每轮组装提示词的时候，
+   * 插件加载看着一切正常，一选模式就 "unknown prompt variable"。这个自检把它提前到启动时。
+   * ⚠️ 只写日志，绝不抛错、绝不阻断加载 —— 自检本身不能变成新的风险。 */
+  for (const line of promptVariableWarnings(pluginDir)) log(line)
 
   /**
    * ⭐ 事件监听的统一挂法（2026-10-26）：`ctx.on` 返回的注销函数（cordis 惯例）收进 ctx.effect，
@@ -5711,6 +5719,13 @@ export function apply(ctx, config) {
       ctx.effect(() => sp.section({
         name: 'bili:dafeiyu',
         order,
+        // ⚠️ 2026-11-10：`interpolate: false` 必须留着。
+        //    dsh-system-prompt 的 interpolate() 会把这一段里所有 `{{名字}}` 当提示词变量去查，
+        //    查不到就**直接 throw**（unknown prompt variable "{{cwd}}" in section "…"），
+        //    整轮 prompt 组装跟着失败 —— 表现就是"选了模式就起不来"。
+        //    这段文字全是插件自己算出来的（人格/soul/陪伴档位/实时配额），本来就不该参与变量替换；
+        //    关掉后即使以后有人在文案里写出 `{{` 也不会把整轮对话炸掉。
+        interpolate: false,
         text: (context) => {
           // ⚠️ 宿主 sp.js 调这个 text 函数时**没有** try/catch ⇒ 这里抛一下会让整轮 prompt 组装失败。
           //    里面的 refreshCfg / countMomentsToday / countPickedToday / adoptFeiyu 都有各自的兜底，
