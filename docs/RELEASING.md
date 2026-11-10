@@ -57,6 +57,15 @@ npm 运行包提供 `npm run check`；`npm test`、界面验收和发布命令�
 
 将经过审阅的源码提交到 `pyyxzi/dsh-deepmoyu`，确认 CI 结果后再创建对应版本标签和 Release。可以附加上一步的两个归档、校验和与审查记录。不要把 `release/` 归档作为源码提交进去。
 
+本机推 GitHub 经常连不上（`Failed to connect to github.com port 443` / `Recv failure: Connection was reset`），但同一时刻 `https://github.com` 用浏览器/`Invoke-WebRequest` 是 200 —— 说明是 git 走 TLS/直连的路径被卡，不是网络整体断。两个参数按顺序试（2026-11-10 实测第二种可用）：
+
+```sh
+git -c http.sslBackend=schannel push origin main
+git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
+```
+
+本机全局 `git config` 里有 `http.sslbackend=openssl`，会盖掉 schannel，所以每次都得在命令行显式传；7897 是本地代理端口，用之前先 `Test-NetConnection 127.0.0.1 -Port 7897` 确认在监听。推送"看似失败"时先 `git -c ... ls-remote origin refs/heads/main` 对一下远端 SHA 再决定要不要重推，不要盲目反复重试。
+
 npm 发布需要该包的发布权限和 registry 要求的认证。确认账号、版本、归档和发布目标后，再执行：
 
 ```sh
