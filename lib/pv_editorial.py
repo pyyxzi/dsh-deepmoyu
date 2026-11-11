@@ -173,14 +173,32 @@ def caption_parts(text, limit=23):
     return parts
 
 
+def weight_len(s) -> float:
+    """P3-27: 加权字符数（CJK=1、数字=0.5、拉丁字母=0.35、其他=1）—— 与 lib/pv.py 同款。
+
+    等权字符数会让「数字/英文读得快」的短语字幕切得慢（探针 F：英文估 3 倍偏差）。
+    """
+    total = 0.0
+    for ch in str(s or ""):
+        if "\u4e00" <= ch <= "\u9fff":
+            total += 1
+        elif ch.isascii() and ch.isdigit():
+            total += 0.5
+        elif ch.isascii() and ch.isalpha():
+            total += 0.35
+        else:
+            total += 1
+    return total
+
+
 def active_caption(text, t, duration):
     """Phrase timing is proportional within the measured utterance, not ASR."""
     if not text or not 0 <= t < duration:
         return ""
     parts = caption_parts(text)
-    position = t / max(.01, duration) * sum(len(part) for part in parts)
+    position = t / max(.01, duration) * sum(max(1.0, weight_len(part)) for part in parts)
     for part in parts:
-        position -= len(part)
+        position -= max(1.0, weight_len(part))
         if position < 0:
             return part
     return parts[-1]
@@ -232,6 +250,9 @@ def place_host(image, draw, state, t, colors, compact=False):
 
 def render(shot, t, duration, state):
     theme = state.get("theme", "paper")
+    if theme not in THEMES:
+        # P3-29: 未知 theme 直接 KeyError 裸崩（探针 I）—— 回退 paper，渲染继续而不是渲到一半炸
+        theme = "paper"
     colors = THEMES[theme]
     image = backdrop(theme).copy().convert("RGBA")
     draw = ImageDraw.Draw(image)

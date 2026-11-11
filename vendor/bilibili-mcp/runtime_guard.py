@@ -122,8 +122,12 @@ def stringify_ids(value):
                     result[key] = str(item)  # Python SDK integers are exact, unlike JSON numbers in JS.
                 elif isinstance(item, str) and re.fullmatch(r"[0-9]+", item.strip()):
                     result[key] = item.strip().lstrip("0") or "0"
+                elif isinstance(item, str):
+                    # P3-44: 非数值字符串原样保留（{"id":"hot-word-12"} 不能被静默清成 ""，
+                    # 模型会把「有数据」误读成「没有」）；空串在这里自然仍是空串（缺失）。
+                    result[key] = item
                 else:
-                    result[key] = ""  # unavailable/malformed is never guessed as another ID
+                    result[key] = ""  # 空值/非字符串仍按「缺失」处理，绝不猜成另一个 ID
             else:
                 result[key] = stringify_ids(item)
         return result
@@ -238,10 +242,15 @@ class RuntimeGuard:
             conn.close()
 
     def _connect(self):
-        conn = sqlite3.connect(str(self.db_path), timeout=15, isolation_level=None)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=15000")
-        conn.execute("PRAGMA synchronous=FULL")
+        try:
+            conn = sqlite3.connect(str(self.db_path), timeout=15, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=15000")
+            conn.execute("PRAGMA synchronous=FULL")
+        except sqlite3.OperationalError as exc:
+            # E2: node/python 临时目录解析不一致时这里报「unable to open database file」
+            # 且不带路径，排障只能盲猜 —— 报错必须带上 db_path 本身。
+            raise RuntimeError(f"runtime guard 打不开账本库 {self.db_path}: {exc}") from exc
         return conn
 
     @contextmanager
@@ -636,9 +645,26 @@ class RuntimeGuard:
                                    (reservation["key"], reservation["token"])).rowcount
             if changed != 1:
                 raise RuntimeError("guard reservation was lost; refusing an unsafe retry")
-            conn.execute("DELETE FROM guard_pace_events WHERE event_key=?", ("send:" + reservation["token"],))
+            # P2-16: 节奏事件不再删，改标 rejected 并保留 at/next —— burst/hour/gap
+            # （_pace_check 按 at/next 统计、不看 status）要把「确定没发出去」的尝试也计入，
+            # 否则坏凭据下模型可以对 B站 无限速连打（探针实测 12 连发全放行，
+            # 而 -352 的最短触发路径恰恰就是高频尝试）。
+            conn.execute("UPDATE guard_pace_events SET status='rejected' WHERE event_key=?",
+                         ("send:" + reservation["token"],))
             self._note_rejection(conn, code, now)
             return self._pace_check(conn, pace_kind(reservation["key"]), now)
+
+    def release_unknown(self, key):
+        """P1-2: unknown 槽位的**人工**解除入口。
+
+        只删 status='unknown' 的行（pending/sent 绝不可删：前者正被某个进程占着，
+        后者是发出去的铁账）；返回是否真的解除了一行。
+        调用前提是人工核实「那次结果不明的发送确实没发出去」—— 这不是自动重试的后门。
+        """
+        with self._transaction() as conn:
+            changed = conn.execute("DELETE FROM guard_entries WHERE key=? AND status='unknown'",
+                                   (str(key),)).rowcount
+            return changed == 1
 
     def pace_status(self, action):
         """Read the current common floor without reserving or consuming a send slot."""

@@ -90,6 +90,34 @@ test('a genuine same-day counter keeps blocking and says so out loud', async () 
   } finally { f.close() }
 })
 
+test('rejecting oversized images before reserving leaves the daily quota untouched', async () => {
+  // 2026-11-12 补漏回归：以前「超 9 张」在预占名额之后才 return，配额被白烧一个。
+  const today = dayKey()
+  const f = await fixture({ day: today, moments: 0, momentsDay: today })
+  try {
+    const out = await f.execute('bili_moment', { text: TEXT, images: Array.from({ length: 10 }, (_, i) => `pic-${i}`) })
+    assert.equal(out.ok, false)
+    assert.equal(out.blocked, true)
+    assert.match(out.error, /最多 9 张/)
+    assert.deepEqual(f.calls, [], 'a shape-rejected moment must not reach the platform')
+    assert.equal(f.state().moments, 0, 'no slot may be consumed by input validation')
+  } finally { f.close() }
+})
+
+test('an image rejected by the send whitelist refunds the reserved quota slot', async () => {
+  // 2026-11-12 补漏回归：P0-1 白名单拒绝路径此前直接 return，预占的名额没退回。
+  const today = dayKey()
+  const f = await fixture({ day: today, moments: 0, momentsDay: today })
+  try {
+    const out = await f.execute('bili_moment', { text: TEXT, images: ['https://example.com/cat.png'] })
+    assert.equal(out.ok, false)
+    assert.equal(out.blocked, true)
+    assert.match(out.error, /表情库|纯文字/)
+    assert.deepEqual(f.calls, [], 'a whitelist-rejected moment must not reach the platform')
+    assert.equal(f.state().moments, 0, 'the reserved slot must be refunded on image validation failure')
+  } finally { f.close() }
+})
+
 test('legacy state without momentsDay is judged by lastMomentAt instead of trusting a possibly stale number', async () => {
   const today = dayKey()
   const f = await fixture({ day: today, moments: 20, lastMomentAt: '2026-10-30T05:22:07.489Z' })

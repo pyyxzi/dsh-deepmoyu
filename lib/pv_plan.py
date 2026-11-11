@@ -256,9 +256,27 @@ CLOSING_LINES = ("所以，这碗白米饭终于能吃了？",      # ⚠️ 收
                  "等本鱼把笔记放好。饭要趁热，脑袋也要开工。")  # auto_plan 各出现一次，改时两处同步
 
 
+def weight_len(s) -> float:
+    """P3-27: 加权字符数（CJK=1、数字=0.5、拉丁字母=0.35、其他=1）—— 与 lib/pv.py 同款。
+
+    等权 len() 会给英文/数字多的镜头多算时长（它们读得快），规划预算随之虚高。
+    """
+    total = 0.0
+    for ch in str(s or ""):
+        if "\u4e00" <= ch <= "\u9fff":
+            total += 1
+        elif ch.isascii() and ch.isdigit():
+            total += 0.5
+        elif ch.isascii() and ch.isalpha():
+            total += 0.35
+        else:
+            total += 1
+    return total
+
+
 def est_dur(shot: dict) -> float:
-    """单镜时长估算：max(2.0, 字数/3.8) + 0.35。"""
-    return max(MIN_SHOT_SPEECH, len(str(shot.get("text") or "")) / SPEECH_RATE) + SHOT_OVERHEAD
+    """单镜时长估算：max(2.0, 加权字数/4.4) + 0.35。"""
+    return max(MIN_SHOT_SPEECH, weight_len(str(shot.get("text") or "")) / SPEECH_RATE) + SHOT_OVERHEAD
 
 
 def plan_seconds(shots: list) -> float:

@@ -38,10 +38,18 @@ socket.socket.connect = guarded_connect
 socket.socket.connect_ex = guarded_connect_ex
 runpy.run_path(os.path.join(home, 'mcp_server.py'), run_name='__main__')
 `)
+/* E2：给子进程注入与 node 侧一致的临时目录（TMPDIR/TEMP/TMP 三个都指 home 所在的
+ *   base —— 即 QA_OUTPUT_DIR || tmpdir()，home 正是在它下面 mkdtemp 出来的）。
+ *   子进程 env 是覆盖合并（lib/mcp.mjs：{...process.env, ...env}），不显式对齐时
+ *   Python 的 tempfile.gettempdir() 可能与 node 的目录解析到不同位置（TMPDIR 与
+ *   TEMP/TMP 不一致、或一边没设，乃至 python 对用户 %TEMP% 无写权限时回落到 CWD），
+ *   SQLite 建临时文件失败就报「unable to open database file」—— 2026-11 审计 E2
+ *   真机复现过；对齐后，python 可写的 QA_OUTPUT_DIR 环境也能稳定通过。 */
 const client = new McpClient({ command: process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
   args: [launcher], cwd: home,
   env: { BILI_DUTY_HOME: home, BILI_MCP_TOOLS: 'bili_guard_status', PYTHONUTF8: '1',
-    HF_HOME: join(home, 'models'), BILI_DUTY_ROLE: '' }, log: text => console.log(text) })
+    HF_HOME: join(home, 'models'), BILI_DUTY_ROLE: '',
+    TMPDIR: base, TEMP: base, TMP: base }, log: text => console.log(text) })
 const deadline = setTimeout(() => client.stop(), 45_000)
 let child
 try {
@@ -49,7 +57,9 @@ try {
   child = client.proc
   await startup
   const result = await client.call('bili_guard_status', { limit: 1 }, { timeoutMs: 15_000 })
-  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(result.ok, true, JSON.stringify(result)
+    + '\n提示：若 stderr 出现 SQLite「unable to open database file」，多为 node 与 python 临时目录解析分裂 ——'
+    + ' 本脚本已给子进程注入一致的 TMPDIR/TEMP/TMP；仍失败时设 QA_OUTPUT_DIR 指向一个本机可写的短路径目录再试。')
   assert.ok(result.counts && typeof result.counts === 'object')
   assert.equal(existsSync(join(home, 'bili_credential.json')), false)
   assert.ok(!client.stderr.includes('REAL_MCP_OFFLINE_GUARD_BLOCKED'), 'Python attempted an external socket')

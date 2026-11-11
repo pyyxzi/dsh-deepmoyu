@@ -16,10 +16,19 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFilter
+
+# P3-31: Windows 管道默认 GBK —— 中文日志会乱码甚至把 print 打挂，先钉 UTF-8
+#（写法照 lib/pv.py:41-46）
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 try:  # Loaded as a top-level module by the CLI and tests.
     from pv import F, NF, Fish, Portrait, bg_ocean
@@ -436,7 +445,8 @@ def main() -> int:
             if drawn != title:
                 print(f"  {ratio} 排不下全文，封面用：{drawn}", flush=True)
         return 0
-    except (OSError, ValueError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError, RuntimeError) as exc:
+        # P3-29: KeyError 补进兜底 —— plan 带未知 theme 时给一行人话，不再裸 traceback
         parser.exit(1, f"封面生成失败：{exc}\n")
 
 

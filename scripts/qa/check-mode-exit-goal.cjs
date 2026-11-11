@@ -10,6 +10,30 @@ const { pathToFileURL } = require('node:url')
 const { isDeepStrictEqual } = require('node:util')
 const archiveFS = (() => { try { return require('original-fs') } catch { return fs } })()
 
+/* 🧹 P3-16：启动时清扫本脚本前缀留在 %TEMP% 里的旧 fixture（dsh-deepmoyu-mode-exit-*）。
+ *   dispose() 走正常路径会删，但断言炸掉 / 进程被硬杀时会漏 —— 漏下的目录就是永久垃圾。
+ *   只动「本脚本前缀 + mtime 超过 24h」的目录：别人的东西和正在跑的（本进程刚建的）
+ *   都不会被碰；删不掉（被占用等）就留给下一次运行再试。
+ *   放在 host-archive 早退之前：找不到宿主归档而 SKIP 的机器也照常清扫。 */
+function sweepStaleTempHomes() {
+  const PREFIX = 'dsh-deepmoyu-mode-exit-'
+  const STALE_MS = 24 * 60 * 60 * 1000
+  let dir
+  try { dir = fs.realpathSync(os.tmpdir()) } catch { return }
+  let entries
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+  const cutoff = Date.now() - STALE_MS
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(PREFIX)) continue
+    const target = path.join(dir, entry.name)
+    try {
+      if (fs.statSync(target).mtimeMs > cutoff) continue
+      fs.rmSync(target, { recursive: true, force: true })
+    } catch { /* occupied or vanished; try again next run */ }
+  }
+}
+sweepStaleTempHomes()
+
 const ROOT = path.resolve(__dirname, '..', '..')
 const PLUGIN = path.resolve(process.env.BILI_PLUGIN_DIR || ROOT)
 const HOST_ASAR = require('./host-archive.cjs').discoverHostArchive()

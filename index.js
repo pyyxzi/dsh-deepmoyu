@@ -24,7 +24,7 @@ const z = hostDeps.z
 const defineTool = hostDeps.defineTool
 import { spawn } from 'node:child_process'
 import { appendFileSync, closeSync, createReadStream, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash, randomUUID } from 'node:crypto'
@@ -106,7 +106,7 @@ import {
 //    resolve 只出**库内**绝对路径，collect 只收 http(s) 或库内文件 —— 不当下载器，不碰任意路径。
 import {
   listStickers, collectSticker, uploadSticker, forgetSticker, resolveSticker, collectedDirOf, readStickerImage, approveSticker, rejectSticker,
-  snapshotStickerForSend,
+  snapshotStickerForSend, STICKER_MAX,
   sniffImageFormat,
 } from './lib/sticker.mjs'
 import { STICKER_DEFAULTS, STICKER_LIMITS, clampStickerSettings, stickerSettings, createStickerAutomation } from './lib/sticker-automation.mjs'
@@ -385,10 +385,14 @@ export function apply(ctx, config) {
     try { const j = readJson(overrideFile, {}); return j && typeof j === 'object' ? j : {} } catch { return {} }
   }
   const markOverride = (keys, on) => {
+    // 审计 P3-2（2026-11-12）：以前裸 read+writeFileSync——并发保存互相覆盖 mark、崩溃留半行
+    // JSON（读侧容错回 {} ⇒ 本地优先全量失效）。改走与其它配置写一致的「锁内读改 + 原子写」。
     try {
-      const cur = readOverride()
-      for (const k of keys) { if (on) cur[k] = Date.now(); else delete cur[k] }
-      writeFileSync(overrideFile, JSON.stringify(cur, null, 2), 'utf8')
+      withFileLockSync(overrideFile, () => {
+        const cur = readOverride()
+        for (const k of keys) { if (on) cur[k] = Date.now(); else delete cur[k] }
+        atomicWriteFileSync(overrideFile, JSON.stringify(cur, null, 2), 'utf8')
+      })
     } catch (e) { log('记 local-override 失败：' + (e && e.message ? e.message : e)) }
   }
   const logFile = join(stateDir, 'duty.log')
@@ -797,7 +801,11 @@ export function apply(ctx, config) {
     for (const k of Object.keys(DEFAULTS)) {
       if (touched.has(k)) { out[k] = saved[k]; continue }        // 我们这边管 ⇒ 不再被宿主压回
       if (user[k] !== undefined) { out[k] = user[k]; continue }  // 用户在 DSH 原生页改的 ⇒ 听他的
-      out[k] = saved[k]
+      // 审计 P3-1（2026-11-12）：这枝原来是 `out[k] = saved[k]`——把 776 行注释描述的
+      // 「describe().value 当基准」整个变成死代码（value 从未幸存）。现在按注释本意：
+      // 两边都没显式设过的键，宿主现值（value，含 patch 层解析结果）优先，宿主没给才退回本地 config。
+      const hostValue = row.value && typeof row.value === 'object' ? row.value[k] : undefined
+      out[k] = hostValue !== undefined ? hostValue : saved[k]
     }
     for (const k of touched) {
       if (k in DEFAULTS && user[k] !== undefined && JSON.stringify(user[k]) !== JSON.stringify(out[k])) diff.push(k)
@@ -2112,6 +2120,13 @@ export function apply(ctx, config) {
         if (hit.hit) {
           return { ok: false, blocked: true, alreadyReplied: true, hint: dupHint('这条动态的这层', hit.at) }
         }
+      } else {
+        // 审计 P3-7：动态新评论现在 JS 层也有账（`opus-new:<oid>`）——发之前先查，
+        // 别等 Python 守卫拦了才知道"这条已经发过"。
+        const hit = dupLookup(repliedCommentsMap(), 'opus-new:' + opusId)
+        if (hit.hit) {
+          return { ok: false, blocked: true, alreadyReplied: true, hint: dupHint('这条动态', hit.at) + '（动态下面只发一条新评论；想接别人的话用 bili_reply_opus 带上他的 rpid）' }
+        }
       }
 
       // ⏱️ 出手节奏（2026-10-21 m18802 第 1、2 条）：回动态评论也不能连着点
@@ -2121,20 +2136,45 @@ export function apply(ctx, config) {
       const r = await call('bili_reply_opus', { opus_id: opusId, text, rpid, root })
       const o = typeof r === 'object' && r ? r : {}
       if (o.success || o.ok) {
-        await paceDone('opusReply')
+        const warnings = []
+        const paced = await safeBookkeep('paceDone(opusReply)', () => paceDone('opusReply'))
+        if (paced?.bookkeepError) warnings.push('pace: ' + paced.bookkeepError)
+        const opusRpid = readableId(o.rpid_str ?? o.rpid ?? (isReply ? rpid : '0'))
         if (isReply) {
           const key = keyOpusReply(rpid, root, opusId)
-          await withStateLock(() => {
+          const saved = await safeBookkeep('opusReply判重', () => withStateLock(() => {
             const st = readJson(dutyStateFile, {})
             st.repliedComments = dupRemember(st.repliedComments, key, { opus_id: opusId, rpid, at: new Date().toISOString() })
             st.lastReplyAt = new Date().toISOString()
             writeJson(dutyStateFile, st)
-          })
+          }))
+          if (saved?.bookkeepError) warnings.push('dup: ' + saved.bookkeepError)
+        } else {
+          /* 审计 P3-7（2026-11-12）：动态**新评论**以前只记在 Python 守卫层（`opus-new:<oid>`），
+           * JS 的 repliedComments/口味本子/跨通道扫描全无记录——两本账口径漂移：JS 无法在
+           * 调用前主动告知"这条动态已发过"，templateCheck 对动态新评论历史全盲。
+           * 现在与视频通道对齐：成功后记 `opus-new:<oid>`，正文进口味本子。 */
+          const saved = await safeBookkeep('opus新评论判重', () => withStateLock(() => {
+            const st = readJson(dutyStateFile, {})
+            st.repliedComments = dupRemember(st.repliedComments, 'opus-new:' + opusId, {
+              opus_id: opusId, rpid: opusRpid, at: new Date().toISOString(),
+            })
+            st.lastReplyAt = new Date().toISOString()
+            // 口味本子的键必须是纯数字 rpid（lib/taste.mjs 的 rpidKey 会拒掉别的形状）——
+            // 用新评论自己的 rpid，点赞通知的 item_id 才对得上；拿不到 rpid 就不记口味。
+            if (/^\d+$/.test(opusRpid) && opusRpid !== '0') {
+              st.taste = tasteRemember(st.taste, opusRpid, {
+                bvid: 'opus-' + opusId, text, at: new Date().toISOString(), likes: 0,
+              })
+            }
+            writeJson(dutyStateFile, st)
+          }))
+          if (saved?.bookkeepError) warnings.push('dup: ' + saved.bookkeepError)
         }
-        return { ok: true, success: true, opus_id: opusId, rpid: readableId(o.rpid_str ?? o.rpid ?? '0') }
+        return bookWarnings({ ok: true, success: true, opus_id: opusId, rpid: opusRpid }, warnings)
       }
       // 失败里认得出风控码 ⇒ 记整体冷却，并把"歇多久"写进回执（模型看得见就不会硬试）
-      const risk = paceRiskOf(o)
+      const risk = await paceRiskOf(o)
       return { ok: false, error: String(o.error || '发送失败（原因未知）'), ...(risk ? { riskNote: risk } : {}) }
     },
   })
@@ -2230,7 +2270,7 @@ export function apply(ctx, config) {
     parameters: {
       uid: { type: 'string', required: true, description: '发给谁（对方 UID）' },
       text: { type: 'string', required: true, description: '私信正文（短、像人说话、按人格；别粘链接、别写手机号）' },
-      msg_seqno: { type: 'string', description: '回的是哪一条（从 bili_dm_inbox 拿；填了才判重，**建议一定要填**）' },
+      msg_seqno: { type: 'string', description: '回的是哪一条（从 bili_dm_inbox 拿）。**建议一定要填**：填了才做「这条回过没」判重与收件箱复核；同一个人每天最多回 3 条的防刷屏闸与它无关，一直都在' },
       force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
     async execute(args) {
@@ -2268,7 +2308,12 @@ export function apply(ctx, config) {
        *   DM_PER_USER_SOFT 条以后，工具层直接打回（本人当场要求可 force）。
        *   `sent_today` 提示过但不管用 —— 能被机器保证的，就别交给记性（同 pace.mjs 的教训）。 */
       const used = dmSentToday(uid)
-      if (!args.force && seqno !== '0' && used >= DM_PER_USER_SOFT) {
+      /* 审计 P1-1（2026-11-12）：软上限以前要求 `seqno !== '0'`——而 msg_seqno 是可选参数，
+       * 省略它（缺省 '0'）即可绕过对同一个人的防刷屏刹车（dmPerUser 计数照加却从不被检查）。
+       * 「能被机器保证的，就别交给记性」：现在对一切发送生效，与 seqno 无关。
+       * 判重（2253）与闸门四（收件箱事实复核）仍只在 seqno 真填了时生效——没有 seqno 就没有
+       * 可复核的事实对象，那两道本来就是「回复特定一条」的闸。 */
+      if (!args.force && used >= DM_PER_USER_SOFT) {
         return {
           ok: false, blocked: true, perUserCap: true, sentToday: used,
           hint: `今天已经回过这个人 ${used} 条了 —— 再连着回就成刷屏了。等他有新消息再接，`
@@ -2309,12 +2354,14 @@ export function apply(ctx, config) {
       const r = await call('bili_send_message', { receiver_uid: uid, text, msg_seqno: seqno })
       const o = typeof r === 'object' && r ? r : {}
       if (o.success === false || o.error || !(o.success === true || o.ok === true)) {
-        const risk = paceRiskOf(o)
+        const risk = await paceRiskOf(o)
         return { ok: false, unknown: o.success !== false && !o.error, error: String(o.error || o.message || '发送结果未知'), raw: o, ...(risk ? { riskNote: risk } : {}) }
       }
-      await paceDone('dm')
+      const warnings = []
+      const paced = await safeBookkeep('paceDone(dm)', () => paceDone('dm'))
+      if (paced?.bookkeepError) warnings.push('pace: ' + paced.bookkeepError)
       // 记账本：判重 + 当日额度（**发成功之后才记** —— 失败了记上就再也回不了）
-      await withStateLock(() => {
+      const saved = await safeBookkeep('dm判重', () => withStateLock(() => {
         const st = readJson(dutyStateFile, {})
         const today = dayKey()
         const crossDay = st.day !== today
@@ -2334,8 +2381,9 @@ export function apply(ctx, config) {
           dmPerUser: perUser,
           lastDmAt: new Date().toISOString(),
         })
-      })
-      return { ok: true, success: true, uid, sentToday: used + 1 }
+      }))
+      if (saved?.bookkeepError) warnings.push('dup: ' + saved.bookkeepError)
+      return bookWarnings({ ok: true, success: true, uid, sentToday: used + 1 }, warnings)
     },
   })
 
@@ -2371,8 +2419,8 @@ export function apply(ctx, config) {
         const state = readJsonFileSync(dutyStateFile, {})
         writeJson(dutyStateFile, { ...state, dmDeliveries: { ...(state.dmDeliveries || {}), [key]: { state: success ? 'sent' : 'unknown', uid, at: new Date().toISOString() } } })
       })
-      if (success) await paceDone('dm')
-      else paceRiskOf(result)
+      if (success) await safeBookkeep('paceDone(deliver)', () => paceDone('dm'))
+      else await safeBookkeep('paceRiskOf(deliver)', () => paceRiskOf(result))
       return success ? { ok: true, success: true, uid } : { ok: false, unknown: true, error: String(result?.error || '成果私信结果未知，请到 B站核对后再决定') }
     },
   })
@@ -2432,7 +2480,7 @@ export function apply(ctx, config) {
     description: '🐟 鲸鱼摸鱼自己的表情包库。回复评论想配图时：先 list 挑一张，再在 bili_reply 里传 picture:"名字"。\n'
       + '⭐ collect = 自己收集：在评论区（bili_comments 返回的 images）或别处看到合适的鲸鱼娘表情，'
       + '把图床链接收进来，起个好叫的名字（如 name:"贴贴"）；B站默认小表情不用收 —— [doge] 这类码直接写在回复正文里。\n'
-      + '⚠️ 内置区（使用者的表情文件夹）只读，collect 时不能盖同名图；满了（60 张）先 forget 再收。\n'
+      + `⚠️ 内置区（使用者的表情文件夹）只读，collect 时不能盖同名图；满了（上限 ${STICKER_MAX} 张，见 stickerCapacity）先 forget 再收。\n`
       + 'picture 参数只在 bili_reply **发新评论**时能带（回复楼层不支持图片）。自动采集和自动配图按设置概率实际执行；'
       + '你也能主动 collect、补上 description/tags 并显式选图。开启人工审核时新图先待审，只有使用者在表情收藏页批准后才能用；关闭审核也不会放行旧待审图。自动设置不授予评论权限。',
     parameters: {
@@ -2748,22 +2796,27 @@ export function apply(ctx, config) {
       }
       if (autoPicture && out && typeof out === 'object') out = { ...out, auto_picture: autoPicture.name }
       // 发成功才记节奏（失败也记会把后面本来能发的推后）
-      if (sendOk(out)) await paceDone(isReply ? 'reply' : 'comment')
+      const warnings = []
+      if (sendOk(out)) {
+        const paced = await safeBookkeep('paceDone', () => paceDone(isReply ? 'reply' : 'comment'))
+        if (paced?.bookkeepError) warnings.push('pace: ' + paced.bookkeepError)
+      }
       // 失败里认得出风控码 ⇒ 记整体冷却，回执里带一句"歇多久"
-      const riskNote = out && (out.error || out.success === false) ? paceRiskOf(out) : ''
+      const riskNote = out && (out.error || out.success === false) ? await paceRiskOf(out) : ''
       /* 🎬 视频判重（2026-10-21）：**发评论这一刻**就把这个 BV 记下来 ——
        *   不看模型有没有"记得"，也不看它有没有往 seen.md 里写。
        *   为什么记在这里：能发出评论，说明这条视频它真的看过并处理完了（挑中 ⇒ 读过 ⇒ 评论），
        *   这是全流程里最靠得住的一个"我处理过它"的信号。
        *   ⚠️ 只记新评论和回复都算（回复说明它回头又看了一遍，只可能更该记）。 */
       if (sendOk(out) && isBvid(bvidFinal)) {
-        await seenSave((current) => seenRemember(current, bvidFinal, {
+        const saved = await safeBookkeep('视频判重', () => seenSave((current) => seenRemember(current, bvidFinal, {
           note: isReply ? '回过这里的评论' : String(args.text ?? '').slice(0, 100),
-        }))
+        })))
+        if (saved?.bookkeepError) warnings.push('seen: ' + saved.bookkeepError)
       }
       // 发成功之后才记账（失败也记上就再也回不了了）—— 钥匙是对方那条评论的 rpid
       if (isReply && sendOk(out)) {
-        await withStateLock(() => {
+        const saved = await safeBookkeep('回复判重', () => withStateLock(() => {
           const st = readJson(dutyStateFile, {})
           st.repliedComments = dupRemember(st.repliedComments, keyVideoReply(rpid), {
             bvid,
@@ -2772,14 +2825,15 @@ export function apply(ctx, config) {
           })
           st.lastReplyAt = new Date().toISOString()
           writeJson(dutyStateFile, st)
-        })
+        }))
+        if (saved?.bookkeepError) warnings.push('dup: ' + saved.bookkeepError)
       }
       /* 🎬 发新评论成功 ⇒ 记 `nu:<BV号>`（"这个视频我评论过了"）——
        *    和上面的视频判重账本（seenVideos）是两件事：
        *    · `seenVideos` 管"这个视频别再挑我了"（看过就记，不管评没评）
        *    · `repliedComments['nu:BV..']` 管"这个视频只发一条新评论"（下轮回复别人不受影响） */
       if (!isReply && sendOk(out) && isBvid(bvidFinal)) {
-        await withStateLock(() => {
+        const saved = await safeBookkeep('新评论判重', () => withStateLock(() => {
           const st = readJson(dutyStateFile, {})
           st.repliedComments = dupRemember(st.repliedComments, keyNewComment(bvidFinal), {
             bvid: bvidFinal,
@@ -2787,7 +2841,8 @@ export function apply(ctx, config) {
             at: new Date().toISOString(),
           })
           writeJson(dutyStateFile, st)
-        })
+        }))
+        if (saved?.bookkeepError) warnings.push('nu: ' + saved.bookkeepError)
       }
       /* 🧠 新评论同时记进口味本子（2026-10-20）：记的是**我们自己**这条的 rpid ——
        *    以后收到点赞通知时 item_id 就是它，靠它把"发过什么"和"被赞多少"对上。
@@ -2796,17 +2851,19 @@ export function apply(ctx, config) {
       if (!isReply && sendOk(out)) {
         const myRpid = readableId(out.rpid_str ?? out.rpid)
         if (myRpid && myRpid !== '0') {
-          await withStateLock(() => {
+          const saved = await safeBookkeep('口味本子', () => withStateLock(() => {
             const st = readJson(dutyStateFile, {})
             st.taste = tasteRemember(st.taste, myRpid, {
               bvid, text: String(args.text ?? ''), at: new Date().toISOString(), likes: 0,
             })
             writeJson(dutyStateFile, st)
-          })
+          }))
+          if (saved?.bookkeepError) warnings.push('taste: ' + saved.bookkeepError)
         }
       }
       /* 被风控了就把"歇多久"捎回去 —— 模型看得见这句才不会下一轮又去试。
          ⚠️ 只多挂一个 riskNote，别覆盖 MCP 原来的字段（success/rpid/error 那些下游还要用）。 */
+      out = bookWarnings(out, warnings)
       if (riskNote && out && typeof out === 'object') return { ...out, riskNote }
       return out
     },
@@ -2971,7 +3028,19 @@ export function apply(ctx, config) {
       + '适合"我现在就想看一份"的场合。\n'
       + '⚠️ 这是**老的后台刷法**（另起进程、当前对话里看不见）。要"在当前对话里一直刷"用 `bili_feiyu`。',
     parameters: {},
-    async execute() { const r = runDuty('manual'); return { ok: r.started === true, ...r } },
+    async execute() {
+      /* 审计 P2-4（2026-11-12）：免跑牌（本时段不再自动拉起）以前只在调度器里生效，
+       * 模型一轮对话就能用 bili_run 把用户刚手动停掉的时段任务整轮重启。手动停止的
+       * 承诺优先于模型的「立刻跑一轮」——被牌挡住时明确说明谁来解。 */
+      try {
+        const hold = Number(readJson(dutyStateFile, {}).bgWindowHold) || 0
+        if (hold > Date.now()) {
+          return { ok: false, blocked: true, hint: `使用者手动停止了本时段的后台任务（到 ${new Date(hold).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 前不再自动拉起）。想现在跑一轮，请让本人在工作台点「开始」或等到时段结束。` }
+        }
+      } catch { /* 读不到状态就不拦（与调度器的宽松度一致） */ }
+      const r = runDuty('manual')
+      return { ok: r.started === true, ...r }
+    },
   })
 
   /* ⭐ 鲸鱼摸鱼模式：对话启动 ⇒ 用当前对话模型一直刷（宿主 goal 机制自动续轮） */
@@ -3051,7 +3120,7 @@ export function apply(ctx, config) {
       + '想提视频就一句带过，长度跟着念头走。**没有想说的就不发，配额不是催办。**',
     parameters: {
       text: { type: 'string', description: '正文（300 字以内，纯文本）' },
-      images: { type: 'array', items: { type: 'string' }, description: '（可选）图片地址或本地路径，最多 9 张' },
+      images: { type: 'array', items: { type: 'string' }, description: '（可选）**已审核表情库里的图名**（bili_sticker list 可见），最多 9 张。不接受本地路径或网址——先 collect 收进图库并过审，或省略发纯文字。' },
       force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
     async execute(args) {
@@ -3092,6 +3161,10 @@ export function apply(ctx, config) {
        *    都读到 used=cap-1、都过闸、都发送 ⇒ 一天限额被突破。
        *    现在非 force 先在锁内原子地"数一遍 + 占一个"，超了立刻退回并拒绝；
        *    发送失败也退回。force 不占额（它本来就越闸，发送成功后才补记）。 */
+      // 输入形状先校验再占名额（2026-11-12 补漏：以前超 9 张在占名额之后才 return，
+      // 名额被白烧一个 —— 预占后的一切 return 路径都必须退额，见下方 catch / 发送失败处的同一约束）
+      const rawImages = Array.isArray(args?.images) ? args.images.map((item) => String(item ?? '').trim()).filter(Boolean) : []
+      if (rawImages.length > 9) return { ok: false, blocked: true, error: '动态最多 9 张附图' }
       let reserved = 0
       if (args?.force !== true) {
         reserved = await bumpMomentBy(1)
@@ -3101,14 +3174,53 @@ export function apply(ctx, config) {
         }
       }
 
+      /* 🔒 审计 P0-1（2026-11-12）：以前这里把模型给的 images 原样透传给 MCP——
+       *    非 http 项会被 Python `Picture.from_file` 读**任意本地文件**并作为动态配图公开发布，
+       *    http 项被无校验地服务端抓取（本机文件外泄通道，sendReview 默认关时零闸）。
+       *    现在与评论配图同一待遇：只认①已审核表情库的图名（快照出字节再给 MCP）
+       *    ②发送审核产出的 send-review-media 哈希文件（批准重放路径 3356-3364 回传的就是它，
+       *      文件名即 SHA-256，逐字节复验）。其余一律拒绝。sendReview 开着时
+       *      queueSendReview（3287-3302）已先做同一件事，这里管的是直发路径。 */
+      const imageShots = []
+      const resolvedImages = []
+      try {
+        for (const entry of rawImages) {
+          const approvedFile = /^([0-9a-f]{64})\.(png|jpe?g|gif|webp)$/i.exec(basename(entry))
+          const inReviewMedia = approvedFile && dirname(entry) === join(stateDir, 'send-review-media')
+          if (inReviewMedia) {
+            // 服务端自有的已批准快照：文件名即摘要，读字节复验后才认。
+            const file = join(stateDir, 'send-review-media', basename(entry))
+            let bytes
+            try { bytes = readFileSync(file) } catch { throw new Error(`预览附图已丢失，未发送：${basename(entry)}`) }
+            if (createHash('sha256').update(bytes).digest('hex') !== approvedFile[1].toLowerCase()) throw new Error(`预览附图校验失败，未发送：${basename(entry)}`)
+            resolvedImages.push(file)
+            continue
+          }
+          const shot = snapshotStickerForSend(stateDir, entry)
+          if (!shot) throw new Error(`附图只接受已审核表情库里的图名（不接受本地路径或网址）：${entry}。先 bili_sticker collect 收进图库并过审，或省略 images 发纯文字。`)
+          imageShots.push(shot)
+          resolvedImages.push(shot.file)
+        }
+      } catch (error) {
+        for (const shot of imageShots) { try { shot.cleanup() } catch { /* 临时文件 */ } }
+        // 2026-11-12 补漏：图片校验失败的 return 也必须退预占名额（P3-6 同一原则——
+        // 「审核已提交（结果未知）」之外的失败路径都不该烧掉当天份额）。
+        if (reserved > 0) await bumpMomentBy(-1)
+        return { ok: false, blocked: true, error: String(error?.message ?? error) }
+      }
+
       let r
-      try { r = await call('bili_send_dynamic', { text, images: Array.isArray(args?.images) ? args.images : [] }) }
+      try { r = await call('bili_send_dynamic', { text, images: resolvedImages }) }
       catch (error) {
-        // Cancellation before submission did not spend this reservation.
         const reviewed = approvedReviewExecutions.get(toolExecution.getStore())
-        if (reserved > 0 && ((toolExecution.getStore()?.signal?.aborted && error?.name === 'AbortError') || reviewed && !reviewed.submitted)) await bumpMomentBy(-1)
+        // 审计 P3-6：以前只有「中止 / 审核未提交」才退预占名额，MCP 未就绪这类普通异常
+        // 会把当天的动态配额白白烧掉。现在除「审核已提交（结果未知，按已花费记）」外一律退回——
+        // 同文重发会被守卫的判重键拦住，不会真的多发。
+        if (reserved > 0 && !(reviewed && reviewed.submitted)) await bumpMomentBy(-1)
+        for (const shot of imageShots) { try { shot.cleanup() } catch { /* 临时文件 */ } }
         throw error
       }
+      for (const shot of imageShots) { try { shot.cleanup() } catch { /* 临时文件 */ } }
       let ok = false
       try { const o = typeof r === 'string' ? JSON.parse(r) : r; ok = o?.success === true } catch { ok = false }
       if (!ok) {
@@ -3116,15 +3228,18 @@ export function apply(ctx, config) {
         // 发说说也会撞风控（-352 最常见）—— 认出码就记冷却
         let parsed = null
         try { parsed = typeof r === 'string' ? JSON.parse(r) : r } catch { parsed = null }
-        const risk = paceRiskOf(parsed || { error: typeof r === 'string' ? r.slice(0, 300) : '' })
+        const risk = await paceRiskOf(parsed || { error: typeof r === 'string' ? r.slice(0, 300) : '' })
         return { ok: false, error: '发说说失败', raw: typeof r === 'string' ? r.slice(0, 800) : r, ...(risk ? { riskNote: risk } : {}) }
       }
-      await paceDone('moment')
+      const warnings = []
+      const paced = await safeBookkeep('paceDone(moment)', () => paceDone('moment'))
+      if (paced?.bookkeepError) warnings.push('pace: ' + paced.bookkeepError)
       const n = reserved > 0 ? reserved : await bumpMoment()
       // 🪞 记下这次的开口（失败的不记）—— 下一轮实时信息里会把它摆给模型看
-      await rememberMomentOpening(text)
+      const opening = await safeBookkeep('开口记录', () => rememberMomentOpening(text))
+      if (opening?.bookkeepError) warnings.push('opening: ' + opening.bookkeepError)
       log(`🐟 发了一条说说（今天 ${n}/${cap}）：${text.slice(0, 40)}`)
-      return { ok: true, momentsToday: n, cap, text }
+      return bookWarnings({ ok: true, momentsToday: n, cap, text }, warnings)
     },
   })
 
@@ -3236,6 +3351,20 @@ export function apply(ctx, config) {
     if (!state || typeof state !== 'object' || Array.isArray(state) || state.sendReview !== undefined && !Array.isArray(state.sendReview)) throw new Error('发送预览记录损坏，已停止操作以保留原件')
     return state
   }
+  /* 审计 P2-3（2026-11-12）：批准把行置为 'approving'，正常收尾会落到 sent/failed/unknown；
+   * 进程在两态之间崩溃/被杀时该行永远停在 approving——不可批准、不可拒绝、不可清除、
+   * 还占着 80 条队列配额，攒满后整条发送预览通道瘫痪（不可自愈）。
+   * 收敛规则：凡「approving 但不在本进程 reviewSending 集合」的行落盘为 unknown
+   * （结果未知语义不变，但恢复为可管理状态：unknown 行允许人工「确认未发出」转 rejected 释放配额）。
+   * reviewSending 只在批准后存在且进程内，天然区分「正在发」与「残留」。
+   * ⚠️ 只在**已持 state 锁的写路径**（queueSendReview / decideSendReview）里落盘收敛——
+   * 读侧（reviewBook）保持纯映射，避免无锁写与事务写竞争。 */
+  const convergeReviewRows = (rows) => {
+    if (!Array.isArray(rows) || !rows.some((row) => row && row.state === 'approving' && !reviewSending.has(row.id))) return rows
+    return rows.map((row) => row && row.state === 'approving' && !reviewSending.has(row.id)
+      ? { ...row, state: 'unknown', updatedAt: new Date().toISOString(), note: '审批中断（进程重启），结果未知' }
+      : row)
+  }
   const reviewBook = () => {
     const state = readReviewState()
     const rows = Array.isArray(state.sendReview) ? state.sendReview : []
@@ -3304,7 +3433,7 @@ export function apply(ctx, config) {
     row.hash = reviewHash(row)
     const result = await withStateLock(() => {
       const state = readReviewState()
-      const rows = Array.isArray(state.sendReview) ? state.sendReview.filter((item) => item && typeof item === 'object') : []
+      const rows = convergeReviewRows(Array.isArray(state.sendReview) ? state.sendReview.filter((item) => item && typeof item === 'object') : [])
       exec?.signal?.throwIfAborted()
       const duplicate = rows.find((item) => ['pending', 'approving', 'unknown', 'sent'].includes(item.state) && item.hash === row.hash)
       if (duplicate) return { row: duplicate, duplicate: true }
@@ -3332,11 +3461,18 @@ export function apply(ctx, config) {
     let target = null
     const claimed = await withStateLock(() => {
       const state = readReviewState()
-      const rows = Array.isArray(state.sendReview) ? state.sendReview : []
+      const rows = convergeReviewRows(Array.isArray(state.sendReview) ? state.sendReview : [])
       const index = rows.findIndex((item) => item?.id === key)
       if (index < 0) return { ok: false, error: '找不到这条待审核内容' }
       const row = rows[index]
       if (row.hash !== expectedHash || reviewHash(row) !== expectedHash) return { ok: false, error: '预览内容已变化，请重新查看后决定' }
+      if (row.state === 'unknown' && decision === 'reject') {
+        // 审计 P2-3：unknown 行允许人工「确认未发出」→ rejected，释放队列配额。
+        // 仍不允许 approve（结果未知的内容重发有双发风险，必须重新生成预览）。
+        rows[index] = { ...row, state: 'rejected', updatedAt: new Date().toISOString(), decidedAt: new Date().toISOString(), note: '人工确认未发出（unknown 结案）' }
+        writeJson(dutyStateFile, { ...state, sendReview: rows })
+        return { ok: true, item: { ...row, state: 'rejected' } }
+      }
       if (row.state !== 'pending') return { ok: false, already: true, item: row }
       if (decision === 'approve' && (!Number.isFinite(Date.parse(row.createdAt)) || Date.now() - Date.parse(row.createdAt) > 24 * 3600_000)) return { ok: false, error: '这条预览已超过 24 小时，请拒绝旧内容并重新生成，避免发送过时回复' }
       target = { ...row, args: reviewArgs(row.args) }
@@ -3405,11 +3541,8 @@ export function apply(ctx, config) {
     const st = readJson(dutyStateFile, {})
     return paceBook(st.pace)
   }
-  const paceWrite = (book) => withStateLock(() => {
-    const st = readJson(dutyStateFile, {})
-    writeJson(dutyStateFile, { ...st, pace: book })
-    return book
-  })
+  // paceWrite 已随审计 P2-2 移除：整键覆盖式的锁外写正是那条竞态的根源，
+  // 现在 pace 的写路径只有「锁内读-算-写」一种（paceRisk / paceTake 各自锁内完成）。
   /** 节奏系数的来源：使用者能整体调快/调慢（0.5 = 快一倍，2 = 慢一倍），默认 1 */
   const paceFactor = () => {
     const n = Number(cfg.paceFactor)
@@ -3468,10 +3601,19 @@ export function apply(ctx, config) {
    * ⚠️ 只在**明确的频率类风控码**上冷却（表在 lib/pace.mjs 的 RISK_COOLDOWN）：
    *    -101 没登录 / -403 没权限这类停着也不会好，该让它把话说清楚，而不是傻等。
    */
-  const paceRisk = (code) => {
-    const r = paceNoteRisk(paceRead(), code, Date.now())
-    if (!r.cooled) return ''
-    paceWrite(r.book)
+  const paceRisk = async (code) => {
+    /* 审计 P2-2（2026-11-12）：以前锁外读快照整键覆盖 + fire-and-forget 写入——两次并发
+     * 撞码时，后落盘的较短冷却（-352=20min）会盖掉先落盘的较长冷却（-412=60min），
+     * 期间其他进程 paceTake 新增的连发记录也会被回滚。现在读-算-写一次在锁内完成。 */
+    let r = null
+    try {
+      await withStateLock(() => {
+        const st = readJson(dutyStateFile, {})
+        r = paceNoteRisk(paceBook(st.pace), code, Date.now())
+        if (r.cooled) writeJson(dutyStateFile, { ...st, pace: r.book })
+      })
+    } catch (error) { log(`⚠️ 记风控冷却失败（不拦本次回执）：${error?.message ?? error}`); return '' }
+    if (!r || !r.cooled) return ''
     const min = Math.ceil(r.waitMs / 60_000)
     if (r.quota) {
       const what = r.bucket === 'comment' ? '评论' : r.bucket
@@ -3490,7 +3632,7 @@ export function apply(ctx, config) {
    * 判据：`code` 字段（MCP 侧成功失败都会带）+ 文本里出现的 -352/-412/-509/-799/+12014。
    * ⚠️ 12014 走的是**按桶停牌**，不是全局冷却（见 lib/pace.mjs 的 QUOTA_CODES）。
    */
-  const paceRiskOf = (resp) => {
+  const paceRiskOf = async (resp) => {
     const o = typeof resp === 'object' && resp ? resp : {}
     const raw = o.code ?? o.error_code ?? ''
     const codes = []
@@ -3498,7 +3640,7 @@ export function apply(ctx, config) {
     const text = `${o.error ?? ''} ${o.message ?? ''} ${o.hint ?? ''}`
     for (const m of text.matchAll(/(?:^|[^\d-])(12014|-352|-412|-509|-799)\b/g)) codes.push(m[1])
     for (const c of codes) {
-      if (QUOTA_CODES[c] || RISK_COOLDOWN[c]) return paceRisk(c)
+      if (QUOTA_CODES[c] || RISK_COOLDOWN[c]) return await paceRisk(c)
     }
     return ''
   }
@@ -3952,7 +4094,16 @@ export function apply(ctx, config) {
     checkedAt: updateCheckedAt || 0,
   })
   const startUpgrade = async () => {
-    const report = updateCache.value || await runUpdateCheck()
+    let report = updateCache.value || await runUpdateCheck()
+    /* 审计 P3-14（2026-11-12）：updateCache 最长 10 分钟——检查与升级之间安装方式若被
+     * 改变（比如把 registry 安装换成了目录联接），旧报告里的 canUpgrade/profile 就是旧值。
+     * 升级是高风险动作，安装方式在**此刻**重新判一遍（本地、便宜），判定不一致就按新的来。 */
+    const freshInstall = detectInstallMode({ pluginDir, dshHome: String(ctx?.get?.('dshHomePath')?.('') || process.env.DSH_HOME || '') })
+    if (report.install && (freshInstall.mode !== report.install.mode || freshInstall.profile !== report.install.profile || freshInstall.updatable !== report.install.updatable)) {
+      report = { ...report, install: freshInstall, canUpgrade: Boolean(report.outdated && freshInstall.updatable === true) }
+      appendUpdate(upgradeLogLine({ phase: 'recheck', detail: `安装方式已复核：mode=${freshInstall.mode} profile=${freshInstall.profile} updatable=${freshInstall.updatable}` }))
+    }
+    // 审计 P3-15：busy 在 spawn 前再查一次——检查与点击之间可能刚好有刷站/后台/渲染开跑。
     const blocker = upgradeBlocker({ report, busy: updateBusy(), upgrading })
     // ⚠️ 顺序不能反：`updateStatus()` 里带着检查结果的 `ok:true`，
     //    必须把它展开在**前面**，再写本次升级的 ok/code/error，否则失败会被覆盖成成功。
@@ -3963,6 +4114,9 @@ export function apply(ctx, config) {
       electron: Boolean(process.versions.electron), registry: report.registry,
     })
     if (command.ok === false) return { ...updateStatus(), ok: false, code: command.code, error: command.error }
+    // spawn 前最后一次 busy 复查（审计 P3-15）：把「检查时闲、spawn 时忙」的窗口压到最小。
+    const lateBlocker = upgradeBlocker({ report, busy: updateBusy(), upgrading })
+    if (lateBlocker) return { ...updateStatus(), ok: false, code: 'UPGRADE_BLOCKED', error: '准备升级时有任务刚开跑：' + lateBlocker + '（已取消本次升级，稍后再试）' }
     upgrading = true
     appendUpdate(upgradeLogLine({ phase: 'start', detail: `${report.current} → ${report.latest}（profile ${command.profile}）` }))
     // 升级要几十秒，HTTP 不能一直挂着：起完就返回，进度看 /update?rev 或日志
@@ -4174,6 +4328,21 @@ export function apply(ctx, config) {
    */
   const sendOk = (out) => Boolean(out) && typeof out === 'object' && !Array.isArray(out) && !out.error && out.success !== false
     && (out.success === true || out.ok === true)
+  /* 审计 P2-1（2026-11-12）：发送成功后的簿记（节奏/判重/口味/台账）以前直接 await——
+   * 任何一处抛错（RECORD_LOCK_BUSY、state.json 损坏后的持续拒写、磁盘错误）都会把
+   * **已经成功的发送**整个变成异常回执：模型只看到"出错"，下轮无账可查就重发。
+   * 现在簿记失败降级为日志 + 回执上的 bookkeepingWarning 字段，成功语义不再被记账失败掩盖。
+   * 判重漏记的兜底在 Python 守卫层（reserve/commit 与发送同一调用），不会真的重复发。 */
+  const safeBookkeep = async (label, fn) => {
+    try { return await fn() } catch (error) {
+      const message = String(error?.message ?? error)
+      log(`⚠️ 发送已成功但记账失败（${label}）：${message} —— 可用 bili_guard_status / bili_seen 核对账本`)
+      return { bookkeepError: message }
+    }
+  }
+  const bookWarnings = (out, warnings) => warnings.length
+    ? { ...(out && typeof out === 'object' && !Array.isArray(out) ? out : {}), bookkeepingWarning: warnings.join('；') }
+    : out
 
   /* ⭐ 跑一轮的互斥 + 生命周期（2026-10-26）：
    * `runDuty` 有三条入口（bili_run 工具 / 设置页 POST /run / 谷时 tick），
@@ -4183,6 +4352,7 @@ export function apply(ctx, config) {
    * ③ 插件收摊时（ctx.effect 的清理）把它一起带走。 */
   let dutyChild = null
   let dutyTimer = null
+  let dutyRelayTimer = null
   let backgroundRun = null
 
   /* ── 🐾 桌宠日志（pet-log.jsonl，2026-10-26 桌宠化改造）───────────────────────
@@ -4241,6 +4411,13 @@ export function apply(ctx, config) {
   // Windows needs a process-tree stop; killing only the shell can leave a worker alive.
   const terminateDutyChild = (child) => {
     if (!child) return false
+    /* 审计 P3-45（2026-11-12）：已经退出（或被杀）的子进程不再 taskkill——
+     * Windows 会在进程退出后复用 PID，对旧 PID 跑 `taskkill /T /F` 有误杀无关进程树的小窗口。
+     * （send 审计建议：任何分支都不该对已退出进程按 PID 强杀。） */
+    // ⚠️ 真实子进程运行中 exitCode/signalCode 是 **null**，退出后是数字；测试替身/老宿主给
+    // undefined ⇒ undefined 一律按「还在跑」处理（宁可多杀一次自家的，不按旧 PID 误杀别人）。
+    const exited = (code) => code !== undefined && code !== null
+    if (exited(child.exitCode) || exited(child.signalCode)) return false
     if (child === dutyChild) revokeDutyGrant()
     try {
       if (process.platform === 'win32' && Number.isInteger(child.pid) && child.pid > 0) {
@@ -4533,10 +4710,15 @@ export function apply(ctx, config) {
         log(`这一轮提前收工，但说好要刷满 ⇒ 自动接着刷剩余约 ${remainMin} 分钟（第 ${chain} 次接力）`)
         petLog('bg-continue', { why, chain, remainMin })
         act('note', `后台一轮提前说做完了，还剩约 ${remainMin} 分钟——我自己接着刷。`)
-        const continueTimer = setTimeout(() => {
+        /* 审计 P2-5（2026-11-12）：接力定时器以前是 close 回调的局部变量，dispose 清理
+         * 覆盖不到——插件在这 2.5 秒窗口内被卸载时，接力照常 spawn 无主 headless。
+         * 现在挂到模块级，dispose 里一并 clearTimeout。 */
+        if (dutyRelayTimer) clearTimeout(dutyRelayTimer)
+        dutyRelayTimer = setTimeout(() => {
+          dutyRelayTimer = null
           try { runDuty(why, { ...opts, _chain: chain, durationMinutes: remainMin }) } catch (e) { log(`接力开跑失败（不影响宿主）：${e?.message ?? e}`) }
         }, 2_500)
-        continueTimer.unref?.()
+        dutyRelayTimer.unref?.()
       }
       /* 🗨️ 收工小结（2026-10-28）：把这一趟翻译成一句人话冒给使用者 —— 时间分档、额度说破。
        *    ⚠️ 接力发生的轮次**不是收工**（2.5 秒后就接着刷），绝不发小结，否则时段任务会
@@ -4710,10 +4892,22 @@ export function apply(ctx, config) {
            *    「30 秒内刚拉起过就不重复」，把怪模型的最坏节奏钉在每分钟一轮以内。 */
           const lastLaunch = Number(st.bgWindowLastLaunch) || 0
           if (now.getTime() - lastLaunch < 30_000) return null
-          try { writeJson(dutyStateFile, { ...st, bgWindowLastLaunch: now.getTime() }) } catch { /* 节流记不住也只是多跑一轮 */ }
+          /* 🔒 审计 P2-6（2026-11-12）跨实例互斥：时段任务以前只有进程内 dutyChild 判空 +
+           *    30 秒节流，两个 DSH 实例共用家目录时同一时段会各开一条 headless（额度/报告/
+           *    账号节奏全面翻倍）。现在先在锁内认领 owner 标记（pid+时间戳）：别的实例
+           *    10 分钟内认领过 ⇒ 跳过（时段任务每轮接力都会刷新认领，10 分钟是接力间隔的
+           *    宽松上限）；超过 10 分钟视为原实例已死，本实例接管。daily schedule 的
+           *    startedDays 落盘去重与 peakValley 的 windows 落盘原本就有，这里补齐时段这条。 */
+          const owner = st.bgWindowOwner && typeof st.bgWindowOwner === 'object' ? st.bgWindowOwner : null
+          if (owner && Number(owner.at) > now.getTime() - 10 * 60_000 && Number(owner.pid) !== process.pid) return null
+          try { writeJson(dutyStateFile, { ...st, bgWindowLastLaunch: now.getTime(), bgWindowOwner: { pid: process.pid, at: now.getTime() } }) } catch { /* 节流记不住也只是多跑一轮 */ }
           const r = runDuty('bg-window', { durationMinutes: Math.min(180, win.remainMin), windowEndAt: win.endAt })
           if (r.started) { petLog('window-start', { endAt: win.endAt, remainMin: win.remainMin, model: r.model }); act('note', `进入后台时段，开始持续刷（还剩约 ${win.remainMin} 分钟）`) }
-          else if (r.error) petLog('window-error', { error: r.error })
+          else {
+            // 认领失败就交还所有权：别的实例（或下一跳）才能接管（审计 P2-6）
+            bumpState({ bgWindowOwner: null }).catch(() => {})
+            if (r.error) petLog('window-error', { error: r.error })
+          }
           return r
         }
         const schedule = dailyScheduleStatus(cfg, st.schedule || {}, now)
@@ -7226,6 +7420,14 @@ export function apply(ctx, config) {
         'overlayMcp']) {
         if (k in body) patch[k] = body[k]
       }
+      // 审计 P3-3（2026-11-12）：未知字段以前在这里被白名单静默丢弃（同一键走 bili_config
+      // 工具会被明确拒绝，三条写入口两拒一吞）。现在对齐 persistCfg 的口径：明确 400。
+      // resetTokensTotal 是动作键不是配置项，放行。
+      const knownKeys = new Set(['resetTokensTotal', ...Object.keys(patch)])
+      const unknownKeys = Object.keys(body).filter((k) => !Object.hasOwn(DEFAULTS, k) && !knownKeys.has(k))
+      if (unknownKeys.length) {
+        return sendJson(res, 400, { ok: false, code: 'CONFIG_INPUT', error: '未知配置字段：' + unknownKeys.join(', ') + '（请核对字段名；完整列表见 GET /api/bili-duty/config 与 LIMITS）' })
+      }
       // ⭐ 范围钳制 + 两份都写（config.json / DSH 原生设置页），统一走 persistCfg —— 见文件上方
       // ⭐ 私信那两个字段的合法值（2026-10-17 摘 PR #9；其余范围钳制统一在 persistCfg 里）
       if ('dmMode' in patch) patch.dmMode = ['off', 'only', 'both'].includes(String(patch.dmMode)) ? String(patch.dmMode) : 'off'
@@ -7307,8 +7509,13 @@ export function apply(ctx, config) {
         if (mode !== 'session' && mode !== 'background') {
           return sendJson(res, 400, { ok: false, error: 'mode 只能是 session 或 background' })
         }
-        /* ⭐ 两种模式的「开始」都算「鱼动了」⇒ 清免跑牌（不然挂着牌开会话，时段还是哑的） */
-        try { await bumpState({ bgWindowHold: 0 }) } catch { /* 清牌失败不拦开刷 */ }
+        /* ⭐ 两种模式的「开始」都算「鱼动了」⇒ 清免跑牌（不然挂着牌开会话，时段还是哑的）。
+         *    审计 P1-4（2026-11-12）：清牌以前在路由顶部**先于一切校验**执行——一次失败的
+         *    启动尝试（sessionId 过期、goal 冲突、后台 busy）就已经把手动的「本时段不再自动
+         *    拉起」牌子清掉，下一跳 automationTick 会把用户刚停掉的时段任务悄悄拉起来。
+         *    现在只在**启动成功后**清牌；失败路径原样保留牌子（AGENTS：手动停止的暂停状态
+         *    持续到时段结束，重启调度不得绕过）。 */
+        const clearHoldAfterStart = () => { bumpState({ bgWindowHold: 0 }).catch(() => { /* 清牌失败不拦开刷 */ }) }
         const run = resolveRunOptions(cfg, mode, body)
         if (mode === 'session') {
           const sessionId = String(body?.sessionId || '').trim()
@@ -7321,6 +7528,7 @@ export function apply(ctx, config) {
             petLog('error', { error: String(r?.error || r?.hint || '开刷失败') })
             return sendJson(res, 200, { ok: false, ...r })
           }
+          clearHoldAfterStart()
           const current = feiyuStatus(agent)
           petLog('session-start', { sessionId, goalId: String(r.goalId || ''), model: current.modelActive || current.model, tokenBudget: current.tokens.budget, maxRounds: current.goal?.maxRounds || 0, durationMinutes: current.durationMinutes, deadlineAt: current.deadlineAt })
           return sendJson(res, 200, { ok: true, petLogged: true, ...r, sessionId, tokenBudget: current.tokens.budget, durationMinutes: current.durationMinutes, deadlineAt: current.deadlineAt, tokenBudgetEnforcement: 'round-boundary', durationEnforcement: 'wall-clock-pause' })
@@ -7328,11 +7536,12 @@ export function apply(ctx, config) {
         // Per-run overrides are immutable; they never rewrite the other mode's defaults.
         /* ⭐ 2026-10-28「时段」任务：配置里填了后台时段且现在正处在段内 ⇒ 本轮的墙钟终点
          *    就是时段结束（runDuty 里接力到那个点）；配置本身是常设指令，automationTick
-         *    每分钟都会在段内把鱼拉起来。免跑牌已在路由顶部统一清掉。 */
+         *    每分钟都会在段内把鱼拉起来。免跑牌在启动成功后清（见上方 clearHoldAfterStart）。 */
         let windowEndAt = 0
         const ws = String(cfg.backgroundWindowStart || '').trim(), we = String(cfg.backgroundWindowEnd || '').trim()
         if (ws && we && backgroundWindowActive(ws, we)) windowEndAt = backgroundWindowEndAt(ws, we)
         const r = runDuty('pet', { ...run, ...(windowEndAt ? { windowEndAt } : {}) })
+        if (r?.started) clearHoldAfterStart()
         if (windowEndAt) petLog('window-start', { start: ws, end: we, endAt: windowEndAt, manual: true })
         // runDuty emits a single start/error record for every background entry point.
         return sendJson(res, 200, r)
@@ -7519,7 +7728,9 @@ export function apply(ctx, config) {
       const body = await readBody(req)
       // 只接受"确认升级"这一个动作；任何额外字段（目标版本、路径、参数）一律忽略，
       // 避免把这条路由变成可执行任意 dsh 命令的入口。
-      if (body && typeof body === 'object' && body.confirm !== true) {
+      // 审计 P3-42（2026-11-12）：以前 `body && typeof body === 'object'` 才检查——
+      // body 为 null/true/"x"/123 等非对象合法 JSON 时检查整体跳过，无 confirm 也执行升级。
+      if (!body || typeof body !== 'object' || Array.isArray(body) || body.confirm !== true) {
         return sendJson(res, 400, { ok: false, code: 'UPGRADE_CONFIRM_REQUIRED', error: '升级需要显式确认（confirm: true）' })
       }
       return sendJson(res, 200, await startUpgrade())
@@ -7671,6 +7882,11 @@ export function apply(ctx, config) {
     try { mcp?.stop() } catch { /* 收摊 */ }
     // ⭐ headless 那一轮也一起带走：进程被 dispose 时留着一个烧 token 的子进程没有意义
     try { if (dutyTimer) clearTimeout(dutyTimer) } catch { /* 无所谓 */ }
+    // 审计 P2-5：接力定时器同样收掉（原来它不在清理清单里，2.5s 窗口内卸载会 spawn 无主 headless）
+    try { if (dutyRelayTimer) { clearTimeout(dutyRelayTimer); dutyRelayTimer = null } } catch { /* 无所谓 */ }
+    // 审计 P2-9：渲染中的 python 子进程（pv）也一起带走——原来 dispose 清单漏了它，
+    // 卸载后子进程无人跟踪（无信标），最长还能跑 20 分钟。pv.stop() 幂等，闲时无副作用。
+    try { pv?.stop?.() } catch { /* 已经停了 */ }
     try { if (learnReviewRun?.running && learnReviewRun.id) rmSync(join(stateDir, `${learnReviewRun.id}.json`)) } catch { /* already revoked */ }
     try { terminateDutyChild(dutyChild) } catch { /* 已经没了 */ }
     for (const live of feiyuLive.values()) if (live.deadlineTimer) clearTimeout(live.deadlineTimer)
@@ -7724,8 +7940,11 @@ export function apply(ctx, config) {
     t?.unref?.()
     ctx.effect(() => () => clearInterval(t), 'bili-duty: 视频每日定时器')
     // 挂载后先看一眼（开机晚了也能当场补上，不用等第一个 3 分钟）
+    // 审计 P3-4（2026-11-12）：这个一次性定时器原来不在清理清单里——挂载后 20 秒内卸载时
+    // 仍会触发一次 videoStudio.start（videoStudio 已 dispose，但 pvAuto 为真时仍可能起制作会话）。
     const t0 = setTimeout(() => { pvTick() }, 20_000)
     t0?.unref?.()
+    ctx.effect(() => () => clearTimeout(t0), 'bili-duty: 视频定时器首跳')
   } catch (e) { log(`🎬 视频定时器没起来：${e?.message ?? e}`) }
 
   log(`已挂载（家=${stateDir}，python=${cfg.pythonPath}，峰谷=${cfg.peakValley ? '开' : '关'}）`)

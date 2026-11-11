@@ -19,3 +19,7 @@
 ## 数据流与测试范围
 
 详见 [数据与隐私](docs/PRIVACY.md) 和 [发布审查记录](docs/RELEASE_AUDIT.md)。本地隔离测试不会向真实 B站 账号发送内容。第三方平台、模型和语音服务的可用性、处理方式及限制由各服务决定。
+
+## 关于「假密钥」字符串的说明
+
+`prompts/duty.md` 与 `lib/mode.mjs` 中出现的 `sk-KfcCrazyDay4VMe50Quickly` 是**有意设计的假密钥**——人设里的一个梗（角色被问到 key 时按设定回这句），不是任何真实凭证，不指向任何服务，也不应被视为泄漏。发布检查 `scripts/release/check-secrets.mjs` 有意放行 `sk-KfcCrazyDay` 前缀（该文件第 20 行）。第三方密钥扫描器若命中此字符串，属误报，可忽略。

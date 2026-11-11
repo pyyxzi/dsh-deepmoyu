@@ -11,10 +11,18 @@ import json
 import math
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import imageio_ffmpeg
 from PIL import Image
+
+# P3-31: Windows 管道默认 GBK —— 错误 JSON 里的中文会乱码，先钉 UTF-8（写法照 lib/pv.py:41-46）
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 
 def _probe(video: Path) -> tuple[dict, int]:
@@ -24,10 +32,16 @@ def _probe(video: Path) -> tuple[dict, int]:
     reader = imageio_ffmpeg.read_frames(
         str(video), pix_fmt="rgb24", input_params=["-xerror"], output_params=["-vsync", "0"]
     )
+    started = time.monotonic()
     try:
         metadata = next(reader)
         for _ in reader:
             frame_count += 1
+            if frame_count % 500 == 0 and time.monotonic() - started > 90.0:
+                # P3-30: 全帧解码没有看门狗会挂到 JS 任务级强杀（对照 _decode_frames 的 120s）
+                raise TimeoutError  # 哨兵：下面的分支原样转成带上下文的 TimeoutError
+    except TimeoutError:
+        raise TimeoutError(f"视频解码超时（>90s，已解 {frame_count} 帧）：{video.name}") from None
     except Exception as exc:
         raise ValueError(f"视频无法完整解码：{str(exc)[-300:]}") from exc
     finally:

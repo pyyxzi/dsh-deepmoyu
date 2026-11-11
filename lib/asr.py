@@ -18,6 +18,7 @@ import argparse
 import os
 import re
 import sys
+import time
 import uuid
 
 # ⚠️ 临时目录必须待在家目录里：值班那一轮跑在沙箱里（只允许写工作区/cwd），
@@ -49,6 +50,25 @@ def cleanup_download(tmp: str, tag: str) -> None:
                 try:
                     # 不递归进入目录；即使出现符号链接也只删除链接本身。
                     if entry.is_file(follow_symlinks=False) or entry.is_symlink():
+                        os.remove(entry.path)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+def sweep_stale_downloads(tmp: str = _TMP, max_age_hours: float = 24.0) -> None:
+    """P3-33: 异常中断（进程被杀/断电）会留下 tag.* 碎片，且只有成功路径会清 ——
+    启动时把 tmp/asr 下超过 24h 的下载碎片一并回收（当前这次的文件是新的，不受影响）。"""
+    cutoff = time.time() - max_age_hours * 3600
+    try:
+        with os.scandir(tmp) as entries:
+            for entry in entries:
+                try:
+                    # 只回收普通文件与失效链接，目录一律不碰；删不掉就留给下一次。
+                    if not (entry.is_file(follow_symlinks=False) or entry.is_symlink()):
+                        continue
+                    if entry.stat(follow_symlinks=False).st_mtime < cutoff:
                         os.remove(entry.path)
                 except OSError:
                     pass
@@ -99,6 +119,8 @@ def main() -> int:
     ap.add_argument('--lang', default='zh', help='语言（默认 zh；不给就自动判断请传 auto）')
     args = ap.parse_args()
     prepare_runtime()
+    # P3-33: 每次启动顺手清扫超龄碎片（只在真的要下载时才需要目录，清扫本身静默失败无妨）
+    sweep_stale_downloads()
 
     src = args.target
     # ⚠️ 不用 mkdtemp：沙箱只允许写"子进程启动前就存在"的目录，新建的会被拒 ✗

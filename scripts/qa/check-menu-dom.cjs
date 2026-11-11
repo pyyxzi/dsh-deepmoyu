@@ -27,6 +27,7 @@ let browser
 ;(async () => {
   browser = await openChrome({ output: OUTPUT })
   const records = []
+  let probeChecks = 0 /* P3-41：实测计数（探针里 check 实跑次数），替代写死的总数 */
   for (const scenario of cases) {
     const file = path.join(OUTPUT, scenario.name + '.html')
     fs.writeFileSync(file, makeFixturePage({ clientSource: SOURCE, status, target: 'root', position: scenario.position }))
@@ -35,7 +36,7 @@ let browser
     await browser.until(`window.__fixture&&document.querySelector('[data-bd-pet-fish]')`, scenario.name + ' pet')
     const metrics = await browser.driver.evaluate(`(async()=>{
       const F=window.__fixture;await F.ready;
-      const issues=[],check=(v,n)=>{if(!v)issues.push(n)},pet=()=>document.querySelector('[data-bd-pet]'),fish=()=>document.querySelector('[data-bd-pet-fish]'),menu=()=>document.querySelector('[data-bd-menu]'),preview=()=>document.querySelector('[data-bd-preview]');
+      const issues=[];let ran=0;const check=(v,label)=>{ran++;if(!v)issues.push(label)},pet=()=>document.querySelector('[data-bd-pet]'),fish=()=>document.querySelector('[data-bd-pet-fish]'),menu=()=>document.querySelector('[data-bd-menu]'),preview=()=>document.querySelector('[data-bd-preview]');
       const context=()=>fish().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
       check(!document.querySelector('[data-bd-pet-toast]')?.textContent.includes('称号升级'),'Initial status does not invent a title upgrade');
       context();await F.waitFor(menu,'open menu');await F.wait(320); /* >.22s 弹出动画：等它落定再量几何，否则量在过冲半路上，结果看运气 */
@@ -66,9 +67,10 @@ let browser
       const settings=menu().querySelector('[data-bd-menu-key=settings]');settings.blur();settings.focus();await F.wait(230);check(preview()?.dataset.bdPreview==='settings','Keyboard focus opens preview (active='+document.activeElement?.dataset.bdMenuKey+', preview='+preview()?.dataset.bdPreview+')');settings.blur();await F.wait(165);check(!preview(),'Keyboard blur closes preview');
       F.enter(settings);await F.wait(40);context();await F.wait(230);check(!menu()&&!preview(),'Closing menu cancels pending preview timer');
       context();await F.waitFor(menu,'reopen menu');context();await F.wait(40);check(!menu(),'Right click toggles closed');
-      check(F.errors.length===0,'No runtime errors');return {issues,viewport:[innerWidth,innerHeight],menu:mrect,previews,requests:F.requests,errors:F.errors};
+      check(F.errors.length===0,'No runtime errors');return {issues,checks:ran,viewport:[innerWidth,innerHeight],menu:mrect,previews,requests:F.requests,errors:F.errors};
     })()`)
     assert.deepEqual(metrics.issues, [], scenario.name + ': menu and previews')
+    probeChecks += Number(metrics.checks) || 0
     await browser.driver.evaluate(`document.querySelector('[data-bd-pet-fish]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}))`)
     await browser.until(`document.querySelector('[data-bd-menu-key=settings]')`, 'screenshot menu')
     await browser.driver.evaluate(`window.__fixture.enter(document.querySelector('[data-bd-menu-key=settings]'))`)
@@ -84,15 +86,17 @@ let browser
   await browser.size(1280, 900); await browser.navigate(actionFile)
   await browser.until(`window.__fixture&&document.querySelector('[data-bd-pet-fish]')`, 'action pet')
   const actions = await browser.driver.evaluate(`(async()=>{
-    const F=window.__fixture;await F.ready;const issues=[],check=(v,n)=>{if(!v)issues.push(n)},menu=()=>document.querySelector('[data-bd-menu]'),preview=()=>document.querySelector('[data-bd-preview]'),context=()=>document.querySelector('[data-bd-pet-fish]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+    const F=window.__fixture;await F.ready;const issues=[];let ran=0;const check=(v,label)=>{ran++;if(!v)issues.push(label)},menu=()=>document.querySelector('[data-bd-menu]'),preview=()=>document.querySelector('[data-bd-preview]'),context=()=>document.querySelector('[data-bd-pet-fish]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
     for(const [key,selector] of [['background','[data-bd-pet-card][data-wide]'],['status','[data-bd-pet-card]'],['logs','[data-bd-settings-page=logs]'],['settings','[data-bd-settings-page=run]']]){
       context();await F.waitFor(menu,key+' menu');const button=menu().querySelector('[data-bd-menu-key='+key+']');F.enter(button);await F.wait(35);await F.click(button);await F.waitFor(()=>document.querySelector(selector),key+' action');await F.wait(240);check(!menu()&&!preview(),key+' action removes menu and cancels hover');
       window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await F.wait(35);
     }
     context();await F.waitFor(menu,'hide menu');await F.click(menu().querySelector('[data-bd-menu-key=hide]'));await F.waitFor(()=>document.querySelector('[data-bd-pet-dot]'),'hide dot');check(!preview(),'Hide clears preview');await F.click(document.querySelector('[data-bd-pet-dot]'));await F.waitFor(()=>document.querySelector('[data-bd-pet-fish]'),'show pet');
-    context();await F.waitFor(menu,'unmount menu');F.enter(menu().querySelector('[data-bd-menu-key=session]'));F.root.unmount();await F.wait(250);check(!preview()&&!document.querySelector('[data-bd-pet]'),'Unmount cancels pending preview');check(F.errors.length===0,'No action runtime errors');return {issues,requests:F.requests,errors:F.errors};
+    context();await F.waitFor(menu,'unmount menu');F.enter(menu().querySelector('[data-bd-menu-key=session]'));F.root.unmount();await F.wait(250);check(!preview()&&!document.querySelector('[data-bd-pet]'),'Unmount cancels pending preview');check(F.errors.length===0,'No action runtime errors');return {issues,checks:ran,requests:F.requests,errors:F.errors};
   })()`)
   assert.deepEqual(actions.issues, [], 'Menu actions and cleanup')
-  fs.writeFileSync(path.join(OUTPUT, 'results.json'), JSON.stringify({ fixtureOnly: true, records, actions }, null, 2))
-  console.log('PASS 42 delayed previews, keyboard focus, grace period, geometry, actions, hide/restore and cleanup; isolated fixture only.')
+  probeChecks += Number(actions.checks) || 0
+  fs.writeFileSync(path.join(OUTPUT, 'results.json'), JSON.stringify({ fixtureOnly: true, records, actions, checks: probeChecks }, null, 2))
+  /* P3-41：总数实测（两个探针 check 的实跑次数之和），不再写死 —— 加减检查项时数字不再漂移 */
+  console.log('PASS ' + probeChecks + ' checks (measured): delayed previews, keyboard focus, grace period, geometry, actions, hide/restore and cleanup; isolated fixture only.')
 })().catch((error) => { console.error(error.stack); process.exitCode = 1 }).finally(() => browser?.close())

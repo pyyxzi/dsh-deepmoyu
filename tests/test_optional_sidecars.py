@@ -411,10 +411,14 @@ class FavoritesContracts(SidecarFixture):
         self.assertEqual([item for item in records if item["kind"] == "add"], [{"kind": "add", "fid": 7201}])
 
     def test_existing_favorite_is_success_with_explicit_already_flag(self):
+        # 2026-11-12 审计 P3-32：错误 JSON 增加 code/kind 分类，dup 幂等成功也带
+        # 上这两个字段 —— 断言从整包相等改为按必需字段断言（新增字段是契约的一部分）。
         for mode in ("already-en", "already-zh"):
             with self.subTest(mode=mode):
-                self.assertEqual(self.json_result(self.run_sidecar("favops", "add", BVID, "7201", FAV_MODE=mode)),
-                                 {"ok": True, "already": True})
+                payload = self.json_result(self.run_sidecar("favops", "add", BVID, "7201", FAV_MODE=mode))
+                self.assertTrue(payload["ok"])
+                self.assertTrue(payload["already"])
+                self.assertEqual(payload["kind"], "dup")
 
     def test_invalid_commands_and_parameters_never_import_platform_api(self):
         cases = [(), ("unknown",), ("folders", "unexpected"), ("add",),

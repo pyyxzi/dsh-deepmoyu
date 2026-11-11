@@ -17,7 +17,7 @@ const status = { ok: true, rev: 'product-fixture', today: '2026-10-29', venvRead
   retrospective: { totals: { picks: 0, runs: 0, tokens: 0, activeDays: 0 }, days: [], themes: [] }, recovery: { rows: [], needsAction: false } }
 
 const probe = String.raw`
-const check=(yes,message)=>{if(!yes)throw Error(message)};
+let ran=0;const check=(yes,message)=>{if(!yes)throw Error(message);ran++};
 check(document.querySelectorAll('[data-bd-pet-tab]').length===6,'Six primary groups');
 check(!F.requests.some(r=>/\/(pv|learn|stickers|memory)$/.test(r.path)),'Initial run page must not eagerly load secondary data');
 check(document.querySelector('[data-bd-settings-page=run]'),'Run is the default workspace');
@@ -49,39 +49,49 @@ check(hero&&hero.children.length===2,'Review retains its artwork and summary');
 check(document.querySelector('[data-bd-today-status]').innerText.includes('0'),'Known zero usage is visible');
 await F.click(document.querySelector('#bd-tab-run'));
 const body=document.querySelector('[data-bd-pet-body]');body.scrollTop=0;
-F.finish({ok:true,checks:14,requests:F.requests.length});`
+F.finish({ok:true,checks:ran,requests:F.requests.length});`
 
 async function main() {
   const browser = await openChrome({ output, width: 1280, height: 900 })
   try {
+    /* P3-41：总数实测 —— node 侧断言逐条计入 must()，浏览器探针回传的 checks 实跑数求和 */
+    let nodeChecks = 0
+    let browserChecks = 0
+    const must = (yes, label) => { nodeChecks++; assert.ok(yes, label) }
+    const addProbe = (r) => { browserChecks += Number(r && r.checks) || 0 }
     const file = path.join(output, 'dashboard.html')
     fs.writeFileSync(file, makeFixturePage({ clientSource, status, probe, tab: 'run' }))
     await browser.navigate(file)
     await browser.until("document.title==='fixture done'", 'product interaction')
     const result = await browser.driver.evaluate('JSON.parse(document.getElementById("fixture-result").textContent)')
-    assert.deepEqual(result.errors, [], JSON.stringify(result))
-    assert.equal(result.ok, true)
+    must(result.errors.length === 0, 'dashboard fixture errors: ' + JSON.stringify(result))
+    must(result.ok === true, 'dashboard fixture finished ok')
+    addProbe(result)
     await browser.screenshot(path.join(output, 'dashboard-desktop.png'))
     await browser.size(390, 844)
-    assert(await browser.driver.evaluate("document.querySelector('[data-bd-pet-modal]').getBoundingClientRect().right<=innerWidth+1"), 'Mobile modal must fit viewport')
-    assert(await browser.driver.evaluate("document.querySelector('[data-bd-pet-body]').scrollWidth<=document.querySelector('[data-bd-pet-body]').clientWidth+1"), 'Mobile content must not overflow')
+    must(await browser.driver.evaluate("document.querySelector('[data-bd-pet-modal]').getBoundingClientRect().right<=innerWidth+1"), 'Mobile modal must fit viewport')
+    must(await browser.driver.evaluate("document.querySelector('[data-bd-pet-body]').scrollWidth<=document.querySelector('[data-bd-pet-body]').clientWidth+1"), 'Mobile content must not overflow')
     await browser.screenshot(path.join(output, 'dashboard-mobile.png'))
 
     const petFile = path.join(output, 'pet.html')
     const petProbe = String.raw`
+      let ran=0;const check=(yes,message)=>{if(!yes)throw Error(message);ran++};
       F.data.status={...F.data.status,rev:'pet-2',learn:{approved:3,pending:0},companion:{silenced:false,notificationLevel:'normal',reducedMotion:true}};
-      const poll=[...F.intervals.values()].find(x=>x.ms===5000);if(!poll)throw Error('Missing shared status poll');await poll.callback();
+      const poll=[...F.intervals.values()].find(x=>x.ms===5000);check(Boolean(poll),'Missing shared status poll');await poll.callback();
       await F.waitFor(()=>document.querySelector('[data-bd-pet-reaction]'),'Learning reaction');
-      if(!document.querySelector('[data-bd-pet-reaction]').textContent.includes('又懂了一点'))throw Error('Missing context reaction');
-      if(!document.querySelector('[data-bd-pet-fish]').hasAttribute('data-reduced-motion'))throw Error('Reduced motion not wired');
+      check(document.querySelector('[data-bd-pet-reaction]').textContent.includes('又懂了一点'),'Missing context reaction');
+      check(document.querySelector('[data-bd-pet-fish]').hasAttribute('data-reduced-motion'),'Reduced motion not wired');
       F.data.status={...F.data.status,rev:'pet-3',petEvent:{at:Date.now(),text:'隔离测试：制作完成',tone:'good',kind:'complete'},companion:{silenced:true,notificationLevel:'minimal',reducedMotion:true}};
       await poll.callback();await F.waitFor(()=>document.querySelector('[data-bd-pet-toast]').textContent.includes('隔离测试：制作完成'),'First terminal receipt while focused');
-      F.finish({ok:true,checks:4});`
+      check(document.querySelector('[data-bd-pet-toast]').textContent.includes('隔离测试：制作完成'),'First terminal receipt text');
+      F.finish({ok:true,checks:ran});`
     fs.writeFileSync(petFile, makeFixturePage({ clientSource, status, target: 'root', position: { x: 'right', y: 'bottom' }, probe: petProbe }))
     await browser.size(1280, 900); await browser.navigate(petFile)
     await browser.until("document.title==='fixture done'", 'pet reaction')
     const pet = await browser.driver.evaluate('JSON.parse(document.getElementById("fixture-result").textContent)')
-    assert.deepEqual(pet.errors, [], JSON.stringify(pet)); assert.equal(pet.ok, true)
+    must(pet.errors.length === 0, 'pet fixture errors: ' + JSON.stringify(pet))
+    must(pet.ok === true, 'pet fixture finished ok')
+    addProbe(pet)
     await browser.screenshot(path.join(output, 'pet-reaction.png'))
     const review = { ok: true, rev: 'review-1', pending: 2, unknown: 1, items: [
       { id: 'sr-one', kind: '视频评论', state: 'pending', hash: 'a'.repeat(64), args: { bvid: 'BV1234567890', text: '镜头停在旋钮上的那一秒，想隔着屏幕摸摸它的质感。' } },
@@ -89,7 +99,7 @@ async function main() {
       { id: 'sr-unknown', kind: '动态', state: 'unknown', hash: 'c'.repeat(64), args: { text: '这条需要核对结果。' } },
     ] }
     const reviewProbe = String.raw`
-      const check=(yes,msg)=>{if(!yes)throw Error(msg)};
+      let ran=0;const check=(yes,msg)=>{if(!yes)throw Error(msg);ran++};
       await F.waitFor(()=>document.querySelectorAll('[data-bd-send-review-item]').length===2,'On-demand previews');
       check(F.requests.filter(x=>x.path.endsWith('/send-review')).length===1,'Mount loads the queue once');
       await F.click(document.querySelector('[aria-label="批准并发送：sr-one"]'));
@@ -101,18 +111,21 @@ async function main() {
       const unknown=[...document.querySelectorAll('[data-bd-send-review-item]')].find(x=>x.textContent.includes('这条需要核对结果'));
       check(unknown&&!unknown.querySelector('button'),'Unknown outcomes have no retry');
       check(!F.unknownRequests.length,'All routes are declared fixture routes');
-      F.finish({ok:true,checks:5});`
+      F.finish({ok:true,checks:ran});`
     const reviewFile = path.join(output, 'send-review.html')
     fs.writeFileSync(reviewFile, makeFixturePage({ clientSource, status: { ...status, config: { ...status.config, sendReview: true }, sendReview: { ok: true, rev: 'review-1', pending: 2, unknown: 1 } }, fixtures: { sendReview: review }, tab: 'speech', probe: reviewProbe }))
     await browser.navigate(reviewFile)
     await browser.until("document.title==='fixture done'", 'send approval UI')
     const sent = await browser.driver.evaluate('JSON.parse(document.getElementById("fixture-result").textContent)')
-    assert.deepEqual(sent.errors, [], JSON.stringify(sent)); assert.equal(sent.ok, true)
+    must(sent.errors.length === 0, 'send-review fixture errors: ' + JSON.stringify(sent))
+    must(sent.ok === true, 'send-review fixture finished ok')
+    addProbe(sent)
     await browser.screenshot(path.join(output, 'send-review-desktop.png'))
     await browser.size(390, 844)
-    assert(await browser.driver.evaluate("document.querySelector('[data-bd-pet-body]').scrollWidth<=document.querySelector('[data-bd-pet-body]').clientWidth+1"), 'Send review fits mobile')
+    must(await browser.driver.evaluate("document.querySelector('[data-bd-pet-body]').scrollWidth<=document.querySelector('[data-bd-pet-body]').clientWidth+1"), 'Send review fits mobile')
     await browser.screenshot(path.join(output, 'send-review-mobile.png'))
-    console.log('Product acceptance: 26 checks passed. Isolated fixtures and screenshots: ' + output)
+    /* P3-41：不再写死总数 —— 输出实测值（node 断言 + 探针实跑 check），加减检查项时不再漂移 */
+    console.log('Product acceptance: ' + (nodeChecks + browserChecks) + ' checks passed (measured). Isolated fixtures and screenshots: ' + output)
   } finally { await browser.close() }
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

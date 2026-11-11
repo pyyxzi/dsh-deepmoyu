@@ -720,7 +720,14 @@ def ffmpeg_exe():
         import imageio_ffmpeg
         return imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
-        return shutil.which("ffmpeg") or "ffmpeg"
+        pass
+    found = shutil.which("ffmpeg")
+    if not found:
+        # P3-35: 裸 FileNotFoundError 排不了障 —— 报错带安装指引
+        raise RuntimeError(
+            "找不到 ffmpeg —— imageio_ffmpeg 会随渲染依赖自动安装（uv/pip 装依赖时带上），"
+            "或手动安装 ffmpeg 并加入 PATH 后重试")
+    return found
 
 
 def gsv_batch(texts, out_dir: Path, voice: dict, log=print):
@@ -763,6 +770,20 @@ def gsv_batch(texts, out_dir: Path, voice: dict, log=print):
            "--top-p", str(voice.get("gsvTopP", 0.9)),
            "--temp", str(voice.get("gsvTemp", 0.75)),
            "--repetition-penalty", str(voice.get("gsvRepPen", 1.3))]
+    # P2-11: gsvPython 漏配时会落到渲染 venv（sys.executable）—— 它没有 torch/soundfile，
+    #   子进程必死在 _patch_torchaudio 的 ModuleNotFoundError 上且报错不指向根因。
+    #   启动前先用同一个解释器跑一次 import 预检（首次冷盘导入也可能要十几秒，给 120s）。
+    try:
+        probe = subprocess.run([py, "-c", "import torch, soundfile"], capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(
+            f"gsvPython（{py}）预检失败（{type(exc).__name__}）——在设置页把 gsvPython "
+            "指到 GPT-SoVITS 自带的 python，或换一个能用的解释器") from exc
+    if probe.returncode != 0:
+        tail = (probe.stderr or b"").decode("utf-8", "ignore").strip().splitlines()
+        raise RuntimeError(
+            f"gsvPython（{py}）缺少 torch/soundfile（{(tail[-1] if tail else 'import 失败')}）——"
+            "在设置页把 gsvPython 指到 GPT-SoVITS 自带的 python，或在其环境里 pip install torch soundfile")
     log(f"🎙  GPT-SoVITS 批处理：{len(texts)} 句（加载模型要 30~50 秒）")
     t0 = time.time()
     # ⚠️ 必须给子进程钉死 UTF-8：它会往管道里打中文和 emoji，Windows 默认 GBK 会炸
@@ -798,7 +819,9 @@ def tts(text: str, out_mp3: Path, voice="zh-CN-XiaoyiNeural", rate="+8%", pitch=
 
         async def go():
             c = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-            await c.save(str(out_mp3))
+            # P2-14: 主合成路径此前没有任何超时 —— websocket 半开时 save() 永久挂起，
+            #   prepare_audio 停摆到 JS 强杀。120s 墙钟；TimeoutError 落到下面的 SAPI 兜底。
+            await asyncio.wait_for(c.save(str(out_mp3)), timeout=120)
 
         asyncio.run(go())
         # ⭐ 2026-10-26：阈值 1200→600 —— "嗯。"这种极短句的 mp3 可能不足 1200 字节，
@@ -901,6 +924,71 @@ def squeeze_silence(pcm, rate, max_gap=0.42, keep=0.30, th=450.0, edge=0.12):
         out.extend(pcm[i * win:(i + 1) * win])
     out.extend(pcm[m * win:])
     return out
+
+
+def weight_len(s) -> float:
+    """P3-27: 加权字符数 —— CJK=1、数字=0.5、拉丁字母=0.35、其他=1。
+
+    等权字符数会让「数字/英文读得快」的句子字幕切得慢（探针 F：英文估 3 倍偏差）。
+    """
+    total = 0.0
+    for ch in str(s or ""):
+        if "\u4e00" <= ch <= "\u9fff":
+            total += 1
+        elif ch.isascii() and ch.isdigit():
+            total += 0.5
+        elif ch.isascii() and ch.isalpha():
+            total += 0.35
+        else:
+            total += 1
+    return total
+
+
+def spoken_chars(text) -> float:
+    """P1-5: 有效字数（去标点/空白）：CJK 记 1，连续英文/数字串整段记 0.5。
+
+    与 bili-video/build.py 的 0.32s/字守卫同一套「字数观」——标点不占口播时长。
+    """
+    total, run = 0.0, 0
+    for ch in str(text or ""):
+        if ch.isascii() and ch.isalnum():
+            run += 1          # 连续英文/数字串攒着，断开时整段记 0.5
+            continue
+        if run:
+            total += 0.5
+            run = 0
+        if "\u4e00" <= ch <= "\u9fff":
+            total += 1
+    if run:
+        total += 0.5
+    return total
+
+
+# P1-5 上限的短句开销余量（秒）：「嗯。」这类一两个字的句子有起振/收音固定开销，
+# 纯 0.32s/字会误杀 —— build.py 只跑长句所以没这问题，插件的单句可以很短。
+GSV_TAKE_MIN_RATE = 0.15   # s/有效字，低于即截断（真机 GSV 正常 0.20~0.25）
+GSV_TAKE_MAX_RATE = 0.32   # s/字（含标点），超过即复读/拖长（与 bili-video/build.py:85-95 同口径）
+GSV_TAKE_OVERHEAD = 1.0    # 上限的固定余量
+
+
+def gsv_take_guard(index: int, text: str, dur: float) -> None:
+    """P1-5: GSV 句级时长守卫 —— 截断/复读 take 拦在渲染前，别烧几十分钟渲废片。
+
+    真机实测（bili-work 各 timeline.json）：正常 GSV ≈0.20~0.25s/有效字；
+    探针实测的截断形态是 15 字句只出 0.8s（0.053s/字），复读形态是时长成倍超上限。
+    """
+    text = str(text or "")
+    eff = spoken_chars(text)
+    raw = max(1, len(text.strip()))
+    if eff > 0 and dur < eff * GSV_TAKE_MIN_RATE:
+        raise RuntimeError(
+            f"第 {index+1} 句 GSV 音频异常偏短（疑似截断）：{dur:.2f}s / {eff:g} 有效字"
+            f"= {dur / eff:.2f}s/字（下限 {GSV_TAKE_MIN_RATE}s/字）——句首：「{text[:12]}」")
+    if dur > raw * GSV_TAKE_MAX_RATE + GSV_TAKE_OVERHEAD:
+        raise RuntimeError(
+            f"第 {index+1} 句 GSV 音频异常偏长（疑似复读）：{dur:.2f}s / {raw} 字"
+            f"= {dur / raw:.2f}s/字（上限 {GSV_TAKE_MAX_RATE}s/字，同 bili-video/build.py）"
+            f"——句首：「{text[:12]}」")
 
 
 def envelope(pcm, rate, fps):
@@ -1962,17 +2050,40 @@ def split_sentences(text, maxlen=18):
 
     用户说「字幕对不上」⇒ 根因是字幕显示的是摘要、语音念的是全文。
     现在一句话一个镜头、字幕就是这句原话，字幕自然对得上。
+
+    ⭐ P3-26（2026-11-12 审计）：连续省略号（……）合并成一个边界，不再逐字切出
+    孤立「…」碎句；句末标点后紧跟闭引号（」』"'）时不当断句 —— 引号里的
+    「你好。」是引语的一部分，句子续到真正的结尾（探针 A 实测）。
     """
     text = str(text or "").strip()
     if not text:
         return []
+    closing = "」』\"'"
     # 先按句末标点切
     parts, buf = [], ""
-    for ch in text:
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
         buf += ch
+        if ch == "…":
+            # 连续省略号（……）并成一个边界单位
+            while i + 1 < n and text[i + 1] == "…":
+                i += 1
+                buf += "…"
         if ch in "。！？…；!?;":
-            parts.append(buf)
-            buf = ""
+            j = i + 1
+            while j < n and text[j] in closing:
+                j += 1
+            if j > i + 1 and j < n:
+                # 句末标点后紧跟闭引号且后面还有正文 ⇒ 引语内标点，不断句，引号吸进本句
+                buf += text[i + 1:j]
+                i = j
+                continue
+            # 有实词才落句：开头就是省略号（buf 只剩标点）时不切出孤立「…」碎句
+            if buf.strip(closing + "。！？…；!?;，,、：: \u3000\t"):
+                parts.append(buf)
+                buf = ""
+        i += 1
     if buf.strip():
         parts.append(buf)
     out = []
@@ -1996,11 +2107,11 @@ def split_sentences(text, maxlen=18):
     return out
 
 
-def subtitle(img, text, t, dur, words):
+def subtitle(img, text, t, dur):
     """底部字幕：只占左栏内容列（SUB_W），永不盖到右侧的角色。
 
     ⚠️ 「字幕对不上」的根因：以前字幕显示的是整段摘要，语音念的是全文。
-    现在按句切分、按字数分配时长，字幕只显示「此刻正在念的那一句」。
+    现在按句切分、按加权字数分配时长，字幕只显示「此刻正在念的那一句」。
     浅色主题 ⇒ 白色圆角条 + 深墨字，念过的字变浅。
     """
     if not text:
@@ -2009,10 +2120,11 @@ def subtitle(img, text, t, dur, words):
     # —— 选出当前这句 ——
     sents = split_sentences(text, maxlen=22) or [text]
     if len(sents) > 1 and dur > 0:
-        total_chars = sum(max(1, len(s)) for s in sents)
+        # P3-27: 按 weight_len 分摊 —— 数字/英文读得快，等权字符数会把它们切慢
+        total_chars = sum(max(1.0, weight_len(s)) for s in sents)
         acc, cur = 0.0, sents[-1]
         for s in sents:
-            span = dur * max(1, len(s)) / total_chars
+            span = dur * max(1.0, weight_len(s)) / total_chars
             if t < acc + span:
                 cur = s
                 break
@@ -2033,13 +2145,7 @@ def subtitle(img, text, t, dur, words):
                          outline=(150, 190, 226, 175), width=2)
     paste_rgba(img, box, (x0, y0 - 14))
     done_chars = len(cur)
-    if words:
-        done_chars = 0
-        for wd in words:
-            if t * 10_000_000 >= wd["offset"]:
-                done_chars = min(len(cur), done_chars + len(wd["text"]))
-            else:
-                break
+    # 2026-11-12 审计移除：words 逐字卡拉OK高亮是无生产者的死路径，且 100ns ticks 单位无文档
     idx = 0
     for i, ln in enumerate(lines):
         yy = y0 + i * lh
@@ -2232,6 +2338,12 @@ def prepare_audio(shots, base_voice, work, fps):
                         pass
             pcm,rate = to_wav(source,wav_path)
             if engine == "gsv":
+                # P2-10: 全静音/近静音的 take 要拦在合成后 —— 以前一路渲完整片才在 verify
+                #   报「缺少有效对白或口型帧」，不指向根因句，白烧几十分钟。
+                _rms = math.sqrt(sum(v * v for v in pcm) / max(1, len(pcm))) if pcm else 0.0
+                if _rms < 100.0:   # 16bit 满幅 32767；正常语音 RMS 在千级
+                    raise RuntimeError(
+                        f"第 {index+1} 句 GSV 输出为静音（RMS {_rms:.0f} < 100）——句首：「{text[:12]}」")
                 # ⭐ 2026-10-26：把 squeeze_silence 真正接上 —— 这个函数当初就是为
                 #   「GPT-SoVITS 分句边界偶发几秒死寂」写的，但一直没有任何调用点。
                 #   压缩后**写回 wav_path**：timeline 的时长和最终混音（重读 wav/xx.wav）
@@ -2242,6 +2354,8 @@ def prepare_audio(shots, base_voice, work, fps):
                     w.setsampwidth(2)
                     w.setframerate(rate)
                     w.writeframes(pcm.tobytes())
+                # P1-5: 压完静音再按最终时长判 —— squeeze 能救回的（句中长死寂）不误杀
+                gsv_take_guard(index, text, len(pcm) / rate)
             dur = len(pcm) / rate
             if dur <= .02:
                 raise RuntimeError(f"第 {index+1} 句音频为空")
@@ -2293,6 +2407,12 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
         raise ValueError("fps must be 1..60; scale must be 0.1..2")
     t_start = time.time()
     shots = plan["shots"]
+    # P2-13: 含空文本镜头的 plan 会把整片渲完才在 verify 必挂 —— 开头就拦，报错指向第几镜
+    for _i, _shot in enumerate(shots):
+        if not str((_shot or {}).get("text") or "").strip():
+            raise ValueError(
+                f"第 {_i+1} 镜（id={(_shot or {}).get('id', '?')}）没有台词"
+                "——纯视觉镜头暂不支持，给它一句旁白或删掉")
     # Editorial v2 and dialogue plans use the 1080p stage. Legacy cards remain 720p.
     editorial_plan = plan.get("schema") == "deepmoyu-editorial-v2"
     editorial_renderer = None
@@ -2381,7 +2501,8 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
         elif shot.get("kind") == "dialogue":
             frame = dialogue_subtitle(frame,shot,active,max(0,local))
         else:
-            frame = subtitle(frame,str(shot.get("text","")),max(0,local),duration,shot.get("words"))
+            # 2026-11-12 审计移除：words 字段读取随卡拉OK死路径一并删掉（无生产者）
+            frame = subtitle(frame,str(shot.get("text","")),max(0,local),duration)
             if frame.size != (NAT_W,NAT_H):
                 frame = frame.resize((NAT_W,NAT_H),Image.Resampling.LANCZOS)
         if (W2,H2) != (NAT_W,NAT_H):
@@ -2481,7 +2602,10 @@ def build(plan: dict, out_path: Path, work: Path, fps=FPS, scale=1.0, still=None
                         frame = Image.blend(prev, frame, amount)
             # 片头片尾各 600ms 淡入淡出（像一段真正剪过的短片，而不是突然开始）
             if dialogue_plan:
-                head = clamp(tnow / .60, 0, 1)
+                # P3-34: 淡入 0.60s 会盖过 0.18s lead 的开头语音（开头两个字有声音没画面）
+                #   —— 淡入时长不得超过 lead；lead=0 时直接不做淡入（避免除零）。
+                fade_in = min(.60, lead) if lead > 0 else 0.0
+                head = 1.0 if fade_in <= 0 else clamp(tnow / fade_in, 0, 1)
                 tailf = clamp((total - tnow) / .60, 0, 1)
                 alpha = min(head, tailf)
                 if alpha < 1:

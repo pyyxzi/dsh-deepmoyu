@@ -69,12 +69,21 @@ window.__ModuleLoader__.load({
       error.sessionId = detail?.sessionId
       throw error
     }
-    const jget = async (p) => asJson(await fetch(API + p, { credentials: 'same-origin' }))
+    /* ⏱ P3-38：所有 API 请求带 15s 超时 —— 后端卡死时请求不能永远挂着（挂住的 PATCH
+     *    会占住单飞挡板、挂住的轮询会一直 inFlight）。AbortSignal.timeout 在旧宿主上
+     *    可能不存在，缺了就退回无超时，行为跟以前一样；超时抛的是 DOMException
+     *    （name=TimeoutError，没有 .status），各调用方的 catch 原样兜住，释放逻辑不受影响。 */
+    const FETCH_TIMEOUT_MS = 15000
+    const fetchSignal = () => {
+      try { return AbortSignal.timeout(FETCH_TIMEOUT_MS) } catch { return undefined }
+    }
+    const jget = async (p) => asJson(await fetch(API + p, { credentials: 'same-origin', signal: fetchSignal() }))
     const jpost = async (p, body) => asJson(await fetch(API + p, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body || {}),
+      signal: fetchSignal(),
     }))
 
     const CSS = `
@@ -1108,6 +1117,41 @@ window.__ModuleLoader__.load({
       return [st, externalSet.current, fails]
     }
 
+    /* 🔐 P2-15 单飞 PATCH 包装：并发 PATCH 响应乱序会把本地 config 回写成旧值（审计 P2-15）——
+     *    例如「制作模型」select 连改两下、两个 PATCH 同时在飞，先发的那笔**后**回来，
+     *    patch 成功路径里的 setSt({config: r.config}) 会把界面回写成上一笔的旧值。
+     *    这里保证同一时刻只有一个 /config 在飞：
+     *      · 在飞期间新到的改动只记「待发」（pending 按键合并、同键取最新值），界面控件
+     *        照常更新本地显示、调用方拿到 true 不回弹；
+     *      · 当前请求结束后若有积压，再补发一次（补发永远带最新值；补发期间又来新值会
+     *        走上面的排队分支，不会出现并发）。
+     *    失败提示仍由 patch 内部的 say() 负责，单飞层不做二次弹错。 */
+    function useLatestPatch(patch) {
+      const patchRef = React.useRef(patch)
+      patchRef.current = patch
+      const inFlight = React.useRef(false)
+      const pending = React.useRef(null)   // { p, what }：在飞期间积压的改动（按键合并）
+      const send = async (p, what) => {
+        if (inFlight.current) {
+          const old = pending.current
+          pending.current = old
+            ? { p: { ...old.p, ...p }, what: [old.what, what].filter(Boolean).join('、') }
+            : { p: { ...p }, what }
+          return true
+        }
+        inFlight.current = true
+        try {
+          return await patchRef.current(p, what)
+        } finally {
+          inFlight.current = false
+          const next = pending.current
+          pending.current = null
+          if (next) send(next.p, next.what).catch(() => {})
+        }
+      }
+      return send
+    }
+
     /* 🗑 旧的全页设置 Panel 已退役（2026-10-27）：它的配置项早已搬进 PetSettingsModal，
        活动流水 / 出手节奏读数 / 判重账本行也一并搬了进来。回归断言改由 render-modal.cjs 盯弹窗本体。 */
 
@@ -1567,12 +1611,17 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function PetCompanionSettings({ st, busy, patch }) {
+    function PetCompanionSettings({ st, busy, patch, say }) {
       const cfg = st?.config || {}
       const initial = () => ({ chatterFrequency: cfg.chatterFrequency || 'normal', notificationLevel: cfg.notificationLevel || 'normal',
         focusMode: cfg.focusMode === true, quietHoursEnabled: cfg.quietHoursEnabled === true,
         quietHoursStart: cfg.quietHoursStart || '23:00', quietHoursEnd: cfg.quietHoursEnd || '08:00', petReducedMotion: cfg.petReducedMotion === true })
       const [draft, setDraft] = React.useState(initial)
+      /* 📌 P3-39：挂载时的初始快照。保存只提交与快照**不同**的键 —— 没动过的键不再
+       *   整包重发（以前每次都把七个键原样打回 /config，纯噪音写入）；全没动就提示
+       *   「没有改动」。 */
+      const [baseline] = React.useState(initial)
+      const tell = (text, tone) => { if (typeof say === 'function') say(String(text || ''), tone) }
       const update = (key, value) => setDraft(old => ({ ...old, [key]: value }))
       const toggle = (key, title, note) => ToggleRow({ label: title, note, on: draft[key], disabled: Boolean(busy), onChange: value => update(key, value) })
       return h('div', { 'data-bd-companion-settings': '' },
@@ -1591,7 +1640,12 @@ window.__ModuleLoader__.load({
           h('span', { 'data-bd-note': '' }, draft.quietHoursStart === draft.quietHoursEnd ? '起止时间相同，安静时段不生效。' : '按本地时间执行，支持跨午夜。')) : null,
         toggle('petReducedMotion', '减少桌宠动效', '停用浮动、泡泡和事件动画，并遵循系统的减少动态效果设置。'),
         h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '当前：' + (st?.companion?.label || '自然陪伴')),
-          h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: () => patch(draft, '陪伴节奏') }, '保存陪伴节奏')))
+          h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: () => {
+            /* P3-39：只提交与初始快照不同的键，没有改动就不发请求 */
+            const changed = Object.fromEntries(Object.entries(draft).filter(([key, value]) => value !== baseline[key]))
+            if (!Object.keys(changed).length) { tell('陪伴节奏：没有改动'); return }
+            patch(changed, '陪伴节奏')
+          } }, '保存陪伴节奏')))
     }
 
     /* ⭐ 设置大弹窗（2026-10-26 桌宠化改造）：从桌宠 ⚙️ 进来的居中弹窗。
@@ -2183,7 +2237,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       setUpdateError(r.error || '')
     } catch (e) { if (updateAlive.current) setUpdateError(String(e && e.message || e)) }
   }
-  React.useEffect(() => { pullUpdate() }, [])
+  /* ⭐ P3-36：updateCard 只在「账号与环境」页渲染（learning 页不挂这张卡），
+     预取也只在该页跑 —— learning 页挂载时白跑一次 /update 徒增一次接口往返。 */
+  React.useEffect(() => { if (view !== 'learning') pullUpdate() }, [view])
   const updateCard = (() => {
     const u = updateState || {}
     const install = u.install || {}
@@ -2692,6 +2748,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
          单独 2.5 秒增量轮询，跟 5 秒的 /status 分开，不然那条流会一顿一顿的。 */
       const [acts, setActs] = React.useState([])
       const [actLive, setActLive] = React.useState(null)
+      /* ⚠️ P3-37：/activity 404（宿主还没加载这版接口）不是抖动 —— 停轮询 + 出提示条，
+         不然每 2.5s 打一次必 404 的接口，网络面板和日志里全是噪音。 */
+      const [actRouteMissing, setActRouteMissing] = React.useState(false)
       const pvRunning = Boolean(pv && pv.running)
       React.useEffect(() => {
         if (tab !== 'video' || pvRouteMissing.current) return
@@ -2732,6 +2791,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       React.useEffect(() => {
         if (tab !== 'logs') return
         let dead = false
+        let timer = null
         let sinceUid = activityCursor.current
         const pull = async () => {
           if (dead || activityRequest.current) return
@@ -2760,12 +2820,20 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 return next.length > 200 ? next.slice(next.length - 200) : next
               })
             }
-          } catch { /* 抖一下就算了，下次接着拉 */ }
+          } catch (e) {
+            /* ⚠️ P3-37：404 不是抖动 —— 接口压根不存在（宿主较旧 / 没热加载），
+               停掉这条轮询并提示用户重启；超时等其他失败仍按「抖一下」处理。 */
+            if (e?.status === 404) {
+              if (!dead) setActRouteMissing(true)
+              if (timer) { clearInterval(timer); timer = null }
+              return
+            }
+          }
           finally { if (activityRequest.current === token) activityRequest.current = null }
         }
         pull()
-        const t = setInterval(pull, 2500)
-        return () => { dead = true; activityEpoch.current += 1; activityRequest.current = null; clearInterval(t) }
+        timer = setInterval(pull, 2500)
+        return () => { dead = true; activityEpoch.current += 1; activityRequest.current = null; if (timer) clearInterval(timer) }
       }, [tab])
 
       const onClearAct = async () => {
@@ -2873,6 +2941,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         } catch (e) { say(String(e?.message ?? e), 'warn'); return false }
         finally { setBusy('') }
       }
+      /* 🔐 P2-15：patch 的单飞包装（见 useLatestPatch 注释）。时间/下拉这类没有 disabled
+       *   挡板的控件连改两下时会并发 PATCH，走它串行化。 */
+      const patchLatest = useLatestPatch(patch)
       const sw = (k) => Boolean(cfg && cfg[k])
 
       const onLoginStart = async () => {
@@ -3111,7 +3182,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         const saveModel = async (value) => {
           const previous = currentModel
           setVideoModelId(value)
-          if (!(await patch({ videoModelId: value }, '制作模型'))) setVideoModelId(previous)
+          /* 🔐 P2-15：走单飞 —— 在飞期间再改，新值只记 pending（本地 select 已更新、
+           *   不回弹），当前请求结束后补发；直接发送失败才回弹旧值。 */
+          if (!(await patchLatest({ videoModelId: value }, '制作模型'))) setVideoModelId(previous)
         }
         const selectedSession = selected && (selected.sessionId || sessions.find((item) => item.productionId === selected.id)?.sessionId)
         return h('div', { 'data-bd-pet-grid': '', 'data-bd-video-studio': '' },
@@ -3204,12 +3277,13 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 const value = e.target.value
                 if (!/^\d{2}:\d{2}$/.test(value)) return
                 setPv((old) => ({ ...(old || {}), at: value }))
-                patch({ pvAt: value }, '自动做视频的时间')
+                /* 🔐 P2-15：单飞防并发 PATCH 乱序回写（见 useLatestPatch） */
+                patchLatest({ pvAt: value }, '自动做视频的时间')
               } }))),
           h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
             heading('film', '配音与本地环境'),
             h('label', { 'data-bd-row': '' }, h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '配音音色'),
-              h('select', { 'data-bd-input': '', style: { width: '230px' }, value: pv?.voice || 'zh-CN-XiaoyiNeural', onChange: (e) => patch({ pvVoice: e.target.value }, '配音音色') },
+              h('select', { 'data-bd-input': '', style: { width: '230px' }, value: pv?.voice || 'zh-CN-XiaoyiNeural', onChange: (e) => patchLatest({ pvVoice: e.target.value }, '配音音色') },
                 h('option', { value: 'zh-CN-XiaoyiNeural' }, '晓伊（默认 · 偏软）'), h('option', { value: 'zh-CN-XiaoxiaoNeural' }, '晓晓（更清亮）'), h('option', { value: 'zh-CN-XiaochenNeural' }, '晓辰（偏成熟）'))),
             ...[
               ['GPT-SoVITS 目录', 'gsvRepo', 'pvGsvRepo', 'D:\\...\\GPT-SoVITS'],
@@ -3464,9 +3538,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             })),
           !scheduleAllDay ? h('div', { 'data-bd-row' : '' },
             h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '开始时间'),
-            h('input', { 'data-bd-input': '', type: 'time', value: scheduleStart || '18:00', onChange: (e) => { setScheduleStart(e.target.value); patch({ scheduleStart: e.target.value }, '定时开始时间') } }),
+            h('input', { 'data-bd-input': '', type: 'time', value: scheduleStart || '18:00', onChange: (e) => { setScheduleStart(e.target.value); patchLatest({ scheduleStart: e.target.value }, '定时开始时间') } }),
             h('span', { 'data-bd-label': '' }, '结束时间'),
-            h('input', { 'data-bd-input': '', type: 'time', value: scheduleEnd || '09:00', onChange: (e) => { setScheduleEnd(e.target.value); patch({ scheduleEnd: e.target.value }, '定时结束时间') } })) : null,
+            h('input', { 'data-bd-input': '', type: 'time', value: scheduleEnd || '09:00', onChange: (e) => { setScheduleEnd(e.target.value); patchLatest({ scheduleEnd: e.target.value }, '定时结束时间') } })) : null,
           h('div', { 'data-bd-row' : '' },
             h('span', { 'data-bd-badge': '', 'data-live': st.schedule && st.schedule.inWindow ? '' : undefined }, st.schedule && st.schedule.inWindow ? '当前在窗口内' : '当前不在窗口内'),
             h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, st.schedule && st.schedule.lastError ? '上次失败：' + st.schedule.lastError : st.schedule && st.schedule.lastStartedAt ? '上次启动：' + petFmtTime(st.schedule.lastStartedAt) : '尚未启动'),
@@ -3485,7 +3559,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             label: '闲聊提示', on: !(st && st.config && st.config.idleChatter === false), disabled: Boolean(busy),
             note: '按已配置频率显示闲聊，频率由陪伴节奏控制。',
             onChange: (v) => patch({ idleChatter: v }, '闲聊泡泡'),
-          }), h(PetCompanionSettings, { st, busy, patch })),
+          }), h(PetCompanionSettings, { st, busy, patch, say })),
         () => h('div', { 'data-bd-sec': '' },
           heading('spark', '角色与表达'),
           h('div', { 'data-bd-note': '' }, '人格与陪伴设置仅用于鲸鱼摸鱼模式。留空使用默认设定。'),
@@ -3615,6 +3689,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('pulse'), h('b', {}, '它刚才在干嘛'),
               h('span', { 'data-bd-badge': '', 'data-live': fyLive ? '' : undefined }, fyLive ? '在刷' : '没在刷')),
             h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: onClearAct, disabled: Boolean(busy) }, '清屏')),
+          /* ⚠️ P3-37：接口不存在时轮询已停，把话说清楚（文案对照图库页的 404 提示） */
+          actRouteMissing ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'status', 'data-bd-act-missing': '' }, '活动接口不存在——可能宿主版本较旧，重启 DSH 后重试。') : null,
           fyLive && actLive && actLive.thinking
             ? h('div', { 'data-bd-thinking': '' },
               h('i', { 'data-bd-dot': '' }),

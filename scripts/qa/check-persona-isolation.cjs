@@ -481,7 +481,10 @@ const FAKE_PERSONA = '本鱼是一只测试用的电子鱼，只在被点名的�
     setState({ day, picked: 5 })
     const second = runText({ agent })
     ok(second.includes('今天挑中 5/29') && second.includes('最多还能挑 24'), '⑯ 不重启、不重建goal，下一请求立即变29/已挑5', clip(second))
-    ok(second.includes('评论：开，想说就在视频下面发新评论（bili_comment），想说再说'), '⑯ 发送开关变化随下一请求刷新')
+    /* 2.7.0「看完必评」改版后同步（审计 P1-3）：不再钉整句文案 —— 整句一改断言就过期。
+       这里只断言稳定子串：「评论：开。完整看完一条片」证明评论开关随下一请求刷新，
+       「bili_comment」证明工具名仍在注入文本里。 */
+    ok(second.includes('评论：开。完整看完一条片') && second.includes('bili_comment'), '⑯ 发送开关变化随下一请求刷新', clip(second))
     goalsGet = () => null
     const before = auditBytes()
     const goalWritesBefore = goalWrites

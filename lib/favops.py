@@ -11,6 +11,14 @@ import os
 import re
 import sys
 
+# P3-31: Windows 管道默认 GBK —— 错误 JSON 里的中文/emoji 会把 print 打挂
+#（UnicodeEncodeError 连 JSON 都出不来），先钉 UTF-8 + replace（写法照 lib/pv.py:41-46）
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 凭证找两处：优先**当前工作目录**（宿主 spawn 时 cwd = 插件家，凭证就在那儿），
@@ -23,8 +31,30 @@ CRED_FILE = next((p for p in CRED_CANDIDATES if os.path.exists(p)), CRED_CANDIDA
 
 
 def out(obj):
+    # P3-31: stdout 已钉 utf-8 + errors="replace"，任何字符都出得去，不再 UnicodeEncodeError
     print(json.dumps(obj, ensure_ascii=False))
     sys.exit(0)
+
+
+def _classify(error):
+    """P3-32: 错误分类 —— code 取 bilibili_api 异常自带的 API code（ResponseCodeException.code），
+    kind 让宿主分得清「要重扫码」（auth = -101/-111）、「等风控」（risk = 412/-352）、
+    「已经收藏过」（dup，幂等成功）和其余失败（unknown）。"""
+    code = getattr(error, 'code', None)
+    try:
+        code = int(code) if code is not None else None
+    except (TypeError, ValueError):
+        code = None
+    msg = str(error)
+    if code in (-101, -111):
+        kind = 'auth'
+    elif code in (412, -352):
+        kind = 'risk'
+    elif '已经' in msg or 'already' in msg.lower():
+        kind = 'dup'
+    else:
+        kind = 'unknown'
+    return code, kind, msg
 
 
 def load():
@@ -65,11 +95,11 @@ async def add(bvid, fid):
     try:
         await favorite_list.FavoriteListResource(aid, type_=2, credential=cred).add(fid)
     except Exception as error:  # noqa: BLE001
-        msg = str(error)
-        # 已经收藏过不算失败
-        if '已经' in msg or 'already' in msg.lower():
-            out({'ok': True, 'already': True})
-        out({'ok': False, 'error': msg[:200]})
+        code, kind, msg = _classify(error)
+        # 已经收藏过不算失败：幂等判断保留子串兜底，但优先按 code 分好的类走
+        if kind == 'dup':
+            out({'ok': True, 'already': True, 'code': code, 'kind': kind})
+        out({'ok': False, 'error': msg[:200], 'code': code, 'kind': kind})
     out({'ok': True})
 
 
@@ -87,7 +117,9 @@ def main():
         else:
             out({'ok': False, 'error': '子命令不认识：' + ' '.join(args)})
     except Exception as error:  # noqa: BLE001
-        out({'ok': False, 'error': str(error)[:300]})
+        # P3-32: 兜底出口同样带 code/kind，宿主不用再猜错误文本
+        code, kind, msg = _classify(error)
+        out({'ok': False, 'error': msg[:300], 'code': code, 'kind': kind})
 
 
 if __name__ == '__main__':

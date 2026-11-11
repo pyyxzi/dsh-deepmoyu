@@ -149,8 +149,10 @@ def _guard_blocked(reservation, kind="send", why=""):
         return json.dumps({
             "success": False, "already_replied": True, "retry_blocked": True,
             "guard_status": "unknown", "seen_at": at,
+            "slot_key": reservation.get("key", ""),
             "error": "上一次发出去的结果不确定（超时 / 回执不明）—— 不许自动重发",
-            "hint": "先自己去评论区 / 私信里看一眼到底发出去没有；确认没有，再手工重试",
+            "hint": ("先自己去评论区 / 私信里看一眼到底发出去没有；**确认没发出去**后，用 "
+                     "bili_guard_status(release=['这条的 slot_key']) 人工解除 unknown 槽位（P1-2），再重试"),
         }, ensure_ascii=False)
     if status == "pending":
         return json.dumps({
@@ -165,6 +167,18 @@ def _guard_blocked(reservation, kind="send", why=""):
         "error": why or "这件事已经做过了（永久账本里有）",
         "hint": "已经回过了，别再回一遍 —— 重复发言最容易触发风控",
     }, ensure_ascii=False)
+
+
+# P3-46: 守卫库被锁（SQLite busy>15s）时的统一 fail-closed 话术，措辞对齐 bili_subtitle
+# 的「判重账本不可用」兜底回执 —— 原始 traceback 绝不能直接漏给模型。
+_GUARD_LOCKED_ERROR = "判重账本暂不可用（可能被锁），先别重发；稍后用 bili_guard_status 核对坑位状态"
+
+
+def _guard_unavailable(exc) -> str:
+    """占坑阶段守卫异常 → JSON 错误回执（此时还没发任何东西，可以稍后重试）。"""
+    return json.dumps({"success": False, "error": _GUARD_LOCKED_ERROR,
+                       "detail": f"{type(exc).__name__}: {exc}",
+                       "guard_status": "not_sent", "retry_blocked": False}, ensure_ascii=False)
 
 
 async def _guarded_send(guard, reservation, runner, record=None):
@@ -196,7 +210,13 @@ async def _guarded_send(guard, reservation, runner, record=None):
             return None
 
     def _rejected(error, result, code):
-        pace = guard.reject_send(reservation, code)
+        try:
+            pace = guard.reject_send(reservation, code)
+        except Exception as exc:
+            # P3-46: 拒绝落账失败（库被锁）不能裸抛 —— 事务已回滚、坑位留在 pending 正好挡重发，
+            # 回执转 fail-closed（guard_status=unknown ⇒ 调用方会回「别自动重发」的话术）。
+            return {"guard_status": "unknown", "error": _GUARD_LOCKED_ERROR, "retry_blocked": True,
+                    "result": result, "code": code, "ledger_detail": f"{type(exc).__name__}: {exc}"}
         out = {"guard_status": "rejected", "error": error, "retry_blocked": False,
                "result": result, "code": code}
         if code == 49044:
@@ -232,7 +252,13 @@ async def _guarded_send(guard, reservation, runner, record=None):
         return {"guard_status": "unknown", "error": str(result.get("error") or "没有确定的回执"),
                 "retry_blocked": True, "result": result, "code": code}
 
-    guard.commit_send(reservation, record)
+    try:
+        guard.commit_send(reservation, record)
+    except Exception as exc:
+        # P3-46: 落账失败（库被锁 >15s）不能裸抛 —— 发送本身可能已成功，坑位留在 pending
+        # 挡住重发；回执转 fail-closed JSON 并指引去 bili_guard_status 核对，而不是 traceback。
+        return {"guard_status": "unknown", "error": _GUARD_LOCKED_ERROR, "retry_blocked": True,
+                "result": result, "code": None, "ledger_detail": f"{type(exc).__name__}: {exc}"}
     return {"guard_status": "sent", "error": "", "retry_blocked": False, "result": result, "code": None}
 
 
@@ -407,10 +433,13 @@ async def bili_login_check() -> str:
 
     elif state == QrCodeLoginEvents.TIMEOUT:
         _login_session = None
-        # 清理二维码文件
+        # 清理二维码文件（P3-47: Windows 下 PNG 被看图程序占用会 PermissionError，别让它炸回执）
         qr_file = Path(__file__).parent / "qrcode_login.png"
         if qr_file.exists():
-            qr_file.unlink()
+            try:
+                qr_file.unlink()
+            except OSError as e:
+                print(f"[bili-mcp] 二维码文件删不掉（{type(e).__name__}: {e}）：{qr_file}", file=sys.stderr)
         return json.dumps({
             "status": "timeout",
             "message": "二维码已过期，请重新调用 bili_login 生成新二维码",
@@ -431,10 +460,13 @@ async def bili_login_check() -> str:
             }, f)
         os.replace(tmp_cred, CRED_FILE)
         _login_session = None
-        # 清理二维码文件
+        # 清理二维码文件（P3-47: 删失败只记 stderr —— DONE 分支反复重入比带着孤儿 PNG 重坏了）
         qr_file = Path(__file__).parent / "qrcode_login.png"
         if qr_file.exists():
-            qr_file.unlink()
+            try:
+                qr_file.unlink()
+            except OSError as e:
+                print(f"[bili-mcp] 二维码文件删不掉（{type(e).__name__}: {e}）：{qr_file}", file=sys.stderr)
         return json.dumps({
             "status": "done",
             "message": "登录成功！凭证已保存，现在可以使用所有B站功能了",
@@ -992,13 +1024,17 @@ async def bili_reply(bvid: str, text: str, rpid: IdInput = "0", root: IdInput = 
                            "guard_status": "not_sent", "retry_blocked": False}, ensure_ascii=False)
 
     # ② 占坑：同一条评论（rpid）全机器只允许发一次；新评论按 BV 也只允许留一条
-    guard = _get_runtime_guard()
     try:
         key = key_video_reply(bvid, rpid)
     except Exception as e:
         return json.dumps({"success": False, "error": str(e),
                            "guard_status": "not_sent", "retry_blocked": False}, ensure_ascii=False)
-    reservation = guard.reserve_send(key, cross_channel_keys(rpid))
+    try:
+        guard = _get_runtime_guard()
+        # P3-46: SQLite busy>15s 的原始异常不能外泄 —— 包成 fail-closed JSON 回执
+        reservation = guard.reserve_send(key, cross_channel_keys(rpid))
+    except Exception as e:
+        return _guard_unavailable(e)
     if not reservation.get("allowed"):
         return _guard_blocked(reservation, "send",
                               "这条评论已经回过了" if rpid != "0" else "这条视频已经留过一条评论了")
@@ -1193,10 +1229,14 @@ async def bili_send_dynamic(
 
     text = text.strip()
     image_paths = [str(path).strip() for path in (images or [])[:9] if str(path or "").strip()]
-    guard = _get_runtime_guard()
-    reservation = guard.reserve_send(key_moment("dynamic", {
-        "text": text, "images": image_paths, "topic_id": str(topic_id), "schedule_time": schedule_time,
-    }))
+    try:
+        guard = _get_runtime_guard()
+        # P3-46: 占坑异常包成 fail-closed JSON，原始 traceback 不外泄
+        reservation = guard.reserve_send(key_moment("dynamic", {
+            "text": text, "images": image_paths, "topic_id": str(topic_id), "schedule_time": schedule_time,
+        }))
+    except Exception as exc:
+        return _guard_unavailable(exc)
     if not reservation["allowed"]:
         return _guard_blocked(reservation)
     try:
@@ -1272,6 +1312,7 @@ async def bili_upload_video(
 
     Returns:
         上传结果，包含BV号
+    ⚠️ 直跑无判重账本与节奏闸——仅限手动运行，自动化请走插件的 bili_pv（P2-17）
     """
     # ---- 参数校验 ----
     if not video_path or not video_path.strip():
@@ -1333,11 +1374,19 @@ async def bili_upload_video(
         async def on_event(data: dict):
             progress_info["phase"] = str(data)
 
-        result = await uploader.start()
+        # P2-17: uploader.start() 没有超时的话，挂死的上传在客户端超时后仍在后台继续，
+        # 公开投稿完成却无任何记录 —— 这里给 15 分钟墙钟，超时明确报错。
+        result = await asyncio.wait_for(uploader.start(), timeout=900)
         return json.dumps({
             "success": True,
             "message": "视频上传成功",
             "data": result if isinstance(result, dict) else str(result),
+        }, ensure_ascii=False)
+    except asyncio.TimeoutError:
+        return json.dumps({
+            "success": False,
+            "error": "投稿上传超时（15 分钟）——网络或 B站 分片接口卡住；注意客户端超时后上传可能仍在后台进行，重试前先到创作中心确认有没有半截投稿",
+            "last_phase": progress_info.get("phase", "unknown") if "progress_info" in dir() else "init",
         }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({
@@ -1375,6 +1424,7 @@ async def bili_upload_video_multi(
 
     Returns:
         上传结果
+    ⚠️ 直跑无判重账本与节奏闸——仅限手动运行，自动化请走插件的 bili_pv（P2-17）
     """
     cred = get_cred()
 
@@ -1418,11 +1468,17 @@ async def bili_upload_video_multi(
 
         uploader = VideoUploader(pages=pages, meta=meta, credential=cred)
 
-        result = await uploader.start()
+        # P2-17: 同 bili_upload_video —— 15 分钟墙钟，挂死的上传不能在后台无人知晓地继续
+        result = await asyncio.wait_for(uploader.start(), timeout=900)
         return json.dumps({
             "success": True,
             "message": f"多P视频上传成功（共{len(pages)}P）",
             "data": result if isinstance(result, dict) else str(result),
+        }, ensure_ascii=False)
+    except asyncio.TimeoutError:
+        return json.dumps({
+            "success": False,
+            "error": "投稿上传超时（15 分钟）——网络或 B站 分片接口卡住；注意客户端超时后上传可能仍在后台进行，重试前先到创作中心确认有没有半截投稿",
         }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
@@ -1450,10 +1506,14 @@ async def bili_send_opus(
         发布结果
     """
     image_paths = [str(path).strip() for path in (images or []) if str(path or "").strip()]
-    guard = _get_runtime_guard()
-    reservation = guard.reserve_send(key_moment("opus", {
-        "title": title, "content": content, "images": image_paths, "category_id": str(category_id),
-    }))
+    try:
+        guard = _get_runtime_guard()
+        # P3-46: 占坑异常包成 fail-closed JSON，原始 traceback 不外泄
+        reservation = guard.reserve_send(key_moment("opus", {
+            "title": title, "content": content, "images": image_paths, "category_id": str(category_id),
+        }))
+    except Exception as exc:
+        return _guard_unavailable(exc)
     if not reservation["allowed"]:
         return _guard_blocked(reservation)
     try:
@@ -1798,11 +1858,14 @@ async def bili_favorite_lists(uid: int = 0) -> str:
     """
     cred = get_cred()
     if uid == 0:
-        # 从凭证获取自己的UID
-        import json as _json
-        with open(CRED_FILE) as f:
-            data = _json.load(f)
-        uid = int(data.get("dedeuserid", 0))
+        # 从凭证获取自己的UID（P3-43: 改走硬化的 load_credential —— 原来裸 open 读凭证文件，
+        # dedeuserid 空串 → ValueError、文件中途被删 → FileNotFoundError，整工具裸 traceback）
+        own = load_credential()
+        dede = str(own.dedeuserid).strip() if own else ""
+        if not dede.isdigit():
+            return json.dumps({"error": "未登录或凭证不可读：拿不到自己的 UID（dedeuserid 为空或缺失），"
+                                        "请先调用 bili_login 重新扫码登录"}, ensure_ascii=False)
+        uid = int(dede)
 
     result = await favorite_list.get_video_favorite_list(uid=uid, credential=cred)
     fav_lists = []
@@ -1890,13 +1953,17 @@ async def bili_send_message(receiver_uid: IdInput, text: str, msg_seqno: IdInput
         return json.dumps({"success": False, "error": str(e),
                            "guard_status": "not_sent", "retry_blocked": False}, ensure_ascii=False)
 
-    guard = _get_runtime_guard()
     try:
         key = key_dm_reply(receiver_uid, body, msg_seqno)
     except Exception as e:
         return json.dumps({"success": False, "error": str(e),
                            "guard_status": "not_sent", "retry_blocked": False}, ensure_ascii=False)
-    reservation = guard.reserve_send(key, legacy_dm_keys(msg_seqno))
+    try:
+        guard = _get_runtime_guard()
+        # P3-46: 占坑异常（含账本库打不开）包成 fail-closed JSON，原始 traceback 不外泄
+        reservation = guard.reserve_send(key, legacy_dm_keys(msg_seqno))
+    except Exception as e:
+        return _guard_unavailable(e)
     if not reservation.get("allowed"):
         return _guard_blocked(reservation, "send", f"这条私信已经回过了（UID:{receiver_uid}）")
 
@@ -2483,7 +2550,6 @@ async def bili_reply_opus(opus_id: IdInput, text: str, rpid: IdInput = "0", root
         return json.dumps({"success": False, "error": f"取不到这条动态的评论区：{e}",
                            "guard_status": "not_sent", "retry_blocked": False}, ensure_ascii=False)
 
-    guard = _get_runtime_guard()
     try:
         key = key_opus_reply(oid_str, rpid)
     except Exception as e:
@@ -2493,7 +2559,12 @@ async def bili_reply_opus(opus_id: IdInput, text: str, rpid: IdInput = "0", root
     # 否则升级那一刻，昨天回过的那些今天会再回一遍。
     # 🔁 2026-10-25（使用者报「回一个人一条评论两条消息」）：**视频通道回过的同号 rpid 也认**
     #    —— 同一条评论只回一次，不管上一次走的是 bili_reply 还是 bili_reply_opus。
-    reservation = guard.reserve_send(key, [*legacy_opus_keys(rpid, root), *cross_channel_keys(rpid)])
+    try:
+        guard = _get_runtime_guard()
+        # P3-46: 占坑异常（含账本库打不开）包成 fail-closed JSON，原始 traceback 不外泄
+        reservation = guard.reserve_send(key, [*legacy_opus_keys(rpid, root), *cross_channel_keys(rpid)])
+    except Exception as e:
+        return _guard_unavailable(e)
     if not reservation.get("allowed"):
         return _guard_blocked(reservation, "send", "这条动态评论已经回过了")
 
@@ -2689,24 +2760,37 @@ async def bili_my_video_comments(num: int = 10, videos: int = 3) -> str:
 # ========== Tool: 判重账本状态（只读） ==========
 
 @tool()
-async def bili_guard_status(bvids: list = None, limit: int = 200) -> str:
+async def bili_guard_status(bvids: list = None, limit: int = 200, release: list = None) -> str:
     """
     看一眼**永久判重账本**（SQLite，重启不丢、跨进程共用）
 
     Args:
         bvids: 想核对的 BV 号列表（给了就只查这几条；不给就返回最近刷过的一批）
         limit: 最多返回几条（默认 200，上限 500）
+        release: 【unknown 槽位的人工解除入口】要解除的坑位 key 列表。只在人工核实
+                 「那次结果不明的发送确实没发出去」之后才用 —— 只有 status='unknown'
+                 的行会被删（pending/sent 绝不碰）；非空时本工具不再纯只读。
 
     Returns:
         counts（seen / sent / pending / unknown 各多少）、seenVideos（已刷过的 BV）、
-        activeReads（正在读的）、recentSends（最近发过什么 —— 只有键和元信息，**不含正文**）
+        activeReads（正在读的）、recentSends（最近发过什么 —— 只有键和元信息，**不含正文**）；
+        传了 release 时额外带 released：每个 key 是否真的解除了一行
     """
     guard = _get_runtime_guard()
+    released = []
+    if release:
+        # P1-2: unknown 槽位的人工解除入口 —— release_unknown 只删 unknown 行，
+        # 误传 pending/sent 的 key 时返回 false 并原样保留那行，绝不误删。
+        for key in release:
+            try:
+                released.append({"key": str(key), "released": bool(guard.release_unknown(str(key)))})
+            except Exception as e:
+                released.append({"key": str(key), "released": False, "error": str(e)})
     try:
         data = guard.snapshot(bvids=bvids, limit=limit)
     except Exception as e:
-        return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
-    return json.dumps({"ok": True, **data}, ensure_ascii=False)
+        return json.dumps({"ok": False, "error": str(e), "released": released}, ensure_ascii=False)
+    return json.dumps({"ok": True, "released": released, **data}, ensure_ascii=False)
 
 
 # ========== 启动 ==========
