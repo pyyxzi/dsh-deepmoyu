@@ -49,7 +49,7 @@ jobs:
     timeout-minutes: 25
     env:
       CHROME_PATH: /usr/bin/google-chrome
-      QA_OUTPUT_DIR: ${{ runner.temp }}/deepmoyu-browser
+      QA_OUTPUT_DIR: ${{ github.workspace }}/.qa-output/deepmoyu-browser
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
