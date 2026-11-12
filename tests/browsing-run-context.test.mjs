@@ -81,7 +81,7 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     const changed = await request('/config', { browseRecentDays: 0, browseSort: 'pubdate', browseMinMinutes: 0, browseMaxMinutes: 0, browseAvoidKeywords: ['新避雷'], keywords: ['旅行'] })
     assert.equal(changed.ok, true)
     const found = await execute(first, 'bili_search', { keyword: '科技' })
-    assert.deepEqual(calls.find(row => row.name === 'bili_search').args, { keyword: '科技', num: 10, order: 'click', days: 7 })
+    assert.deepEqual(calls.find(row => row.name === 'bili_search').args, { keyword: '科技', num: 20, order: 'click', days: 7 })
     assert.deepEqual(found.fresh.map(row => row.bvid), [AVOID, B, A])
     assert.equal(found.preference_summary.settings.browseRecentDays, 7)
     assert.deepEqual(found.preference_summary.settings.browseAvoidKeywords, ['剧透'])
@@ -89,6 +89,12 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     const secondPage = await execute(first, 'bili_search', { keyword: '科技', page: 2 })
     assert.equal(calls.filter(row => row.name === 'bili_search').at(-1).args.page, 2, 'paging reaches the platform instead of repeating the first request')
     assert.equal(secondPage.browse_progress, undefined, 'unchanged candidate guidance is not repeated in tool context')
+    for (const num of [1, 7, 50]) {
+      await execute(first, 'bili_search', { keyword: '科技', num })
+      assert.equal(calls.filter(row => row.name === 'bili_search').at(-1).args.num, num, 'explicit candidate counts are preserved')
+    }
+    await execute(first, 'bili_search', { keyword: '科技', num: 80 })
+    assert.equal(calls.filter(row => row.name === 'bili_search').at(-1).args.num, 50, 'the existing bounded response size remains enforced')
     assert.deepEqual(progressOf(prompt(first)).pendingBvids, [AVOID, B, A], 'overlapping pages preserve the unfinished candidates')
     const beforeInvalidPages = calls.length
     for (const page of [true, '2', 0, 51, 1.5]) assert.equal((await execute(first, 'bili_search', { keyword: '科技', page })).ok, false)
@@ -102,7 +108,7 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     assert.equal(another.ok, true)
     assert.equal(another.browsePreferences.browseRecentDays, 0)
     const otherFound = await execute(second, 'bili_search', { keyword: '旅行' })
-    assert.deepEqual(calls.filter(row => row.name === 'bili_search').at(-1).args, { keyword: '旅行', num: 10, order: 'pubdate', days: 0 })
+    assert.deepEqual(calls.filter(row => row.name === 'bili_search').at(-1).args, { keyword: '旅行', num: 20, order: 'pubdate', days: 0 })
     assert.deepEqual(otherFound.fresh.map(row => row.bvid), [SPOILER, A, OLD], 'second run uses new preferences while respecting shared seen history')
     assert.equal(otherFound.browse_progress.recentReadCount, 0)
     assert.deepEqual(progressOf(prompt(first)).pendingBvids, [AVOID, A], 'second chat never overwrites first chat progress')

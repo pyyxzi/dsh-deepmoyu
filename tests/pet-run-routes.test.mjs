@@ -20,7 +20,8 @@ test('pet routes isolate defaults, enforce session budgets and safely stop backg
     if (type === 'approval/policy') state.approval = data.policy
     permissionState.set(id, state)
   } })
-  const scopedTools = () => ({ register() { return () => {} } })
+  const toolSpecs = new Map(), promptSections = new Map()
+  const scopedTools = () => ({ register(spec) { toolSpecs.set(spec.name, spec); return () => {} } })
   const a = { id: 'fish-a', status: 'running', session: session('fish-a'), ctx: { tools: scopedTools() } }
   const b = { id: 'fish-b', status: 'idle', session: session('fish-b'), ctx: { tools: scopedTools() } }
   permissionState.set(a.id, { sandbox: 'workspace-write', approval: 'ask' })
@@ -38,11 +39,12 @@ test('pet routes isolate defaults, enforce session budgets and safely stop backg
   }
   const services = {
     dshHomePath: (...parts) => join(root, ...parts), goals,
+    systemPrompt: { section(spec) { promptSections.set(spec.name, spec); return () => promptSections.delete(spec.name) } },
     llm: { listProviders: () => ['explicit', 'saved', 'other'].map(id => ({ id })) },
     agents: { get: id => agents.find(a => a.id === id), list: () => agents },
     sessionController: { create: async request => { createRequests.push(request); workspace.sessionIds.push(a.id); return { sessionId: a.id } }, agents: { selectionFor: agent => selections.get(agent.id) } },
     workspaceRegistry: { list: () => [workspace], get: id => id === workspace.id ? workspace : undefined, resolveByPath: async path => path === root ? workspace : undefined },
-    sessionProjections: { stateOf(session, key) { if (key === 'agentPreset') return 'dafeiyu'; if (key === 'tokenUsage') return { totals: { uncachedInputTokens: usage.get(session) || 0 } }; if (key === 'permissions') return permissionState.get(agents.find(a => a.session === session)?.id) } },
+    sessionProjections: { stateOf(session, key) { if (key === 'agentPreset') return session.header.agentPreset; if (key === 'tokenUsage') return { totals: { uncachedInputTokens: usage.get(session) || 0 } }; if (key === 'permissions') return permissionState.get(agents.find(a => a.session === session)?.id) } },
   }
   const ctx = { get: key => services[key], logger: { info() {} }, tools: { register() { throw new Error('GLOBAL_TOOL_REGISTRATION_FORBIDDEN') } }, settings: { describe: () => [] },
     on(name, fn) { events.set(name, fn); return () => events.delete(name) },
@@ -69,6 +71,8 @@ test('pet routes isolate defaults, enforce session budgets and safely stop backg
   try {
     apply(ctx, {})
     await new Promise(resolve => setImmediate(resolve))
+    const oldCharter = '# 使用者保留的旧章程\n每次挑完必须解释理由，每轮都汇报下一步。\n'
+    writeFileSync(join(home, 'duty.md'), oldCharter)
     const created = await request('/pet/session-new', { sourceSessionId: b.id, workspaceId: workspace.id })
     assert.equal(created.ok, true); assert.equal(created.sessionId, a.id); assert.equal(created.workspaceId, workspace.id)
     assert.deepEqual(createRequests, [{ agentPreset: 'dafeiyu', workspaceId: workspace.id }])
@@ -77,6 +81,28 @@ test('pet routes isolate defaults, enforce session budgets and safely stop backg
     const started = await request('/pet/start', { mode: 'session', sessionId: a.id, model: 'explicit/session', tokenBudget: 100, maxRounds: 23, durationMinutes: 1 })
     assert.equal(started.ok, true); assert.equal(started.maxRounds, 23); assert.equal(started.model, 'explicit/session')
     assert.equal(started.tokenBudget, 100); assert.equal(started.durationEnforcement, 'wall-clock-pause')
+    const promptSection = promptSections.get('bili:dafeiyu')
+    assert.equal(promptSection.interpolate, false)
+    const firstPrompt = promptSection.text({ agent: a })
+    assert.match(firstPrompt, /当前全局人格：内置大肥鱼/)
+    assert.match(firstPrompt, /新开会话刷.*普通消息、工具前后接话/)
+    assert.match(firstPrompt, /被逗乐就乐.*看到可爱的会偏心/)
+    assert.match(firstPrompt, /不强制每条或每轮发言/)
+    assert.match(goals.get(a).objective, /【会话里的话】/)
+    assert.match(goals.get(a).objective, /旧目标、旧章程要求每次挑完解释理由.*不再适用/)
+    assert.match(firstPrompt, /旧目标、旧章程要求每次挑完解释理由.*不再适用/)
+    assert.equal(readFileSync(join(home, 'duty.md'), 'utf8'), oldCharter, 'refreshing the dialogue contract must not rewrite a personal charter')
+    const say = toolSpecs.get('bili_say')
+    assert.match(say.description, /可选.*本地/)
+    assert.match(say.description, /当前全局人格/)
+    assert.doesNotMatch(say.description, /必须|说一句为什么/)
+    await request('/config', { persona: 'CUSTOM_BROWSING_VOICE: 冷静简洁，不闲聊。' })
+    const updatedPrompt = promptSection.text({ agent: a })
+    assert.match(updatedPrompt, /CUSTOM_BROWSING_VOICE/)
+    assert.match(updatedPrompt, /是否闲聊完全按它来/)
+    assert.doesNotMatch(updatedPrompt, /你是大肥鱼，也叫鲸鱼摸鱼|被逗乐就乐|看到可爱的会偏心/)
+    assert.equal(promptSection.text({ agent: { id: 'ordinary', session: { header: { agentPreset: 'standard' } } } }), '')
+    await request('/config', { persona: '' })
     const firstDeadline = timeouts.find(t => t.ms > 59000 && t.ms <= 60000)
     assert.ok(firstDeadline)
     let state = await request('/feiyu', {}, 'GET'); assert.equal(state.sessionId, a.id); assert.equal(state.tokens.budget, 100)

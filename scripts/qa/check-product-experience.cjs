@@ -125,6 +125,40 @@ async function main() {
     must(await browser.driver.evaluate("document.querySelector('[data-bd-pet-body]').scrollWidth<=document.querySelector('[data-bd-pet-body]').clientWidth+1"), 'Mobile content must not overflow')
     await browser.screenshot(path.join(output, 'dashboard-mobile.png'))
 
+    const defaultCases = [
+      { name: 'fresh', config: {}, expected: { perDay: 20, momentPerDay: 3, rounds: 128, minutes: 60 } },
+      { name: 'existing', config: { perDay: 5, momentPerDay: 1, maxRounds: 64, sessionMaxRounds: 16, backgroundMinutes: 45 }, expected: { perDay: 5, momentPerDay: 1, rounds: 16, minutes: 45 } },
+      { name: 'explicit-zero', config: { perDay: 0, momentPerDay: 0, maxRounds: 7, sessionMaxRounds: 3, backgroundMinutes: 1 }, expected: { perDay: 0, momentPerDay: 0, rounds: 3, minutes: 1 } },
+    ]
+    for (const row of defaultCases) {
+      const defaultsProbe = 'const expected=' + JSON.stringify(row.expected) + ';' + String.raw`
+        let ran=0;const check=(yes,message)=>{if(!yes)throw Error(message);ran++};
+        const posts=()=>F.requests.filter(r=>r.path.endsWith('/config')&&r.method==='POST');
+        const resources=document.querySelector('[data-bd-run-resources]');await F.click(resources.querySelector('summary'));
+        check(resources.querySelectorAll('input')[0].value===String(expected.rounds),'Session rounds use fresh defaults or the saved mode override');
+        check(resources.querySelectorAll('input')[1].value==='0','Session token budget stays unlimited by default');
+        await F.click(F.textButton('后台与定时'));
+        const background=document.querySelector('[data-bd-settings-page=background]');
+        check(background.querySelector('input[type=number]').value===String(expected.minutes),'Background minutes use fresh defaults or the exact saved value');
+        check(background.querySelector('[data-bd-run-resources] input').value==='0','Background token budget stays unlimited by default');
+        await F.click(document.querySelector('#bd-tab-basic'));
+        check(document.querySelector('[aria-label="每日精选上限"]').value===String(expected.perDay),'Daily picks preserve explicit zero and old limits');
+        await F.click(document.querySelector('#bd-tab-speech'));
+        const moment=[...document.querySelectorAll('[data-bd-toggle]')].find(n=>n.textContent.includes('自动发布动态')).querySelector('button');
+        check(moment.getAttribute('aria-pressed')==='false'&&!document.querySelector('[aria-label="每日动态上限"]'),'Larger numeric defaults do not enable dynamic sending');
+        check(posts().length===0,'Navigating defaults does not persist or migrate values');
+        await F.click(moment);
+        check(document.querySelector('[aria-label="每日动态上限"]').value===String(expected.momentPerDay),'Dynamic cap appears correctly when the isolated fake toggle is opened');
+        check(JSON.stringify(posts().at(-1).body)==='{"autoMoment":true}','Toggling the synthetic permission does not rewrite numeric limits');
+        check(!F.requests.some(r=>/send_dynamic|send_dm|bili_reply/.test(r.path))&&!F.unknownRequests.length,'Defaults acceptance performs no platform sending');
+        F.finish({ok:true,checks:ran});`
+      const defaultsFile = path.join(output, 'defaults-' + row.name + '.html')
+      fs.writeFileSync(defaultsFile, makeFixturePage({ clientSource, status: { ...status, config: row.config, feiyu: { active: false } }, tab: 'run', probe: defaultsProbe }))
+      await browser.size(1280,900); await browser.navigate(defaultsFile); await browser.until("document.title==='fixture done'", 'defaults ' + row.name)
+      const result = await browser.driver.evaluate('JSON.parse(document.getElementById("fixture-result").textContent)')
+      must(result.errors.length===0,'defaults '+row.name+': '+JSON.stringify(result));must(result.ok===true,'defaults '+row.name+' completed');addProbe(result)
+    }
+
     const personaProbe = String.raw`
       let ran=0;const check=(yes,message)=>{if(!yes)throw Error(message);ran++};
       const card=()=>document.querySelector('[data-bd-persona-card]'),input=()=>card().querySelector('textarea'),save=()=>F.textButton('保存全局人格'),posts=()=>F.requests.filter(row=>row.path.endsWith('/config')&&row.method==='POST');

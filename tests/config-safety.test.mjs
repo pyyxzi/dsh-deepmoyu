@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { apply } from '../index.js'
+import { apply, Config } from '../index.js'
 
 function fixture(root) {
   const cleanups = []; let handler
@@ -28,6 +28,42 @@ async function withHome(run) {
   try { await run({ home, add: () => { const f = fixture(root); fixtures.push(f); return f }, config: () => JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')) }) }
   finally { for (const f of fixtures.reverse()) await f.close(); rmSync(root, { recursive: true, force: true }) }
 }
+
+test('fresh schema and real config route agree on larger defaults without enabling sending or schedules', async () => {
+  const defaults = { perDay: 20, momentPerDay: 3, maxRounds: 128, sessionMaxRounds: 128, backgroundMinutes: 60,
+    tokenBudget: 0, sessionTokenBudget: 0, backgroundTokenBudget: 0, totalTokenBudget: 0, sessionMinutes: 0,
+    autoComment: false, replyToComments: false, autoReplyDm: false, autoMoment: false, scheduleEnabled: false, peakValley: false }
+  for (const [key, expected] of Object.entries(defaults)) assert.equal(Config.dict[key].meta.default, expected, 'schema default: ' + key)
+  const root = mkdtempSync(join(tmpdir(), 'fish-new-defaults-')), f = fixture(root)
+  try {
+    const result = await f.begin('/config', { method: 'GET' }).promise
+    assert.equal(result.status, 200)
+    for (const [key, expected] of Object.entries(defaults)) assert.equal(result.body.config[key], expected, 'fresh config: ' + key)
+    const saved = await f.begin('/config').finish({ reportLevel: 'brief' })
+    assert.equal(saved.status, 200)
+    for (const [key, expected] of Object.entries(defaults)) assert.equal(saved.body.config[key], expected, 'unrelated save preserves: ' + key)
+  } finally { await f.close(); rmSync(root, { recursive: true, force: true }) }
+})
+
+test('a settings upgrade preserves old explicit limits, disabled caps, and independent mode values', async () => {
+  for (const limits of [
+    { perDay: 5, momentPerDay: 1, maxRounds: 64, sessionMaxRounds: 16, backgroundMinutes: 45 },
+    { perDay: 0, momentPerDay: 0, maxRounds: 7, sessionMaxRounds: 3, backgroundMinutes: 1 },
+  ]) {
+    const root = mkdtempSync(join(tmpdir(), 'fish-old-defaults-')), home = join(root, 'bili-duty')
+    mkdirSync(home); writeFileSync(join(home, 'config.json'), JSON.stringify({ ...limits, learnAutoReview: false, idleChatter: false,
+      autoComment: false, replyToComments: false, autoReplyDm: false, autoMoment: false, tokenBudget: 0, totalTokenBudget: 0 }))
+    const f = fixture(root)
+    try {
+      const result = await f.begin('/config', { method: 'GET' }).promise
+      for (const [key, expected] of Object.entries(limits)) assert.equal(result.body.config[key], expected, 'stored config: ' + key)
+      const saved = await f.begin('/config').finish({ reportLevel: 'brief' })
+      for (const [key, expected] of Object.entries(limits)) assert.equal(saved.body.config[key], expected, 'stored value survives unrelated patch: ' + key)
+      assert.equal(saved.body.config.autoMoment, false); assert.equal(saved.body.config.autoComment, false)
+      assert.equal(saved.body.config.sessionTokenBudget, 0); assert.equal(saved.body.config.backgroundTokenBudget, 0)
+    } finally { await f.close(); rmSync(root, { recursive: true, force: true }) }
+  }
+})
 
 test('two host instances merge disjoint PATCHes inside the config lock, including defaults and explicit ownership', async () => {
   await withHome(async ({ add, config }) => {

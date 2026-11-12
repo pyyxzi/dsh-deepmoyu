@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { migrateRunSettings, clampRunSettings, resolveRunOptions, scheduleRunDeadline } from '../lib/run-settings.mjs'
+import { RUN_DEFAULTS, migrateRunSettings, clampRunSettings, resolveRunOptions, scheduleRunDeadline } from '../lib/run-settings.mjs'
+
+test('fresh runs have room to continue while token budgets stay explicitly unlimited', () => {
+  const session = resolveRunOptions({}, 'session'), background = resolveRunOptions({}, 'background')
+  assert.equal(RUN_DEFAULTS.sessionMaxRounds, 128)
+  assert.equal(session.maxRounds, 128); assert.equal(session.durationMinutes, 0); assert.equal(session.tokenBudget, 0)
+  assert.equal(background.durationMinutes, 60); assert.equal(background.tokenBudget, 0)
+  assert.equal(background.maxRounds, 1, 'background duration is enforced by wall clock and relay, not a goal round count')
+})
 
 test('legacy values only migrate missing mode keys', () => {
   const migrated = migrateRunSettings({ modelId: 'old/model', tokenBudget: 120000, maxRounds: 12, sessionModelId: '', backgroundTokenBudget: 0 })
@@ -9,7 +17,18 @@ test('legacy values only migrate missing mode keys', () => {
   assert.equal(migrated.sessionTokenBudget, 120000)
   assert.equal(migrated.backgroundTokenBudget, 0)
   assert.equal(migrated.sessionMaxRounds, 12)
-  assert.equal(migrated.backgroundMinutes, 45)
+  assert.equal(migrated.backgroundMinutes, 60)
+})
+
+test('existing mode limits and explicit zero budgets retain their exact values', () => {
+  const config = { maxRounds: 64, tokenBudget: 500, sessionMaxRounds: 7, sessionTokenBudget: 0, sessionMinutes: 0,
+    backgroundMinutes: 45, backgroundTokenBudget: 0 }
+  const before = structuredClone(config), migrated = migrateRunSettings(config)
+  assert.equal(migrated.sessionMaxRounds, 7); assert.equal(migrated.backgroundMinutes, 45)
+  assert.equal(migrated.sessionTokenBudget, 0); assert.equal(migrated.backgroundTokenBudget, 0)
+  assert.equal(resolveRunOptions(config, 'session', { maxRounds: 3 }).maxRounds, 3)
+  assert.equal(resolveRunOptions(config, 'background', { durationMinutes: 2 }).durationMinutes, 2)
+  assert.deepEqual(config, before)
 })
 
 test('mode options remain independent and explicit rounds are not inferred from tokens', () => {

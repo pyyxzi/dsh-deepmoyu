@@ -2980,17 +2980,17 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         if (!cfg) return
         if (wsDir === null) setWsDir(cfg.workspace || '')
         if (rl === null) setRl(cfg.reportLevel || 'full')
-        if (perDay === null) setPerDay(String(cfg.perDay ?? 5))
+        if (perDay === null) setPerDay(String(cfg.perDay ?? 20))
         if (dmUid === null) setDmUid(cfg.dmUid ? String(cfg.dmUid) : '')
         if (dmMode === null) setDmMode(cfg.dmMode || 'off')
         if (persona === null) setPersona(cfg.persona || '')
         if (momentStyle === null) setMomentStyle(cfg.momentStyle || '随心情')
         if (interactionStyle === null) setInteractionStyle(cfg.interactionStyle || 'companion')
-        if (momentPerDay === null) setMomentPerDay(String(cfg.momentPerDay ?? 1))
+        if (momentPerDay === null) setMomentPerDay(String(cfg.momentPerDay ?? 3))
         if (modelId === null) setModelId(cfg.modelId || '')
         if (tokenBudget === null) setTokenBudget(String(cfg.tokenBudget ?? 0))
         if (totalTokenBudget === null) setTotalTokenBudget(String(cfg.totalTokenBudget ?? 0))
-        if (maxRounds === null) setMaxRounds(String(cfg.maxRounds ?? 64))
+        if (maxRounds === null) setMaxRounds(String(cfg.maxRounds ?? 128))
                  if (paceFactor === null) setPaceFactor(String(cfg.paceFactor ?? 1))
          if (scheduleAllDay === null) setScheduleAllDay(Boolean(cfg.scheduleAllDay))
          if (scheduleStart === null) setScheduleStart(String(cfg.scheduleStart || '18:00'))
@@ -3418,8 +3418,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         const saved = {
           model: cfg[prefix + 'ModelId'] ?? cfg.modelId ?? '',
           tokenBudget: cfg[prefix + 'TokenBudget'] ?? cfg.tokenBudget ?? 0,
-          maxRounds: cfg.sessionMaxRounds ?? cfg.maxRounds ?? 64,
-          durationMinutes: cfg[prefix + 'Minutes'] ?? (mode === 'session' ? 0 : 45),
+          maxRounds: cfg.sessionMaxRounds ?? cfg.maxRounds ?? 128,
+          durationMinutes: cfg[prefix + 'Minutes'] ?? (mode === 'session' ? 0 : 60),
           /* ⭐ 后台「时段」任务：填了 start–end 就在段内一直刷（跨午夜算到次日），留空才退回刷一轮 */
           windowStart: cfg.backgroundWindowStart ?? '',
           windowEnd: cfg.backgroundWindowEnd ?? '',
@@ -3708,7 +3708,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             h('input', {
               'data-bd-input': '', 'data-bd-num': '', type: 'number', 'aria-label': '每日精选上限',
               min: numLim('perDay', 0, 50)[0], max: numLim('perDay', 0, 50)[1],
-              value: perDay === null ? '5' : perDay, onChange: (e) => setPerDay(e.target.value),
+              value: perDay === null ? '20' : perDay, onChange: (e) => setPerDay(e.target.value),
             })),
           h('div', { 'data-bd-row': '' },
             h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '报告详细程度'),
@@ -3963,7 +3963,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               h('input', {
                 'data-bd-input': '', 'data-bd-num': '', 'aria-label': '每日动态上限', type: 'number',
                 min: numLim('momentPerDay', 0, 50)[0], max: numLim('momentPerDay', 0, 50)[1],
-                value: momentPerDay === null ? '1' : momentPerDay, onChange: (e) => setMomentPerDay(e.target.value),
+                value: momentPerDay === null ? '3' : momentPerDay, onChange: (e) => setMomentPerDay(e.target.value),
               })),
             h('div', { 'data-bd-note': '' }, '每日发布上限不代表任务量。0 表示不发布，最大 50；无合适内容时可不发布。')) : null,
           ToggleRow({

@@ -148,7 +148,7 @@ export const inject = ['webServer', 'tools', 'settings']
 //    （宁可少一个设置页，也不能因为一个 import 让整条插件不激活 ✗）
 export const Config = !z ? undefined : z.object({
   /** 定量刷：每天最多挑几条 */
-  perDay: z.natural().default(5).extra('volatile', true),
+  perDay: z.natural().default(20).extra('volatile', true),
   /** 峰谷自动刷（总开关） */
   peakValley: z.boolean().default(false).extra('volatile', true),
   /** 峰谷子开关：中午 / 晚上 */
@@ -234,7 +234,7 @@ export const Config = !z ? undefined : z.object({
   /** ⭐ 自动发说说：把这一轮的感想与看法发到 B站 动态（默认关 —— 会拿用户的号说话） */
   autoMoment: z.boolean().default(false).extra('volatile', true),
   /** 每天最多发几条说说 */
-  momentPerDay: z.natural().default(1).extra('volatile', true),
+  momentPerDay: z.natural().default(3).extra('volatile', true),
   /** 说说的口味：随心情（默认，不加任何倾向）/ 感想 / 吐槽 / 安利 / 冷知识 —— 只当软提示，不是模板 */
   momentStyle: z.string().default('随心情').extra('volatile', true),
   /** 鲸鱼的互动档位：只调整陪伴方式，不改变任何发送权限。 */
@@ -254,8 +254,8 @@ export const Config = !z ? undefined : z.object({
   /** 一共最多花多少 token（0 = 不限；**跨次累计**，从装上插件那天起算，含老的到点自己跑）
    *  —— 跟 tokenBudget 的区别：那个是「这一趟」，这个是「总共」，使用者拿它当总闸。 */
   totalTokenBudget: z.natural().default(0).extra('volatile', true),
-  /** 鲸鱼摸鱼模式最多续几轮（每轮 = 一次「挑几条 + 写报告」） */
-  maxRounds: z.natural().default(64).extra('volatile', true),
+  /** 鲸鱼摸鱼模式的宿主续轮上限，不是每轮固定观看或评论的视频数。 */
+  maxRounds: z.natural().default(RUN_DEFAULTS.sessionMaxRounds).extra('volatile', true),
   /** 📁 那堆记录（seen.md / voice.md / state.json / activity.jsonl…）**额外镜像一份**到哪儿 ——
    *  2026-10-21 使用者要求「seen.md和其他的一些记录的内容，在当前目录也放一份」。
    *  留空 = 自动（从 `out`/`digest` 那个 junction 反推出工作区，落在 `<工作区>\records`）；
@@ -318,11 +318,11 @@ export const Config = !z ? undefined : z.object({
   petReducedMotion: z.boolean().default(false).extra('volatile', true),
   sessionModelId: z.string().default('').extra('volatile', true),
   sessionTokenBudget: z.natural().default(0).extra('volatile', true),
-  sessionMaxRounds: z.natural().default(64).extra('volatile', true),
+  sessionMaxRounds: z.natural().default(RUN_DEFAULTS.sessionMaxRounds).extra('volatile', true),
   sessionMinutes: z.natural().default(0).extra('volatile', true),
   backgroundModelId: z.string().default('').extra('volatile', true),
   backgroundTokenBudget: z.natural().default(0).extra('volatile', true),
-  backgroundMinutes: z.natural().default(45).extra('volatile', true),
+  backgroundMinutes: z.natural().default(RUN_DEFAULTS.backgroundMinutes).extra('volatile', true),
   /* ⭐ 后台「时段」任务（2026-10-28）：填了 start/end 就在段内一直刷（跨午夜自动算到次日）；
    *    都留空才退回「按 backgroundMinutes 刷一轮」。免跑牌记在 state.json 的 bgWindowHold。 */
   backgroundWindowStart: z.string().default('').extra('volatile', true),
@@ -589,12 +589,12 @@ export function apply(ctx, config) {
     ...AUTOMATION_DEFAULTS,
     ...STICKER_DEFAULTS,
     ...BROWSE_DEFAULTS,
-    perDay: 5, peakValley: false, noon: true, night: true, autoComment: false, sendReview: false, transcribe: false, asrModel: 'small',
+    perDay: 20, peakValley: false, noon: true, night: true, autoComment: false, sendReview: false, transcribe: false, asrModel: 'small',
     dmMode: 'off', dmUid: 0,
     keywords: [], commentPerRound: 1, mentionName: '', pythonPath: 'python', dshBin: '', headlessProfile: 'headless', overlayMcp: true, workspace: '', reportLevel: 'full', replyToComments: false, replyPerRound: 1,
     autoReplyDm: false, dmReplyPerDay: 0, dmReplyFollowedOnly: true,
     // 🐟 鲸鱼摸鱼模式（键必须和 Config 里的一模一样，normalize 是按 base 的键挑的）
-    persona: '', focus: '', autoMoment: false, momentPerDay: 1, momentStyle: '随心情', interactionStyle: 'companion', modelId: '', tokenBudget: 0, totalTokenBudget: 0, maxRounds: 64, mirrorDir: '', updateRegistry: '', updateMirror: true,
+    persona: '', focus: '', autoMoment: false, momentPerDay: 3, momentStyle: '随心情', interactionStyle: 'companion', modelId: '', tokenBudget: 0, totalTokenBudget: 0, maxRounds: RUN_DEFAULTS.sessionMaxRounds, mirrorDir: '', updateRegistry: '', updateMirror: true,
     // ⏱️ 出手节奏系数（1 = 标准；2 = 间隔翻倍；0.5 = 快一倍）—— 2026-10-21 使用者 m18802 第 1、2 条
     paceFactor: 1,
     // 🎬 昨日冲浪报告视频（2026-10-22）
@@ -1310,7 +1310,7 @@ export function apply(ctx, config) {
       + '`days` 筛空了会兜底给综合排序的前几条，并标 `filtered_out_all: true`。',
     parameters: {
       keyword: { type: 'string', description: '搜索关键词' },
-      num: { type: 'number', description: '返回几条（默认 10，最大 50）' },
+      num: { type: 'number', description: '返回几条候选（默认20，最大50；后续仍按日期、热度等偏好筛选）' },
       order: { type: 'string', description: '不填沿用本次偏好（新安装默认click播放量优先）；totalrank=综合 / click=播放 / pubdate=最新 / dm=弹幕' },
       days: { type: 'number', description: '上游检索最近几天；0=检索不限，不填用本次偏好。最终 fresh 仍按本次偏好筛选' },
       page: { type: 'number', description: '搜索页码，1至50；同一关键词的候选已处理完可翻下一页，默认1' },
@@ -1322,7 +1322,7 @@ export function apply(ctx, config) {
       }
       const raw = await call('bili_search', {
         keyword: String(args.keyword ?? ''),
-        num: Math.max(1, Math.min(Number(args.num) || 10, 50)),
+        num: Math.max(1, Math.min(Number(args.num) || 20, 50)),
         order: String(args.order || (preferences.browseSort === 'mixed' ? 'totalrank' : preferences.browseSort) || 'totalrank'),
         days: Math.max(0, Math.min(Number(args.days ?? preferences.browseRecentDays) || 0, 365)),
         ...(args.page === undefined ? {} : { page: args.page }),
@@ -3189,16 +3189,14 @@ export function apply(ctx, config) {
     },
   })
 
-  /* ⭐ 让它在流水里留一句人话 —— 这一轮为什么挑这条 / 为什么一条都不挑。
-   *    没有这只工具，流水里就只有「搜了什么、读了几段」这种机械记录，
-   *    使用者看得见动作却看不见判断（而判断才是他想看的东西）。 */
+  /* 本地可选接话。不能强制每条解释选片理由，否则普通聊天也会变成工作汇报。 */
   tool({
     name: 'bili_say',
-    description: '往「它刚才干了什么」那条流水里写一句话（纯文本，不超过 200 字）。'
-      + '挑完一条视频**必须**说一句为什么挑它；一条都没挑也要说一句为什么。'
-      + '这不是发给 B站 的，只是给使用者看的旁白。',
+    description: '可选：往本地活动流水里留一句想和使用者分享的话（纯文本，不超过200字），不发给B站。'
+      + '按当前全局人格接话，说自己的当下反应，不必解释为什么挑中或跳过，不逐项播报工具、队列或下一步。'
+      + '没有想说的就不用调用；每条视频、每轮都不强制发言。',
     parameters: {
-      text: { type: 'string', required: true, description: '一句话，说清这一轮的判断' },
+      text: { type: 'string', required: true, description: '按当前全局人格想分享的简短话语，不是选片理由或操作汇报' },
       bvid: { type: 'string', description: '（可选）关联的视频 BV 号，方便流水里点开' },
     },
     async execute(args) {
@@ -3250,7 +3248,7 @@ export function apply(ctx, config) {
     parameters: {
       action: { type: 'string', enum: ['start', 'stop', 'resume', 'status', 'clear'], description: 'start=开始 · stop=停 · resume=接着刷 · status=看状态 · clear=把这个 goal 抹掉（轮数用完/出错后卡住时用）' },
       objective: { type: 'string', description: '（可选）自定义这一轮的目标，不填就用桌宠设置里拼好的默认目标' },
-      maxRounds: { type: 'number', description: '（可选）最多刷多少轮，默认用桌宠设置里的 maxRounds（64）' },
+      maxRounds: { type: 'number', description: '（可选）最多刷多少轮，默认用桌宠设置里的会话轮数（新安装默认128）' },
     },
     async execute(args, exec) {
       const agent = exec?.agent
@@ -3308,7 +3306,7 @@ export function apply(ctx, config) {
     name: 'bili_moment',
     description: '🐟 发一条 **B站动态**（就是"说说"）：`text` 是正文，可带图。\n'
       + '⚠️ 这是拿使用者账号公开发言：只有本人在工作台手动打开 autoMoment 后才能发送；force 不是本人授权。\n'
-      + '一天最多 `momentPerDay` 条（默认 1）；正文 300 字以内，可按需要带真实来源视频链接，不堆链接。\n'
+      + '一天最多 `momentPerDay` 条（新安装默认3）；正文 300 字以内，可按需要带真实来源视频链接，不堆链接。\n'
       + '动态像发QQ空间或朋友圈：因视频而发时，先自然交代看了哪个视频（可识别的标题、UP或具体主题）和必要情境，再说自己的反应，让没看过的人也能接上。'
       + '用自己的话说，不用「」或换种引号摘抄原文，不写长摘要、分点清单、说教或牵强的人生感悟；不要突然从视频拐到日报、挑片、翻车、账本这些内部流程。'
       + '性格和表达以当前全局人格为准，不硬凑固定格式或口头禅。纯日常不编造视频来源。没有想说的就不发，配额不是催办。',
@@ -4552,7 +4550,7 @@ export function apply(ctx, config) {
    * `runDuty` 有三条入口（bili_run 工具 / 设置页 POST /run / 谷时 tick），
    * 以前谁都能再起一个 headless 进程：前一轮挂住时两个进程写同一天报告互相覆盖、
    * 挂死的子进程也没人收。现在：① 活着的上一轮没结束就明确拒绝叠加；
-   * ② 使用本次 backgroundMinutes/显式 durationMinutes 的墙钟时限（默认45分钟），到时结束进程树；
+   * ② 使用本次 backgroundMinutes/显式 durationMinutes 的墙钟时限（新安装默认60分钟），到时结束进程树；
    * ③ 插件收摊时（ctx.effect 的清理）把它一起带走。 */
   let dutyChild = null
   let dutyTimer = null

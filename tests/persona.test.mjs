@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DAFEIYU_DEFAULT_PERSONA, DAFEIYU_SHARED_STYLE_GUIDE, DAFEIYU_REPLY_GUIDE, DAFEIYU_REPLY_STYLE_RULES, DAFEIYU_MOMENT_GUIDE, momentStyleHint } from '../lib/persona.mjs'
+import { DAFEIYU_DEFAULT_PERSONA, DAFEIYU_SHARED_STYLE_GUIDE, DAFEIYU_BROWSING_CHAT_GUIDE, DAFEIYU_REPLY_GUIDE, DAFEIYU_REPLY_STYLE_RULES, DAFEIYU_MOMENT_GUIDE, momentStyleHint } from '../lib/persona.mjs'
 import { CHARACTER_COMPASS, characterPrompt } from '../lib/mode.mjs'
 import { buildFeiyuObjective, buildLiveBrief, MOMENT_OPENING_KEEP } from '../lib/prompts.mjs'
 import { learnAdd, learnDecide, learnInject } from '../lib/learn.mjs'
@@ -65,6 +65,25 @@ test('session objective carries the shared reply guide and stays non-template', 
   assert.match(prompt, /不用「」摘抄原文/)
   assert.match(prompt, /不补人生道理或客服收尾/)
   assert.doesNotMatch(prompt, /每条.*本鱼.*呜/)
+})
+
+test('visible browsing speech uses the current persona in the initial goal and every live refresh', () => {
+  for (const mode of ['session', 'background']) {
+    for (const prompt of [buildFeiyuObjective({ ...base, mode }), buildLiveBrief({ ...base, mode, picked: 0, moments: 0 })]) {
+      assert.ok(prompt.includes(DAFEIYU_BROWSING_CHAT_GUIDE))
+      assert.match(prompt, /普通消息、bili_say和一轮结束/)
+      assert.match(prompt, /不强制每条或每轮发言/)
+      assert.match(prompt, /旧目标、旧章程要求每次挑完解释理由.*不再适用/)
+      assert.match(prompt, /不复述工具回执/)
+      assert.match(prompt, /不.*玩笑掩盖失败/)
+    }
+    const cfg = { ...base.cfg, persona: '只用冷静克制的正式语气。' }
+    for (const prompt of [buildFeiyuObjective({ ...base, mode, cfg }), buildLiveBrief({ ...base, mode, cfg, picked: 0, moments: 0 })]) {
+      assert.ok(!prompt.includes(DAFEIYU_BROWSING_CHAT_GUIDE))
+      assert.match(prompt, /是否闲聊完全按它来/)
+      assert.doesNotMatch(prompt, /被逗乐就乐|看到可爱的会偏心/)
+    }
+  }
 })
 
 test('live brief keeps the conversational boundary and does not turn into a report template', () => {

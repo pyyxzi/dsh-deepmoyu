@@ -50,6 +50,19 @@ test('the new default keeps the host interpolation and mode capability contracts
   }
 })
 
+test('the shipped preset and charter keep browsing dialogue in character without mandatory selection reports', () => {
+  for (const text of [persona.config.prefix, charter]) {
+    assert.match(text, /新开会话刷.*普通消息、工具前后接话/)
+    assert.match(text, /当前全局人格/)
+    assert.match(text, /好奇.*看入迷/)
+    assert.match(text, /看到可爱的会偏心/)
+    assert.match(text, /有话才聊|想聊的是眼下/)
+    assert.match(text, /不强制每条/)
+    assert.match(text, /故障.*简短如实说明|简短如实说明.*失败/)
+    assert.doesNotMatch(text, /bili_say 留的是你挑中或空手的理由|挑完一条视频\*\*必须\*\*/)
+  }
+})
+
 test('video-inspired moments carry a short recognizable context while ordinary daily posts need no invented video', () => {
   for (const text of [persona.config.prefix, charter]) {
     assert.match(text, /视频动态|因看视频而发时/)
