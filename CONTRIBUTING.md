@@ -5,6 +5,7 @@
 - Node.js 22+、npm、Git。
 - Python 3.11–3.13。可用 `PYTHON` 指定执行文件；建议独立虚拟环境。
 - Chrome 或 Chromium，用于真实 React/浏览器验收；可用 `CHROME_PATH` 指定路径。
+- 媒体排版测试需要中文字体。可用 `DEEPMOYU_FONT_DIR` 指定字体目录；CI 将固定提交的 Noto Sans SC 下载到临时目录并核验 SHA-256，不安装系统字体，也不随 npm 包分发。无网络下载步骤只在显式运行 `scripts/qa/prepare-font.py` 时发生。
 
 ```sh
 npm ci

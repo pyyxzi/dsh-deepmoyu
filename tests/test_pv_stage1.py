@@ -228,15 +228,28 @@ class Audio(unittest.TestCase):
         self.assertGreater(max(env), .9)
 
 
+class FontFallback(unittest.TestCase):
+    def test_missing_system_fonts_keep_the_requested_size(self):
+        pv._font.cache_clear()
+        try:
+            with patch.object(pv.ImageFont, "truetype", side_effect=OSError), \
+                    patch.object(Path, "exists", return_value=True), \
+                    patch.object(pv.ImageFont, "load_default", return_value=object()) as fallback:
+                pv.F(67)
+                fallback.assert_called_once_with(size=67)
+        finally:
+            pv._font.cache_clear()
+
+
 class GsvHelper(unittest.TestCase):
     def test_output_paths_are_fixed_before_model_changes_cwd(self):
         with tempfile.TemporaryDirectory() as directory:
             batch = Path(directory) / "incoming" / "batch.json"
             target = Path(directory) / "audio"
             items = gsv.resolve_items([{"text": "甲", "out": "00.wav"}], batch, str(target))
-            self.assertEqual(Path(items[0]["out"]), target / "00.wav")
+            self.assertEqual(Path(items[0]["out"]), (target / "00.wav").resolve())
             items = gsv.resolve_items([{"text": "甲", "out": "00.wav"}], batch)
-            self.assertEqual(Path(items[0]["out"]), batch.parent / "00.wav")
+            self.assertEqual(Path(items[0]["out"]), (batch.parent / "00.wav").resolve())
 
     def test_same_output_filename_requires_matching_metadata(self):
         with tempfile.TemporaryDirectory() as directory:

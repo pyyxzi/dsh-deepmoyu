@@ -16,9 +16,10 @@ from PIL import Image, ImageDraw, ImageFont
 try:
     # pv imports this module lazily during build, so the shared portrait driver
     # is available without creating a second character implementation.
-    from pv import Portrait, Fish, DialoguePortrait
+    from pv import Portrait, Fish, DialoguePortrait, _font as shared_font
 except ImportError:  # pragma: no cover - standalone renderer smoke tests
     Portrait = Fish = DialoguePortrait = None
+    shared_font = None
 
 WIDTH, HEIGHT = 1920, 1080
 # Keep the three persisted names, but make them bright editorial directions rather
@@ -33,6 +34,8 @@ THEMES = {
 
 @lru_cache(maxsize=128)
 def font(size, serif=False):
+    if shared_font is not None:
+        return shared_font("NotoSerifSC-VF.ttf" if serif else "NotoSansSC-VF.ttf", size)
     directory = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
     names = ("NotoSerifSC-VF.ttf", "simhei.ttf", "msyhbd.ttc") if serif else ("NotoSansSC-VF.ttf", "msyhbd.ttc", "simhei.ttf")
     candidates = [directory / name for name in names]
@@ -42,7 +45,7 @@ def font(size, serif=False):
             return ImageFont.truetype(str(candidate), size)
         except OSError:
             pass
-    return ImageFont.load_default()
+    return ImageFont.load_default(size=size)
 
 
 def ease(value):

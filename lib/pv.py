@@ -56,18 +56,27 @@ FONT_DIR = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
 
 @lru_cache(maxsize=96)
 def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    """按粗/细挑字体；找不到就退到雅黑，再不行退 PIL 默认。
+    """按粗/细挑字体，兼容 Windows、macOS 与 Linux 的中文字体。
 
     字体对象很贵（每次 truetype 都要读一遍表），逐帧调用必须缓存。
     """
-    for cand in (name, "msyh.ttc", "msyhbd.ttc", "simhei.ttf"):
-        p = FONT_DIR / cand
+    directories = [FONT_DIR, Path.home() / "Library/Fonts",
+                   Path("/System/Library/Fonts"), Path("/System/Library/Fonts/Supplemental"),
+                   Path("/Library/Fonts"), Path("/usr/share/fonts/opentype/noto"),
+                   Path("/usr/share/fonts/truetype/noto"), Path.home() / ".local/share/fonts"]
+    if os.environ.get("DEEPMOYU_FONT_DIR"):
+        directories.insert(0, Path(os.environ["DEEPMOYU_FONT_DIR"]))
+    bold = "bd" in name.lower() or "bold" in name.lower()
+    names = (name, "msyhbd.ttc" if bold else "msyh.ttc", "msyhbd.ttc", "simhei.ttf",
+             "NotoSansSC-VF.ttf", "NotoSansCJK-Bold.ttc" if bold else "NotoSansCJK-Regular.ttc",
+             "PingFang.ttc", "STHeiti Medium.ttc", "Arial Unicode.ttf")
+    for p in (directory / cand for directory in directories for cand in names):
         if p.exists():
             try:
                 return ImageFont.truetype(str(p), size)
             except Exception:
                 continue
-    return ImageFont.load_default()
+    return ImageFont.load_default(size=size)
 
 
 def F(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -81,15 +90,20 @@ NOTO_SERIF = FONT_DIR / "NotoSerifSC-VF.ttf"
 @lru_cache(maxsize=96)
 def NF(size: int, weight: str = "Medium") -> ImageFont.FreeTypeFont:
     """思源黑体（可变字重）。屏幕小字比雅黑清楚，字幕正文用它。"""
-    try:
-        f = ImageFont.truetype(str(NOTO_SANS), size)
+    candidates = [NOTO_SANS]
+    if os.environ.get("DEEPMOYU_FONT_DIR"):
+        candidates.insert(0, Path(os.environ["DEEPMOYU_FONT_DIR"]) / "NotoSansSC-VF.ttf")
+    for candidate in candidates:
         try:
-            f.set_variation_by_name(weight)
-        except Exception:
-            pass
-        return f
-    except Exception:
-        return F(size, bold=weight in ("Medium", "Bold", "Black"))
+            f = ImageFont.truetype(str(candidate), size)
+            try:
+                f.set_variation_by_name(weight)
+            except Exception:
+                pass
+            return f
+        except OSError:
+            continue
+    return F(size, bold=weight in ("Medium", "Bold", "Black"))
 
 
 def clamp(v, a, b):
