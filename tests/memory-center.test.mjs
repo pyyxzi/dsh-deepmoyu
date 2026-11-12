@@ -41,3 +41,50 @@ test('memory projection redacts secrets, bounds pagination, and fingerprints the
   assert.equal(combined.items.length, 10)
   assert.equal(combined.more, false)
 })
+
+test('specific memory sources never evaluate unrelated inputs and count only their selected scope', () => {
+  const input = { soulText: soulSetSection(soulTemplate(), 'mood', '- 想看新鲜事') }
+  for (const key of ['learn', 'voiceText', 'taste', 'seen', 'events']) Object.defineProperty(input, key, { get() { throw new Error('UNRELATED_SOURCE_READ: ' + key) } })
+  const result = memoryCenterSnapshot(input, { source: 'soul' })
+  assert.equal(result.total, 1)
+  assert.equal(result.matched, 1)
+  assert.deepEqual(result.counts, { learning: 0, soul: 1, voice: 0, taste: 0, seen: 0, history: 0 })
+  assert.throws(() => memoryCenterSnapshot(input, { source: 'all' }), /UNRELATED_SOURCE_READ/)
+})
+
+test('combined learning pages retain searchable legacy records beyond the old 1200-row ceiling', () => {
+  const items = Object.fromEntries(Array.from({ length: 1305 }, (_, index) => {
+    const id = 'fact:' + String(index).padStart(4, '0')
+    return [id, { id, kind: 'fact', state: 'pending', text: '历史经验' + index, at: '2026-01-01' }]
+  }))
+  const lastPage = memoryCenterSnapshot({ learn: { items } }, { source: 'learning', offset: 1295, limit: 20 })
+  assert.equal(lastPage.matched, 1305)
+  assert.equal(lastPage.items.length, 10)
+  assert.equal(lastPage.more, false)
+  assert.equal(memoryCenterSnapshot({ learn: { items } }, { source: 'learning', filter: '历史经验1304' }).matched, 1)
+})
+
+test('memory search shares multiword and alias matching with learning while preserving state and paging', () => {
+  const learn = { items: {
+    old: { kind: 'fact', state: 'approved', text: '定格动画通过逐格拍摄制作', when: '了解AI辅助', sources: ['BV1234567890'] },
+    pending: { kind: 'fact', state: 'pending', text: '另一个定格动画待审说法', from: 'BV1234567891' },
+  } }
+  const input = { learn }, before = JSON.stringify(input)
+  const result = memoryCenterSnapshot(input, { source: 'learning', query: 'STOP MOTION ＢＶ１２３４５６７８９０', limit: 1 })
+  assert.equal(result.total, 2)
+  assert.equal(result.matched, 1)
+  assert.equal(result.count, 1)
+  assert.equal(result.hasMore, false)
+  assert.equal(result.nextOffset, null)
+  assert.equal(result.items[0].id, 'old')
+  assert.equal(result.items[0].availableForRecall, true)
+  assert.deepEqual(result.items[0].sources, ['BV1234567890'])
+  assert.equal(result.items[0].sourceLinks[0].url, 'https://www.bilibili.com/video/BV1234567890')
+  const all = memoryCenterSnapshot(input, { source: 'learning', filter: '动画', limit: 1 })
+  assert.equal(all.hasMore, true)
+  assert.equal(all.nextOffset, 1)
+  const last = memoryCenterSnapshot(input, { source: 'learning', filter: '动画', offset: all.nextOffset, limit: 1 })
+  assert.notEqual(last.items[0].id, all.items[0].id)
+  assert.equal(JSON.stringify(input), before)
+  assert.throws(() => memoryCenterSnapshot({ learn: { items: [] } }, { source: 'learning' }), { code: 'LEARN_STATE_INVALID' })
+})

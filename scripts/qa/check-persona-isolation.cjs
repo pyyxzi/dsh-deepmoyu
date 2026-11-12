@@ -29,7 +29,7 @@ const ok = (cond, name, detail) => {
   fails.push(name + (detail ? ` —— ${detail}` : ''))
 }
 
-const PERSONA_TAG = '你的人格设定'
+const PERSONA_TAG = '【当前全局人格：自定义覆盖】'
 const FEIYU_TAG = '🐟 鲸鱼摸鱼模式（正在这个会话里刷 B站）'
 /** 假人格：只要它出现在文本里，就说明人格段被注入了 */
 const FAKE_PERSONA = '本鱼是一只测试用的电子鱼，只在被点名的时候出现。'
@@ -468,6 +468,12 @@ const FAKE_PERSONA = '本鱼是一只测试用的电子鱼，只在被点名的�
       const current = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {}
       fs.writeFileSync(stateFile, JSON.stringify({ ...current, ...fields }), 'utf8')
     }
+    const selectionQuota = (text) => {
+      const line = String(text).split('\n').find(row => row.startsWith('【实时配额】')) || ''
+      const counts = /精选\s*(\d+)\s*\/\s*(\d+)/.exec(line)
+      const remaining = /还能(?:留|挑)\s*(\d+)/.exec(line)
+      return counts && remaining ? { picked: Number(counts[1]), limit: Number(counts[2]), remaining: Number(remaining[1]) } : null
+    }
     const now = new Date()
     const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     setConfig({ perDay: 17, autoComment: false })
@@ -475,16 +481,18 @@ const FAKE_PERSONA = '本鱼是一只测试用的电子鱼，只在被点名的�
     goalsGet = () => ({ id: 'live-quota-goal', phase: 'active', activation: 'armed', objective: '🐟 鲸鱼摸鱼模式：配额回归', roundsStarted: 2, maxGoalRounds: 64 })
     const agent = makeAgent({ id: 'quota-live', headerPreset: 'dafeiyu' })
     const first = runText({ agent })
-    ok(first.includes('今天挑中 2/17') && first.includes('最多还能挑 15'), '⑯ 第一次请求读到当前17条额度与已挑2条', clip(first))
+    const firstQuota = selectionQuota(first)
+    ok(firstQuota?.picked === 2 && firstQuota.limit === 17 && firstQuota.remaining === 15, '⑯ 第一次请求读到精选上限17条、已留2条、余量15条', JSON.stringify(firstQuota))
     ok(first.includes('评论：关'), '⑯ 第一次请求读到评论关闭')
     setConfig({ perDay: 29, autoComment: true })
     setState({ day, picked: 5 })
     const second = runText({ agent })
-    ok(second.includes('今天挑中 5/29') && second.includes('最多还能挑 24'), '⑯ 不重启、不重建goal，下一请求立即变29/已挑5', clip(second))
+    const secondQuota = selectionQuota(second)
+    ok(secondQuota?.picked === 5 && secondQuota.limit === 29 && secondQuota.remaining === 24, '⑯ 不重启、不重建goal，下一请求立即读到精选29条、已留5条、余量24条', JSON.stringify(secondQuota))
     /* 2.7.0「看完必评」改版后同步（审计 P1-3）：不再钉整句文案 —— 整句一改断言就过期。
        这里只断言稳定子串：「评论：开。完整看完一条片」证明评论开关随下一请求刷新，
        「bili_comment」证明工具名仍在注入文本里。 */
-    ok(second.includes('评论：开。完整看完一条片') && second.includes('bili_comment'), '⑯ 发送开关变化随下一请求刷新', clip(second))
+    ok(second.includes('评论：开') && second.includes('bili_comment') && !second.includes('看完必评'), '⑯ 发送开关变化随下一请求刷新且不要求强制评论', clip(second))
     goalsGet = () => null
     const before = auditBytes()
     const goalWritesBefore = goalWrites

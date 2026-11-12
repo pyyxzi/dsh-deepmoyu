@@ -96,18 +96,33 @@ const probes = [
     const count=()=>F.requests.filter(r=>r.path.endsWith('/learn')).length;
     if(count()!==1)throw Error('Expected one mount pull, got '+count());
     const hold=F.deferReply('GET','/learn');
-    await F.click(F.textButton('已批准'));
-    await F.waitFor(()=>count()===2,'approved pull in flight');
-    await F.click(F.textButton('待审'));
+    await F.click(document.querySelector('[data-bd-learning-workspace=review]'));
+    await F.waitFor(()=>count()===2,'pending pull in flight');
+    await F.click(document.querySelector('[data-bd-learning-workspace=learned]'));
     await F.wait(60);
     if(count()!==2)throw Error('View switch while pulling issued an extra /learn request');
-    hold.release(200,{ok:true,state:'approved',filter:'',offset:0,limit:20,matched:1,more:false,items:[{id:'stale-learn-1',kind:'insight',state:'approved',text:'STALE_LEARN_SENTINEL',at:'2026-11-12T00:00:00.000Z',version:1}]});
+    hold.release(200,{ok:true,state:'pending',filter:'',offset:0,limit:20,matched:1,more:false,items:[{id:'stale-learn-1',kind:'insight',state:'pending',text:'STALE_LEARN_SENTINEL',at:'2026-11-12T00:00:00.000Z',version:1}]});
     await F.wait(120);
-    if(count()!==2)throw Error('Stale release triggered an extra /learn request');
+    await F.waitFor(()=>count()===3,'selected approved view resumes after stale pull completes');
     const queue=document.querySelector('[data-bd-learning-queue]');
     if(!queue)throw Error('Learning queue missing');
     if(queue.textContent.includes('STALE_LEARN_SENTINEL'))throw Error('Late response for an old view leaked into the queue');
-    if(!queue.textContent.includes('正在读取学习记录'))throw Error('Queue should still be waiting for the pending view pull');
+    if(!queue.textContent.includes('暂无已批准经验'))throw Error('Queue should show the current approved response without waiting for the next timer');
+    F.finish({ok:true,checks:4});` },
+  { name: 'learning-workspaces', tab: 'learning', code: String.raw`
+    const memoryCount=()=>F.requests.filter(r=>r.path.endsWith('/memory')).length;
+    if(memoryCount()!==0)throw Error('Default learned workspace prefetched memory');
+    const hold=F.deferReply('GET','/memory');
+    await F.click(document.querySelector('[data-bd-learning-workspace=memory]'));
+    await F.waitFor(()=>memoryCount()===1,'memory request in flight');
+    await F.click(document.querySelector('[data-bd-learning-workspace=review]'));
+    hold.release(200,{ok:true,source:'all',filter:'',offset:0,limit:20,matched:1,items:[{source:'soul',id:'stale',text:'STALE_MEMORY_WORKSPACE',version:'x'}]});
+    await F.wait(60);
+    if(document.querySelector('[data-bd-memory-explorer]'))throw Error('Inactive memory workspace remained mounted');
+    await F.click(document.querySelector('[data-bd-learning-workspace=memory]'));
+    await F.waitFor(()=>memoryCount()===2,'memory return refresh');
+    if(document.querySelector('[data-bd-pet-body]').textContent.includes('STALE_MEMORY_WORKSPACE'))throw Error('Hidden memory response leaked on return');
+    if([...F.intervals.values()].some(timer=>timer.ms===15000))throw Error('Inactive learning queue kept polling');
     F.finish({ok:true,checks:4});` },
 ]
 async function main() {

@@ -34,6 +34,26 @@ test('pace presets are explicit opt-in interval preferences, not a new saved def
   assert.match(info.notes.safety, /不会自动覆盖/)
 })
 
+test('paceBook retains optional exact receipt tokens and accepts legacy untagged records', () => {
+  const token = 'ABCDEF0123456789ABCDEF0123456789'
+  const raw = {
+    last: { comment: { at: NOW, next: NOW + 120_000, token }, reply: NOW - MIN,
+      dm: { at: NOW, next: NOW + 30_000, token: 'invalid-token' } },
+    recent: [{ k: 'comment', t: NOW, token }, { k: 'reply', t: NOW - MIN },
+      { k: 'dm', t: NOW, token: 123 }],
+  }
+  const before = JSON.stringify(raw)
+  const book = paceBook(raw)
+  assert.equal(book.last.comment.token, token.toLowerCase())
+  assert.equal(book.recent[0].token, token.toLowerCase())
+  assert.deepEqual(book.last.reply, { at: NOW - MIN, next: NOW - MIN })
+  assert.deepEqual(book.recent[1], { k: 'reply', t: NOW - MIN })
+  assert.equal(Object.hasOwn(book.last.dm, 'token'), false)
+  assert.equal(Object.hasOwn(book.recent[2], 'token'), false)
+  assert.equal(paceTake(book, 'reply', NOW + MIN).recent[0].token, token.toLowerCase())
+  assert.equal(JSON.stringify(raw), before)
+})
+
 test('paceExplain describes base and effective intervals for every preset and kind', () => {
   for (const factor of Object.values(PACE_PRESETS)) {
     const info = paceExplain(null, NOW, factor)
@@ -112,6 +132,24 @@ test('hourly caps remain rolling and may dominate an apparently short interval',
   }
 })
 
+test('local hourly headroom increases without changing gaps, burst, risk, or quota policy', () => {
+  assert.deepEqual(Object.fromEntries(PACE_KINDS.map(kind => [kind, PACE[kind].hour])), {
+    comment: 16, reply: 30, opusReply: 40, dm: 30, moment: 2,
+  })
+  assert.deepEqual(PACE_KINDS.map(kind => [PACE[kind].gap, PACE[kind].jitter]), [
+    [120_000, 60_000], [60_000, 30_000], [20_000, 10_000], [30_000, 15_000], [600_000, 300_000],
+  ])
+  const recent = Array.from({ length: 16 }, (_, i) => ({ k: 'comment', t: NOW - 20 * MIN + i * 1000 }))
+  assert.equal(paceCheck({ recent: recent.slice(0, 8) }, 'comment', NOW).ok, true)
+  const full = paceCheck({ recent }, 'comment', NOW)
+  assert.equal(full.reason, 'hour')
+  assert.equal(full.cap, 16)
+  assert.equal(full.used, 16)
+  assert.equal(full.retryAt, NOW + 40 * MIN)
+  assert.deepEqual(BURST, { windowMs: 600_000, max: 10, extraWaitMs: 180_000 })
+  assert.deepEqual(RISK_COOLDOWN, { '-352': 20 * MIN, '-412': 60 * MIN, '-509': 30 * MIN, '-799': 30 * MIN })
+})
+
 test('rolling burst policy combines all send kinds and is unchanged by presets', () => {
   const book = paceBook({ recent: Array.from({ length: BURST.max }, (_, i) => ({ k: PACE_KINDS[i % PACE_KINDS.length], t: NOW - 30_000 })) })
   for (const factor of Object.values(PACE_PRESETS)) {
@@ -125,7 +163,7 @@ test('rolling burst policy combines all send kinds and is unchanged by presets',
     assert.equal(info.burst.extraAfterCount, 13)
     for (const kind of PACE_KINDS) {
       assert.equal(info.kinds[kind].blockedBy, 'burst')
-      // A dynamic may also hit the stricter one-per-hour cap.
+      // A dynamic may also hit its separate hourly cap.
       assert.ok(info.kinds[kind].waitSec >= 570)
       assert.equal(paceCheck(book, kind, NOW).reason, 'burst')
     }
@@ -133,10 +171,10 @@ test('rolling burst policy combines all send kinds and is unchanged by presets',
 })
 
 test('combined gates report the latest retry while preserving hard-gate priority and channel scope', () => {
-  const hourLimited = { recent: Array.from({ length: 8 }, (_, i) => ({ k: 'comment', t: NOW - 10 * MIN + i * 1000 })) }
+  const hourLimited = { recent: Array.from({ length: PACE.comment.hour }, (_, i) => ({ k: 'comment', t: NOW - 20 * MIN + i * 1000 })) }
   const scenarios = [
-    { book: { ...hourLimited, cooldownUntil: NOW + MIN }, kind: 'comment', reason: 'cooldown', wait: 50 * MIN },
-    { book: { ...hourLimited, quota: { comment: NOW + 5 * MIN } }, kind: 'comment', reason: 'quota', wait: 50 * MIN },
+    { book: { ...hourLimited, cooldownUntil: NOW + MIN }, kind: 'comment', reason: 'cooldown', wait: 40 * MIN },
+    { book: { ...hourLimited, quota: { comment: NOW + 5 * MIN } }, kind: 'comment', reason: 'quota', wait: 40 * MIN },
     { book: { recent: Array.from({ length: BURST.max }, () => ({ k: 'reply', t: NOW - 30_000 })), last: { dm: { at: NOW - 1000, next: NOW + 15 * MIN } } }, kind: 'dm', reason: 'burst', wait: 15 * MIN },
     { book: { ...hourLimited, last: { comment: { at: NOW - 1000, next: NOW + 55 * MIN } } }, kind: 'comment', reason: 'hour', wait: 55 * MIN },
   ]

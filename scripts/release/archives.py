@@ -13,7 +13,8 @@ import zipfile
 
 
 PRIVATE_NAMES = {'.npmrc', 'bili_credential.json', 'config.json', 'state.json', 'feiyu.json',
-                 'token-ledger.json', 'activity.jsonl', 'pet-log.jsonl', 'soul.md', 'voice.md', 'seen.md'}
+                 'token-ledger.json', 'activity.jsonl', 'pet-log.jsonl', 'soul.md', 'voice.md', 'seen.md',
+                 'send-review.json', 'learn.json', 'jobs-tmp.json'}
 GENERATED = {'.git', 'node_modules', '__pycache__', '.pytest_cache', '.tmp', '.qa-output'}
 
 

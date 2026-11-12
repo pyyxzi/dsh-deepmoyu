@@ -16,6 +16,7 @@ test('release paths reject traversal, drive paths, empty components and platform
 test('runtime packaging rejects private data, account credentials, caches and nested archives', () => {
   for (const value of ['config.json', 'nested/bili_credential.json', '.env', 'some/.env.local', '.npmrc',
     'state.json', 'feiyu.json', 'activity.jsonl', 'soul.md', 'voice.md', 'seen.md',
+    'send-review.json', 'learn.json', 'jobs-tmp.json', 'nested/jobs-tmp.json',
     'node_modules/react/index.js', 'lib/__pycache__/pv.cpython-312.pyc', 'cache/runtime.sqlite3-wal',
     'release/archive.tgz', 'assets/old.zip', 'private.pem', '.git/config']) assert.equal(forbidden(value), true, value)
   for (const value of ['package.json', 'docs/PRIVACY.md', 'prompts/duty.md', 'lib/state.mjs',

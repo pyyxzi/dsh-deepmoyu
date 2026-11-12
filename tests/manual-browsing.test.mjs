@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire, syncBuiltinESMExports } from 'node:module'
@@ -195,6 +195,133 @@ async function withFixture(run) {
     }
   }
 }
+
+test('tool wrapper preserves per-agent candidates across a blocked pace query and never shares them', async () => {
+  await withFixture(async f => {
+    const first = f.addAgent('progress-first'), second = f.addAgent('progress-second')
+    const A = 'BV14AHP6VExR', B = 'BV14AHP6VExS'
+    const fallback = McpClient.prototype.call
+    McpClient.prototype.call = async function(name, args) {
+      if (name === 'bili_search') return { videos: [{ bvid: A, play: 100000 }, { bvid: B, play: 100000 }] }
+      if (name === 'bili_guard_status') return { seenVideos: {} }
+      return fallback.call(this, name, args)
+    }
+    const found = await f.execute(first, 'bili_search', { keyword: '合成候选' })
+    assert.deepEqual(found.browse_progress.pendingBvids, [A, B])
+    const read = await f.execute(first, 'bili_subtitle', { bvid: A })
+    assert.equal(read.browse_progress.next.action, 'reflect-or-move-on')
+    const file = join(first.session.header.cwd, 'bili-duty', 'state.json')
+    const state = JSON.parse(readFileSync(file, 'utf8'))
+    state.pace = { last: { comment: { at: Date.now(), next: Date.now() + 120000 } } }
+    writeFileSync(file, JSON.stringify(state))
+    const paced = await f.execute(first, 'bili_pace', { kind: 'comment' })
+    assert.equal(paced.browse_progress.next.action, 'reflect-or-move-on')
+    assert.equal(paced.browse_progress.next.bvid, A)
+    assert.deepEqual(paced.browse_progress.pendingBvids, [B])
+    assert.equal(paced.browse_progress.blockedSendKinds[0].kind, 'comment')
+    const isolated = await f.execute(second, 'bili_pace', { kind: 'comment' })
+    assert.deepEqual(isolated.browse_progress.pendingBvids, [])
+    assert.equal(isolated.browse_progress.recentReadCount, 0)
+    assert.equal(f.calls.some(call => ['bili_reply', 'bili_comment', 'bili_dm_reply'].includes(call.name)), false)
+  })
+})
+
+test('discovered low-view videos are skipped and unknown popularity is verified without blocking direct links or rereads', async () => {
+  await withFixture(async f => {
+    const agent = f.addAgent('popular-candidates')
+    const A = 'BV14AHP6VExR', B = 'BV14AHP6VExS', C = 'BV14AHP6VExT', D = 'BV14AHP6VExU'
+    const fallback = McpClient.prototype.call, lookedUp = [], subtitles = []
+    let knownViews = 2000
+    McpClient.prototype.call = async function(name, args) {
+      if (name === 'bili_search') return { videos: [{ bvid: A }, { bvid: B, play: 300 }, { bvid: D }] }
+      if (name === 'bili_guard_status') return { seenVideos: {} }
+      if (name === 'bili_video_info') { lookedUp.push(args.bvid); return args.bvid === D ? { bvid: D, stat: {} } : { bvid: args.bvid, stat: { view: knownViews } } }
+      if (name === 'bili_subtitle') subtitles.push(args.bvid)
+      return fallback.call(this, name, args)
+    }
+    const found = await f.execute(agent, 'bili_search', { keyword: '热门候选' })
+    assert.deepEqual(found.fresh.map(row => row.bvid), [A, D])
+    assert.equal(found.preference_summary.settings.browseMinViews, 50000)
+    assert.equal(found.preference_summary.excluded[0].bvid, B)
+    const low = await f.execute(agent, 'bili_subtitle', { bvid: A })
+    assert.equal(low.preference_skipped, true)
+    assert.equal(low.view_count, 2000)
+    assert.deepEqual(low.browse_progress.pendingBvids, [D])
+    assert.equal(low.browse_progress.recentReadCount, 0)
+    assert.equal(low.browse_progress.deferredReadCount, 0, 'a preference skip is not a transport error to retry')
+    const knownLow = await f.execute(agent, 'bili_subtitle', { bvid: B })
+    assert.equal(knownLow.preference_skipped, true, 'a model cannot select an excluded low-view discovery row')
+    assert.deepEqual(lookedUp, [A], 'known low counts need no extra lookup')
+    assert.deepEqual(subtitles, [])
+    const stillUnknown = await f.execute(agent, 'bili_subtitle', { bvid: D })
+    assert.equal(stillUnknown.code, 'BROWSE_POPULARITY_UNKNOWN')
+    assert.deepEqual(subtitles, [], 'missing count is not zero or a proof of popularity')
+    const stateFile = join(agent.session.header.cwd, 'bili-duty', 'state.json')
+    assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).seenVideos?.[A], undefined)
+    await f.execute(agent, 'bili_subtitle', { bvid: C })
+    assert.deepEqual(subtitles, [C], 'a direct link outside autonomous discovery is still readable')
+    knownViews = 100000
+    await f.execute(agent, 'bili_search', { keyword: '热门刷新' })
+    const hot = await f.execute(agent, 'bili_subtitle', { bvid: A })
+    assert.ok(hot.text)
+    const readsBefore = lookedUp.length
+    await f.execute(agent, 'bili_subtitle', { bvid: A, with_time: false })
+    assert.equal(lookedUp.length, readsBefore, 'already-read subtitle verification keeps its existing path')
+    assert.deepEqual(subtitles, [C, A, A])
+  })
+})
+
+test('popularity lookup returning after preset exit and reentry cannot authorize a stale subtitle read', async () => {
+  await withFixture(async f => {
+    const agent = f.addAgent('popular-exit-race'), bvid = 'BV14AHP6VExR'
+    let finishInfo, subtitleReads = 0
+    McpClient.prototype.call = async function(name) {
+      if (name === 'bili_search') return { videos: [{ bvid }] }
+      if (name === 'bili_guard_status') return { seenVideos: {} }
+      if (name === 'bili_video_info') return new Promise(resolve => { finishInfo = resolve })
+      if (name === 'bili_subtitle') { subtitleReads++; return { text: '合成原文', segments: 1 } }
+      throw new Error('UNEXPECTED_POPULARITY_RACE_TOOL')
+    }
+    await f.execute(agent, 'bili_search', { keyword: '热门待核实' })
+    const pending = f.execute(agent, 'bili_subtitle', { bvid }).then(value => ({ value }), error => ({ error }))
+    await f.flush(); assert.equal(typeof finishInfo, 'function')
+    await f.selectPreset(agent, 'standard'); await f.selectPreset(agent, 'dafeiyu')
+    finishInfo({ bvid, stat: { view: 100000 } })
+    const result = await pending
+    if (result.error) assert.equal(result.error.code, 'MODE_REQUIRED')
+    else assert.equal(result.value.reason, 'mode_required')
+    assert.equal(subtitleReads, 0)
+    const stateFile = join(agent.session.header.cwd, 'bili-duty', 'state.json')
+    assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).seenVideos?.[bvid], undefined)
+  })
+})
+
+test('a discovery response arriving after preset exit cannot recreate cleared fish progress', async () => {
+  await withFixture(async f => {
+    const agent = f.addAgent('progress-exit-race')
+    const A = 'BV14AHP6VExR'
+    const fallback = McpClient.prototype.call
+    let finishSearch
+    McpClient.prototype.call = async function(name, args) {
+      if (name === 'bili_search') return new Promise(resolve => { finishSearch = resolve })
+      if (name === 'bili_guard_status') return { seenVideos: {} }
+      return fallback.call(this, name, args)
+    }
+    const pending = f.execute(agent, 'bili_search', { keyword: '合成延迟响应' }).then(
+      value => ({ value }), error => ({ error }))
+    await f.flush()
+    assert.equal(typeof finishSearch, 'function')
+    await f.selectPreset(agent, 'standard')
+    finishSearch({ videos: [{ bvid: A }] })
+    const stale = await pending
+    if (stale.error) assert.equal(stale.error.code, 'MODE_REQUIRED')
+    else assert.equal(Object.hasOwn(stale.value, 'browse_progress'), false)
+    await f.selectPreset(agent, 'dafeiyu')
+    const fresh = await f.execute(agent, 'bili_pace', {})
+    assert.deepEqual(fresh.browse_progress.pendingBvids, [])
+    assert.equal(fresh.browse_progress.recentReadCount, 0)
+  })
+})
 
 function assertTotals(status, total) {
   assert.equal(status.tokensTotal, total, 'cumulative usage includes only browsing requests')

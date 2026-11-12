@@ -62,6 +62,32 @@ test('status route exposes durable retrospective/recovery and revision invalidat
     assert.notEqual(oversized.rev, changed.rev, 'report mtime/size participates in revision')
     assert.equal(oversized.retrospective.complete, false)
     assert.equal(oversized.retrospective.errors.some((row) => row.day === today), true)
+
+    writeFileSync(join(home, 'token-ledger.json'), JSON.stringify({ version: 1, entries: [] }))
+    const holdUntil = Date.now() + 300000
+    let prior = oversized
+    for (const reason of ['rest', 'manual', undefined, 'not-a-known-reason']) {
+      const next = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+      next.bgWindowHold = holdUntil
+      if (reason === undefined) delete next.bgWindowHoldReason
+      else next.bgWindowHoldReason = reason
+      writeFileSync(join(home, 'state.json'), JSON.stringify(next))
+      const result = await request('/status?rev=' + encodeURIComponent(prior.rev))
+      const expected = reason === 'rest' || reason === 'manual' ? reason : 'unknown'
+      if (prior.bgWindow?.holdReason !== expected) assert.notEqual(result.unchanged, true, 'changing only the stored reason invalidates the status revision')
+      const full = result.unchanged ? await request('/status') : result
+      assert.equal(full.bgWindow.holdReason, expected)
+      const held = full.recovery.rows.find(row => row.state === 'held')
+      assert.equal(held.holdReason, expected, 'recovery receives the same persisted cause as the background controls')
+      if (expected !== 'manual') assert.doesNotMatch(held.label, /手动/)
+      prior = full
+    }
+    const expired = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    expired.bgWindowHold = Date.now() - 1; expired.bgWindowHoldReason = 'rest'
+    writeFileSync(join(home, 'state.json'), JSON.stringify(expired))
+    const after = await request('/status')
+    assert.equal(after.bgWindow.holdReason, '')
+    assert.equal(after.recovery.rows.some(row => row.state === 'held'), false)
   } finally {
     for (const cleanup of cleanups.reverse()) { try { cleanup() } catch {} }
     Object.assign(globalThis, actual)

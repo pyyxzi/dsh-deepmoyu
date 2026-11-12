@@ -28,7 +28,8 @@ class ReleaseArchiveTests(unittest.TestCase):
 
     def test_rejects_path_escape_and_private_files(self):
         for name in ('../x', '/x', 'D:/x', 'a\\b', 'a//b', './x', 'config.json',
-                     'nested/bili_credential.json', '.env', '.env.production', 'node_modules/p/index.js',
+                     'nested/bili_credential.json', 'send-review.json', 'learn.json', 'jobs-tmp.json',
+                     'nested/jobs-tmp.json', '.env', '.env.production', 'node_modules/p/index.js',
                      '.git/config', 'lib/__pycache__/pv.pyc', 'runtime.sqlite3-wal', 'release/old.tgz'):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 ARCHIVES.validate_path(name)
@@ -78,9 +79,11 @@ class ReleaseArchiveTests(unittest.TestCase):
             root = Path(temporary) / 'repo'
             root.mkdir()
             subprocess.run(['git', 'init', '-q', str(root)], check=True)
-            (root / '.gitignore').write_text('config.json\n', encoding='utf-8')
+            (root / '.gitignore').write_text((ROOT / '.gitignore').read_text(encoding='utf-8'), encoding='utf-8')
             (root / 'index.js').write_bytes(b'new uncommitted implementation')
             (root / 'config.json').write_bytes(b'private runtime data')
+            (root / 'jobs-tmp.json').write_text(json.dumps({'total_count': 1,
+                'jobs': [{'id': 123, 'steps': [{'name': 'synthetic private job'}]}]}), encoding='utf-8')
             output = Path(temporary) / 'source.zip'
             result = ARCHIVES.build_source(root, output, 'fixture')
             self.assertEqual(result['files'], 2)
@@ -88,6 +91,11 @@ class ReleaseArchiveTests(unittest.TestCase):
                 self.assertEqual(archive.read('fixture/index.js'), b'new uncommitted implementation')
                 self.assertIsNone(archive.testzip())
                 self.assertNotIn('fixture/config.json', archive.namelist())
+                self.assertNotIn('fixture/jobs-tmp.json', archive.namelist())
+            subprocess.run(['git', 'add', '-f', 'jobs-tmp.json'], cwd=root, check=True)
+            with self.assertRaises(ValueError):
+                ARCHIVES.build_source(root, output, 'fixture')
+            subprocess.run(['git', 'rm', '--cached', '-q', 'jobs-tmp.json'], cwd=root, check=True)
             subprocess.run(['git', 'add', '-f', 'config.json'], cwd=root, check=True)
             with self.assertRaises(ValueError):
                 ARCHIVES.build_source(root, output, 'fixture')

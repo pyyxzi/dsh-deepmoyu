@@ -62,7 +62,7 @@ test('status exposes shared pace explanation without rewriting pinned waits or s
     assert.equal(after.explanation.factor, 0.5)
     assert.equal(after.explanation.kinds.comment.effectiveMinSec, 60)
     assert.equal(after.explanation.kinds.comment.effectiveMaxSec, 90)
-    assert.equal(after.explanation.kinds.comment.hourCap, 8)
+    assert.equal(after.explanation.kinds.comment.hourCap, 16)
     assert.equal(after.explanation.kinds.comment.nextAt, before.explanation.kinds.comment.nextAt, 'save does not shorten an existing interval')
     assert.deepEqual(readState().pace, pinned)
 

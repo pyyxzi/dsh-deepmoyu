@@ -22,7 +22,7 @@ export function forbidden(path) {
   return ['release', 'dist', 'coverage'].includes(parts[0])
     || parts.some(part => ['node_modules', '.git', '__pycache__', '.pytest_cache', '.qa-output', '.tmp',
       '.venv', '.venv-asr'].includes(part))
-    || /(?:^|\/)(?:\.npmrc|\.env(?:\..*)?|bili_credential\.json|config\.json|state\.json|feiyu\.json|token-ledger\.json|activity\.jsonl|pet-log\.jsonl|soul\.md|voice\.md|seen\.md)$/.test(path)
+    || /(?:^|\/)(?:\.npmrc|\.env(?:\..*)?|bili_credential\.json|config\.json|state\.json|feiyu\.json|token-ledger\.json|activity\.jsonl|pet-log\.jsonl|soul\.md|voice\.md|seen\.md|send-review\.json|learn\.json|jobs-tmp\.json)$/.test(path)
     || /\.(?:pyc|pyo|sqlite(?:3)?(?:-wal|-shm)?|tgz|zip|pem|key)$/i.test(path)
 }
 

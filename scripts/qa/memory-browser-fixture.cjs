@@ -5,15 +5,19 @@ const { makeFixturePage } = require('./ui-browser-fixture.cjs')
 const { CLIENT, qaOutput } = require('./paths.cjs')
 const at = '2026-10-29T10:30:00.000Z'
 const status = { ok: true, rev: 'memory-qa', config: { learnAutoReview: false, idleChatter: false }, models: [],
-  learn: { total: 8, pending: 2, approved: 5, rejected: 1, kinds: ['fact', 'style'], labels: { fact: '场子常识', style: '说话方式' } },
-  learnReview: { enabled: false, running: false, pending: 2 },
+  learn: { total: 26, pending: 0, approved: 25, rejected: 1, kinds: ['fact', 'style'], labels: { fact: '场子常识', style: '说话方式' } },
+  learnReview: { enabled: false, running: false, pending: 0 },
   soul: { text: '## 最近的心情\n- 纸张动画的留白看着很舒服\n\n## 惦记的事\n- 还想看看那个修表的系列', chars: 48, budget: 900, empty: false, updatedAt: at, filled: ['mood', 'crave'], counts: { mood: 1, crave: 1 } },
   seen: { videos: 159, videosToday: 4, replied: 19 },
   taste: { sample: 5, checked: 3, enough: false, lines: ['目前赞数规模还不够，先不把这几条发言当成规律。'], rows: [], top: [], updatedAt: at },
 }
 const item = (source, id, label, text, extra = {}) => ({ source, id, label, text, at, from: source === 'learning' ? 'BV1bKJX6mEnY' : source + '.md', version: 'a'.repeat(64), mutable: !['seen', 'history'].includes(source), actions: ['seen', 'history'].includes(source) ? [] : ['forget'], ...extra })
-const fixtures = { learn: { ok: true, items: [], matched: 0, more: false }, memory: { items: [
-  item('learning', 'fact:one', '场子常识', '纸张动画的留白能让主体更清楚', { state: 'approved', actions: ['revoke', 'forget'] }),
+const learned = Array.from({ length: 25 }, (_, index) => ({ id: 'fact:approved-' + index, state: 'approved', kind: 'fact', label: '场子常识',
+  text: '已学会的经验 ' + String(index + 1).padStart(2, '0') + '：先核对具体细节，再形成自己的判断。', when: index === 0 ? '讨论纸张动画的留白' : '写观后感时',
+  example: '合成参考例句 ' + index, from: 'BV1bKJX6mEnY', at, version: 1, why: '证据足够，人工批准' }))
+const fixtures = { learn: { ok: true, items: learned }, memory: { items: [
+  item('learning', 'fact:one', '场子常识', '纸张动画的留白能让主体更清楚', { state: 'approved', actions: ['revoke', 'forget'],
+    when: '写动画观后感时', example: '合成的动画感想例句', practice: { reported: 2, lastOutcome: 'helpful', lastNote: '先提一个画面细节，再说自己的感觉。', selfReported: true } }),
   item('learning', 'style:two', '说话方式', '先说慢一点，再给具体细节', { state: 'pending' }),
   item('soul', 'mood:0', '最近的心情', '纸张动画的留白看着很舒服'),
   item('voice', '2', '语气札记', '真正好玩的细节值得停一下，不用每句都抖机灵'),
@@ -26,9 +30,41 @@ const checks=[],check=(label,pass)=>{checks.push({label,pass:Boolean(pass)});if(
 const modal=document.querySelector('[data-bd-pet-modal]'),scope=selector=>modal.querySelector(selector),rows=()=>[...modal.querySelectorAll('[data-bd-memory-result]')];
 const source=()=>scope('[aria-label="记忆来源"]'),search=()=>scope('[aria-label="搜索所有记忆"]');
 const button=(text,within=modal)=>[...within.querySelectorAll('button')].find(el=>el.textContent.trim()===text);
+const learnedRows=()=>[...modal.querySelectorAll('[data-bd-learn-id]')],learnSearch=()=>scope('[aria-label="筛选学习记录"]');
+check('默认已学会不预取整库且只读取批准内容',!F.requests.some(r=>r.path.endsWith('/memory'))&&Boolean(scope('[data-bd-learned]'))&&F.requests.filter(r=>r.path.endsWith('/learn')).every(r=>new URLSearchParams(r.search).get('state')==='approved'));
+check('默认首屏展示已批准经验而不是空待审',learnedRows().length===20&&modal.textContent.includes('已学会 · 已批准经验')&&modal.textContent.includes('显示 1–20 / 25 条'));
+check('已学会展示来源适用场景与理解用的例句',learnedRows()[0].textContent.includes('适用场景：讨论纸张动画的留白')&&learnedRows()[0].textContent.includes('参考例句（理解用法，不照搬）')&&learnedRows()[0].querySelector('a')?.href==='https://www.bilibili.com/video/BV1bKJX6mEnY');
+check('已学会不混入审核操作面板',!scope('[data-bd-review-controls]')&&!button('开始批量审核'));
+await F.click(button('下一页'));await F.waitFor(()=>learnedRows().length===5,'approved second page');
+check('已学会分页保留批准视图及offset',modal.textContent.includes('显示 21–25 / 25 条')&&new URLSearchParams(F.requests.filter(r=>r.path.endsWith('/learn')).at(-1).search).get('offset')==='20');
+await F.change(learnSearch(),'纸张 留白');await F.waitFor(()=>learnedRows().length===1,'learning scenario search');
+check('按适用场景多词检索且重置分页',modal.textContent.includes('已学会的经验 01')&&modal.textContent.includes('显示 1–1 / 1 条'));
+await F.change(learnSearch(),'不存在的学习内容');await F.waitFor(()=>modal.textContent.includes('无匹配的学习记录'),'learning empty search');
+check('无匹配时解释可调整筛选，已有批准数量仍可见',modal.textContent.includes('可清空关键词或更换类别')&&scope('[data-bd-learning-workspace=learned]').textContent.includes('已学会'));
+F.queueReply('GET','/learn',F.reply(503,{ok:false,error:'QA_LEARN_UNAVAILABLE'}));await F.change(learnSearch(),'纸张');
+await F.waitFor(()=>modal.textContent.includes('QA_LEARN_UNAVAILABLE'),'learning HTTP error');
+check('读取失败有明确错误与手动重试，不把失败当成丢失',scope('[role=alert]')?.textContent.includes('QA_LEARN_UNAVAILABLE')&&modal.textContent.includes('已保存的经验未被删除')&&Boolean(button('重新读取学习')));
+await F.click(button('重新读取学习'));await F.waitFor(()=>learnedRows().length===1,'learning manual recovery');
+check('手动重试恢复同一查询并清理错误',learnSearch().value==='纸张'&&!modal.textContent.includes('QA_LEARN_UNAVAILABLE'));
+F.queueReply('GET','/learn',F.reply(404,{ok:false,error:'QA_LEARN_ROUTE_MISSING'}));await F.change(learnSearch(),'动画');
+await F.waitFor(()=>modal.textContent.includes('学习记录接口不存在'),'learning missing route');
+check('学习接口404提示重启并停止自动重试',modal.textContent.includes('完整重启 DSH')&&![...F.intervals.values()].some(timer=>timer.ms===15000));
+await F.click(button('重新读取学习'));await F.waitFor(()=>learnedRows().length===1,'learning retry after missing route');
+check('404手动重试可恢复且重新启用当前页刷新',!modal.textContent.includes('学习记录接口不存在')&&[...F.intervals.values()].some(timer=>timer.ms===15000));
+await F.change(learnSearch(),'');await F.waitFor(()=>learnedRows().length===20,'clear learned query');
+await F.click(scope('[data-bd-learning-workspace=review]'));await F.waitFor(()=>modal.textContent.includes('该状态暂无学习记录'),'empty pending queue');
+check('空待审明确提示已批准内容在已学会',modal.textContent.includes('已批准的内容可在“已学会”查看')&&Boolean(button('开始批量审核')));
+check('首次审核不展示不存在的批次回执，操作入口保留',!scope('[data-bd-review-receipt]')&&!modal.textContent.includes('本批批准 0')&&Boolean(button('开始批量审核')));
+await F.click(scope('[data-bd-learning-workspace=memory]'));
 await F.waitFor(()=>rows().length===7,'all memory rows');
+check('切到检索卸载学习列表并停止其轮询',!scope('[data-bd-learning-queue]')&&![...F.intervals.values()].some(timer=>timer.ms===15000));
 check('七类记忆可读，历史只读',rows().length===7&&rows().filter(el=>el.textContent.includes('浏览历史')||el.textContent.includes('记忆版本')).every(el=>!el.querySelector('button')));
-await F.change(search(),'纸张');await F.waitFor(()=>rows().length===2,'cross-source search');
+check('经验显示适用情境、例句与自报实践，避免把回忆当核实效果',rows().some(el=>el.textContent.includes('适用场景：写动画观后感时')&&el.textContent.includes('实践记录（角色自报）：2 次')&&el.textContent.includes('先提一个画面细节')&&el.textContent.includes('合成的动画感想例句')));
+F.queueReply('GET','/memory',F.reply(503,{ok:false,error:'QA_MEMORY_UNAVAILABLE'}));await F.change(search(),'纸张');
+await F.waitFor(()=>modal.textContent.includes('QA_MEMORY_UNAVAILABLE'),'memory HTTP error');
+check('检索失败显示错误和重新读取入口',scope('[role=alert]')?.textContent.includes('QA_MEMORY_UNAVAILABLE')&&modal.textContent.includes('记忆读取失败')&&Boolean(button('重新读取记忆')));
+await F.click(button('重新读取记忆'));await F.waitFor(()=>rows().length===2,'cross-source search');
+check('记忆重试保留查询且恢复检索结果',search().value==='纸张'&&!modal.textContent.includes('QA_MEMORY_UNAVAILABLE'));
 check('关键词跨学习和心情命中',rows().some(el=>el.textContent.includes('学习经验'))&&rows().some(el=>el.textContent.includes('心情记录')));
 await F.change(source(),'soul');await F.waitFor(()=>rows().length===1,'soul source');
 const posts=()=>F.requests.filter(r=>r.path.endsWith('/memory')&&r.method==='POST');
@@ -46,7 +82,13 @@ check('并发变化不误删且显示核对提示',rows().length===1&&modal.text
 await F.change(source(),'all');await F.waitFor(()=>rows().length===6,'all refreshed after actions');
 check('跨来源查询不残留已忘记的心情',!rows().some(el=>el.textContent.includes('心情记录')));
 check('无横向页面溢出',document.documentElement.scrollWidth<=innerWidth+1&&modal.getBoundingClientRect().right<=innerWidth+1);
-check('原学习审核与soul操作仍可见',Boolean(button('开始批量审核'))&&Boolean(button('清除章节')));
+check('记忆工作区保留soul管理',Boolean(button('清除章节')));
+await F.change(source(),'taste');await F.change(search(),'旋钮');await F.waitFor(()=>rows().length===1,'nonempty query before switching');
+const memoryBeforeSwitch=F.requests.filter(r=>r.path.endsWith('/memory')).length;
+await F.click(scope('[data-bd-learning-workspace=review]'));
+check('切回待审保留审核入口且不请求记忆',Boolean(button('开始批量审核'))&&F.requests.filter(r=>r.path.endsWith('/memory')).length===memoryBeforeSwitch);
+await F.click(scope('[data-bd-learning-workspace=memory]'));await F.waitFor(()=>Boolean(source()),'memory workspace returns');
+check('工作区切换保留独立检索条件',source().value==='taste'&&search().value==='旋钮');
 F.finish({checks,ready:true,requests:F.requests,errors:F.errors,unknownRequests:F.unknownRequests});
 `
 function memoryFixture({ visual = false } = {}) {

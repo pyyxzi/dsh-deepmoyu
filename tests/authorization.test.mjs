@@ -51,10 +51,12 @@ test('fish tools and injected instructions cannot grant sending, change recipien
     }
     assert.deepEqual(f.calls, [])
     assert.equal((await f.execute('bili_config', {})).config.autoComment, false, 'reading settings remains available')
-    const preference = await f.execute('bili_config', { patch: { reportLevel: 'brief', persona: 'playful but truthful', keywords: ['tech'] } })
+    assert.equal((await f.execute('bili_config', { patch: { persona: 'model cannot replace user personality' } })).code, 'PERSONA_MANUAL_ONLY')
+    const preference = await f.execute('bili_config', { patch: { reportLevel: 'brief', keywords: ['tech'] } })
     assert.equal(preference.ok, true); assert.equal(preference.config.reportLevel, 'brief'); assert.equal(preference.config.autoComment, false)
-    const manual = await f.request({ autoComment: true, sendReview: true, dmMode: 'both', dmUid: 123 })
+    const manual = await f.request({ autoComment: true, sendReview: true, dmMode: 'both', dmUid: 123, persona: 'the human chooses this personality' })
     assert.equal(manual.status, 200); assert.equal(manual.body.config.autoComment, true); assert.equal(manual.body.config.sendReview, true)
+    assert.equal(manual.body.config.persona, 'the human chooses this personality')
   } finally { f.close() }
 })
 

@@ -131,16 +131,17 @@ def _guard_blocked(reservation, kind="send", why=""):
         return json.dumps(out, ensure_ascii=False)
     if kind == "read":
         if status == "pending":
-            message = "另一个进程正在读这条字幕 —— 这一轮先换别的视频"
+            message = "另一个进程正在取这条字幕，先看其他候选，完成后可从缓存补查"
         else:
             message = "这条已经刷过了（永久账本里有，重启也不会丢）—— 换一条"
         out = {
-            "already_seen": True,
+            "already_seen": status == "seen",
             "seen_recorded": False,
             "seen_at": at,
             "guard_status": status,
             "message": message,
-            "hint": "already_seen=true ⇒ 直接换别的视频；确实要重读，就在 bili_say 里说清为什么",
+            "hint": "已读标记用于选片去重，不禁止补查原文。读取正在进行时先处理其他候选，不要连续轮询。",
+            "next_action": "read-another-candidate",
         }
         if reservation.get("title"):
             out["title"] = reservation.get("title")
@@ -259,7 +260,8 @@ async def _guarded_send(guard, reservation, runner, record=None):
         # 挡住重发；回执转 fail-closed JSON 并指引去 bili_guard_status 核对，而不是 traceback。
         return {"guard_status": "unknown", "error": _GUARD_LOCKED_ERROR, "retry_blocked": True,
                 "result": result, "code": None, "ledger_detail": f"{type(exc).__name__}: {exc}"}
-    return {"guard_status": "sent", "error": "", "retry_blocked": False, "result": result, "code": None}
+    return {"guard_status": "sent", "error": "", "retry_blocked": False, "result": result, "code": None,
+            "pace_token": reservation.get("token", "")}
 
 
 def ts_to_day(ts) -> str:
@@ -516,7 +518,7 @@ async def bili_check_credential() -> str:
 # ========== Tool 1: 搜索视频 ==========
 
 @tool()
-async def bili_search(keyword: str, num: int = 10, order: str = "totalrank", days: int = 0) -> str:
+async def bili_search(keyword: str, num: int = 10, order: str = "totalrank", days: int = 0, page: StrictInt = 1) -> str:
     """
     搜索B站视频
 
@@ -525,11 +527,15 @@ async def bili_search(keyword: str, num: int = 10, order: str = "totalrank", day
         num: 返回视频数量，默认10，最大50
         order: 排序方式 totalrank=综合 click=播放量 pubdate=最新 dm=弹幕
         days: 只看最近几天发布的（0=不限）
+        page: 搜索页码，1至50，默认1；同一关键词可翻下一页找新候选
     
     Returns:
         JSON格式的视频列表，包含标题、BV号、播放量、评论数、UP主、发布时间等
     """
     from datetime import datetime
+
+    if type(page) is not int or not 1 <= page <= 50:
+        return json.dumps({"ok": False, "error": "page 需要1至50之间的整数"}, ensure_ascii=False)
 
     def _pubdate_str(ts) -> str:
         """unix 秒 → 本地时区 YYYY-MM-DD；拿不到给空串。"""
@@ -549,7 +555,7 @@ async def bili_search(keyword: str, num: int = 10, order: str = "totalrank", day
     result = await search.search_by_type(
         keyword=keyword,
         search_type=search.SearchObjectType.VIDEO,
-        page=1,
+        page=page,
         order_type=order_enum,
     )
 
@@ -590,7 +596,29 @@ async def bili_search(keyword: str, num: int = 10, order: str = "totalrank", day
             videos = videos[:min(num, 5)]
             hint = f"近 {days} 天没有匹配的，下面是综合排序的兜底结果"
 
-    out = {"keyword": keyword, "count": len(videos), "days": days, "videos": videos}
+    def _count(value):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int) and value >= 0:
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
+
+    # Do not infer exhaustion from our num/date filtering or a short result list.
+    # Unknown platform pagination remains null rather than claiming another page exists.
+    total_pages = _count(result.get("numPages"))
+    total_results = _count(result.get("numResults"))
+    page_size = _count(result.get("pagesize", result.get("page_size")))
+    has_more = None
+    if total_pages is not None:
+        has_more = page < min(total_pages, 50)
+    elif total_results == 0:
+        has_more = False
+    elif total_results is not None and page_size:
+        has_more = page < 50 and page * page_size < total_results
+    out = {"keyword": keyword, "count": len(videos), "days": days, "page": page,
+           "has_more": has_more, "videos": videos}
     if filtered_out_all:
         out["filtered_out_all"] = True
         out["hint"] = hint
@@ -790,6 +818,31 @@ async def _fetch_subtitle(bvid: str, with_time: bool = False) -> str:
     return json.dumps(stringify_ids(out), ensure_ascii=False)
 
 
+def _subtitle_view(payload, with_time, *, cached=False):
+    """Render both timestamp modes from the same cached, public source snapshot."""
+    out = dict(payload)
+    segments = payload.get("segments_detail")
+    if isinstance(segments, list) and segments:
+        text = []
+        for item in segments:
+            content = str(item.get("s") or "") if isinstance(item, dict) else ""
+            if not content.strip():
+                continue
+            try:
+                second = max(0.0, float(item.get("t") or 0))
+            except (TypeError, ValueError):
+                second = 0.0
+            prefix = f"[{int(second // 60):02d}:{second % 60:04.1f}] " if with_time else ""
+            text.append(prefix + content)
+        out["text"] = "\n".join(text)
+    if not with_time:
+        out.pop("segments_detail", None)
+    out.update(cached=cached, seen_recorded=not cached, already_seen=cached)
+    if cached:
+        out["hint"] = "这是上次实际取得的字幕快照，可补查时间点；不会重复抓取或增加新看片数。"
+    return out
+
+
 @tool()
 async def bili_subtitle(bvid: str, with_time: bool = False) -> str:
     """
@@ -801,18 +854,28 @@ async def bili_subtitle(bvid: str, with_time: bool = False) -> str:
 
     Returns:
         视频的完整字幕文本（含 duration；with_time=True 时含时间戳与分段时间轴）。
-        ⭐ 永久账本里已有这条 ⇒ 直接返回 already_seen=true，**不再花一次网络请求**。
+        已读视频优先返回本地字幕快照，可补查时间点；缺少快照时取一次原文。
+        永久历史只用于选片去重，读请求仍有跨进程单飞租约。
     """
     guard = _get_runtime_guard()
     try:
-        reservation = guard.reserve_read(bvid)
+        cached = guard.cached_subtitle(bvid)
+        if cached is not None:
+            return json.dumps(_subtitle_view(cached, with_time, cached=True), ensure_ascii=False)
+        reservation = guard.reserve_subtitle(bvid)
     except Exception as e:
         return json.dumps({"error": f"判重账本不可用，先不抓字幕：{e}"}, ensure_ascii=False)
     if not reservation.get("allowed"):
         return _guard_blocked(reservation, "read")
 
     try:
-        raw = await asyncio.wait_for(_fetch_subtitle(bvid, with_time), timeout=READ_TIMEOUT_SECONDS)
+        # Another reader may have published between our first cache lookup and this lease.
+        cached = guard.cached_subtitle(bvid)
+        if cached is not None:
+            guard.release(reservation)
+            return json.dumps(_subtitle_view(cached, with_time, cached=True), ensure_ascii=False)
+        # Always keep the timeline so a later with_time=True needs no second network read.
+        raw = await asyncio.wait_for(_fetch_subtitle(bvid, True), timeout=READ_TIMEOUT_SECONDS)
     except BaseException:
         # 读是幂等的：超时 / 出错都该把坑退掉，下次还能重试
         guard.release(reservation)
@@ -837,9 +900,15 @@ async def bili_subtitle(bvid: str, with_time: bool = False) -> str:
         guard.release(reservation)
         return json.dumps(payload, ensure_ascii=False)
 
-    guard.commit_read(reservation, {"bvid": bvid, "title": payload.get("title", "")})
-    payload["seen_recorded"] = True
-    return json.dumps(payload, ensure_ascii=False)
+    payload["bvid"] = bvid
+    try:
+        stored = guard.commit_subtitle(reservation, payload)
+    except Exception:
+        guard.release(reservation)
+        raise
+    out = _subtitle_view(payload, with_time)
+    out["cache_stored"] = stored
+    return json.dumps(out, ensure_ascii=False)
 
 
 # ========== Tool 4: 获取弹幕 ==========
@@ -1088,7 +1157,7 @@ async def bili_reply(bvid: str, text: str, rpid: IdInput = "0", root: IdInput = 
     # ④ 把回执里的 rpid 带回去：判重表要靠它记「我们发过哪条」，宿主的评论复核
     #    （lib/verify.mjs）也要拿它去 B站 查公开可见性。只回 success 的话那条链是断的。
     result = outcome["result"]
-    out = {"success": True, "message": "评论发送成功", "guard_status": "sent"}
+    out = {"success": True, "message": "评论发送成功", "guard_status": "sent", "pace_token": outcome["pace_token"]}
     if isinstance(result, dict):
         for name in ("rpid", "rpid_str", "root", "parent"):
             val = result.get(name)
@@ -1275,6 +1344,7 @@ async def bili_send_dynamic(
         return json.dumps(payload, ensure_ascii=False)
     result = outcome["result"]
     return json.dumps({"success": True, "message": "动态发布成功", "guard_status": "sent",
+                       "pace_token": outcome["pace_token"],
                        "data": stringify_ids(result) if isinstance(result, dict) else str(result)}, ensure_ascii=False)
 
 
@@ -1547,6 +1617,7 @@ async def bili_send_opus(
         return json.dumps(payload, ensure_ascii=False)
     result = outcome["result"]
     return json.dumps({"success": True, "message": "图文发布成功", "guard_status": "sent",
+                       "pace_token": outcome["pace_token"],
                        "data": stringify_ids(result) if isinstance(result, dict) else str(result)}, ensure_ascii=False)
 
 
@@ -1996,6 +2067,7 @@ async def bili_send_message(receiver_uid: IdInput, text: str, msg_seqno: IdInput
         "success": True,
         "message": f"私信已发送给UID:{receiver_uid}",
         "guard_status": "sent",
+        "pace_token": outcome["pace_token"],
         "data": result if isinstance(result, dict) else str(result),
     }, ensure_ascii=False)
 
@@ -2598,6 +2670,7 @@ async def bili_reply_opus(opus_id: IdInput, text: str, rpid: IdInput = "0", root
     # ⭐ opus_id 一律回字符串（JS 侧 1e18 这一档 number 必掉精度，账本键会错）
     result = outcome["result"]
     out = {"success": True, "message": "动态评论回复成功", "guard_status": "sent",
+           "pace_token": outcome["pace_token"],
            "opus_id": oid_str, "oid": str(tgt["oid"]), "ctype": tgt["ctype"]}
     if isinstance(result, dict):
         for name in ("rpid", "rpid_str", "root", "parent"):

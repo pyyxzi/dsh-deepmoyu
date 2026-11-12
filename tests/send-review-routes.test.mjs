@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { apply } from '../index.js'
 import { McpClient } from '../lib/mcp.mjs'
+import { dayKey } from '../lib/state.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'fish-send-review-'))
 let sequence = 0
@@ -23,7 +24,8 @@ async function fixture(extra = {}, existing) {
     ctx: { tools: { register(spec) { tools.set(spec.name, spec); return () => tools.delete(spec.name) } } } }
   let handler, reply = { success: true, rpid: '7654321' }
   const original = McpClient.prototype.call
-  McpClient.prototype.call = async function(name, args) {
+  McpClient.prototype.call = async function(name, args, options) {
+    options?.beforeSubmit?.()
     calls.push({ name, args })
     if (typeof reply === 'function') return reply(name, args)
     if (name === 'bili_dm_list') return { items: [{ uid: '123', msg_seqno: '456', is_followed: true, following: true, timestamp: Math.floor(Date.now() / 1000), last_msg: { timestamp: Math.floor(Date.now() / 1000) } }] }
@@ -160,6 +162,25 @@ test('a permission revoked while a DM approval reads context prevents the later 
     assert.equal(result.body.sent, false); assert.equal(result.body.item.state, 'pending')
     assert.equal(f.calls.filter(call => call.name === 'bili_send_message').length, 0)
     assert.match(result.body.error, /权限已关闭/)
+  } finally { f.close() }
+})
+
+test('direct DM continuation rechecks permission after async incoming-message verification before submitting', async () => {
+  const f = await fixture({ sendReview: false, dmReplyFollowedOnly: true })
+  try {
+    const day = dayKey()
+    f.writeState({ ...f.state(), day, dmPerUser: { '123': { day, n: 3 } } })
+    f.setReply(async name => {
+      if (name === 'bili_dm_list') {
+        await f.request('/config', { autoReplyDm: false })
+        return { items: [{ uid: '123', msg_seqno: '456', is_follow: true, days_ago: 0 }] }
+      }
+      return { success: true }
+    })
+    await assert.rejects(f.execute('bili_dm_reply', { uid: '123', msg_seqno: '456', text: '新消息仍须以提交时的本人权限为准。' }), { code: 'SEND_PERMISSION_REVOKED' })
+    assert.equal(f.calls.filter(call => call.name === 'bili_send_message').length, 0)
+    assert.equal(f.state().dmPerUser['123'].n, 3)
+    assert.equal(f.state().pace, undefined)
   } finally { f.close() }
 })
 

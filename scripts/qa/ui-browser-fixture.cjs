@@ -2,6 +2,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
+const { createHash } = require('node:crypto')
 const { ROOT } = require('./paths.cjs')
 const MODULES = {
   react: ['react', 'cjs/react.production.js'],
@@ -67,6 +68,11 @@ function makeFixturePage({ clientSource, status = {}, fixtures = {}, target = 's
   const face = pathToFileURL(path.join(ROOT, 'assets/avatar/face.png')).href
   const pet = pathToFileURL(path.join(ROOT, 'assets/pet/pet.png')).href
   const data = { status, fixtures: { ...fixtures, stickers: fixtures.stickers || stickerFixture() }, target, tab, runMode, logMode, focus, position, full, face, pet, statusFailures }
+  // Notes have no stored id. Match the runtime's stable derived find identity without adding fake note fields.
+  data.curiosityFindIds = Object.fromEntries((fixtures.curiosity?.items || []).flatMap(item => (item.notes || []).map(note => [
+    JSON.stringify([item.id, note.bvid, note.text, note.seconds]),
+    'cf-' + createHash('sha256').update(JSON.stringify([item.id, note.bvid, note.text.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, ''), note.seconds])).digest('hex').slice(0, 16),
+  ])))
   const script = `${localReactRuntime()}
 const DATA=${JSON.stringify(data)},SOURCE=${JSON.stringify(clientSource)};
 const F=window.__fixture={requests:[],creations:[],errors:[],openedSessions:[],unknownRequests:[],toasts:[],closedSettings:0,data:DATA};
@@ -102,6 +108,25 @@ window.fetch=async(url,init)=>{const u=new URL(String(url),'http://fixture.local
  if(F.handlers.has(key))return await F.handlers.get(key)(request);
  const exactKeys=(keys)=>JSON.stringify(Object.keys(requestBody).sort())===JSON.stringify(keys.slice().sort());
  if(key==='GET /status')body=u.searchParams.get('rev')===DATA.status.rev&&DATA.status.rev?{ok:true,unchanged:true,rev:DATA.status.rev}:structuredClone(DATA.status);
+ else if(key==='GET /curiosity'||key==='POST /curiosity'){
+   const journal=DATA.fixtures.curiosity||(DATA.fixtures.curiosity={items:[],revision:1});
+   if(method==='POST'){
+     const action=requestBody.action;
+     if(action==='open'){
+       if(!exactKeys(['action','question','query'])||!requestBody.question||requestBody.question.length>120||requestBody.query.length>80)return F.reply(400,{ok:false,error:'fixture invalid curiosity question'});
+       journal.items.unshift({id:'curiosity-fixture-'+(journal.revision+1),question:requestBody.question,query:requestBody.query,status:'active',origin:'user',notes:[],version:1,createdAt:'2026-11-12T10:00:00Z',updatedAt:'2026-11-12T10:00:00Z'});
+     }else{
+       if(!exactKeys(['action','id','version'])||!['pause','resume','resolve','forget'].includes(action))return F.reply(400,{ok:false,error:'fixture invalid curiosity action'});
+       const item=journal.items.find(row=>row.id===requestBody.id);
+       if(!item||item.version!==requestBody.version)return F.reply(409,{ok:false,code:'CURIOSITY_STALE',error:'这条记录已经变化，请刷新后重试'});
+       if(action==='forget')journal.items=journal.items.filter(row=>row!==item);
+       else{item.status={pause:'paused',resume:'active',resolve:'resolved'}[action];item.version++}
+     }
+     journal.revision++;
+   }
+   const items=journal.items||[],counts={active:0,paused:0,resolved:0};for(const item of items)counts[item.status]++;
+   body={ok:true,items,counts,revision:journal.revision,finds:items.flatMap(item=>(item.notes||[]).map(note=>({...note,id:DATA.curiosityFindIds[JSON.stringify([item.id,note.bvid,note.text,note.seconds])],topicId:item.id,question:item.question,status:item.status})))};
+ }
  else if(key==='GET /feiyu')body=DATA.status.feiyu||{};
  else if(key==='GET /activity')body=DATA.fixtures.activity||{ok:true,rows:[]};
  else if(key==='POST /activity'&&requestBody.clear===true){DATA.fixtures.activity={ok:true,rows:[],last:'',live:{active:false,thinking:false}};body={ok:true,cleared:true};}
@@ -114,9 +139,9 @@ window.fetch=async(url,init)=>{const u=new URL(String(url),'http://fixture.local
      else if(['approve','reject'].includes(requestBody.decision)){row.state=requestBody.decision==='approve'?'approved':'rejected';row.version=(row.version||1)+1;row.why='演示审核决定'}
      else return F.reply(400,{ok:false,error:'fixture invalid learning decision'});
    }
-   const state=view.state||'pending',filter=String(view.filter||'').toLowerCase(),offset=Number(view.offset)||0,limit=Number(view.limit)||20;
-   const rows=(book.items||[]).filter(row=>(state==='all'||row.state===state)&&(!view.kind||row.kind===view.kind)&&(!filter||[row.text,row.example,row.from,row.why].join(' ').toLowerCase().includes(filter)));
-   body={ok:true,state,filter,offset,limit,items:rows.slice(offset,offset+limit),matched:rows.length,more:offset+limit<rows.length};
+   const state=view.state||'approved',filter=String(view.filter||'').toLowerCase(),terms=filter.trim().split(/\\s+/).filter(Boolean),offset=Number(view.offset)||0,limit=Number(view.limit)||20;
+   const rows=(book.items||[]).filter(row=>(state==='all'||row.state===state)&&(!view.kind||view.kind==='all'||row.kind===view.kind)&&terms.every(term=>[row.text,row.when,row.example,row.from,row.why,...(row.sources||[])].join(' ').toLowerCase().includes(term)));
+   body={ok:true,state,filter,offset,limit,items:rows.slice(offset,offset+limit),matched:rows.length,total:(book.items||[]).length,more:offset+limit<rows.length,hasMore:offset+limit<rows.length,nextOffset:offset+limit<rows.length?offset+limit:null};
  }
  else if(key==='POST /learn/review'){DATA.status.learnReview={...DATA.status.learnReview,running:requestBody.action!=='stop'};body={ok:true,started:requestBody.action!=='stop',learnReview:DATA.status.learnReview};}
  else if(key==='POST /soul'){DATA.status.soul={...DATA.status.soul,filled:(DATA.status.soul?.filled||[]).filter(value=>value!==requestBody.section)};body={ok:true,...DATA.status.soul,cleared:requestBody.section};}

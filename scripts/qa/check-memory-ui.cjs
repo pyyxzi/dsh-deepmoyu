@@ -11,6 +11,11 @@ async function main() {
   const results = []
   try {
     for (const [name, width, height] of [['desktop', 1280, 900], ['mobile', 390, 844]]) {
+      const learnedFile = path.join(output, 'learned-' + name + '.html')
+      fs.writeFileSync(learnedFile, memoryFixture({ visual: true }))
+      await browser.size(width, height); await browser.navigate(learnedFile)
+      await browser.until("document.querySelectorAll('[data-bd-learn-id]').length===20", 'learned ' + name)
+      await browser.screenshot(path.join(output, 'learned-' + name + '.png'))
       const file = path.join(output, name + '.html')
       fs.writeFileSync(file, memoryFixture())
       await browser.size(width, height); await browser.navigate(file)
@@ -18,7 +23,7 @@ async function main() {
       const result = await browser.driver.evaluate('JSON.parse(document.getElementById("fixture-result").textContent)')
       assert.deepEqual(result.errors, [], JSON.stringify(result))
       assert.deepEqual(result.unknownRequests, [], JSON.stringify(result))
-      assert.equal(result.checks.length, 9)
+      assert.equal(result.checks.length, 28)
       assert(result.checks.every((check) => check.pass), JSON.stringify(result))
       await browser.screenshot(path.join(output, name + '.png'))
       results.push({ name, ...result })

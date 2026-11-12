@@ -1,5 +1,5 @@
 {
-  "version": "2.7.2",
+  "version": "2.8.0",
   "scope": "Isolated positive contracts, not real platform sends",
   "tools": [
     {
@@ -76,6 +76,11 @@
       "tool": "bili_soul",
       "category": "local",
       "specialist": "memory-center-routes.test.mjs"
+    },
+    {
+      "tool": "bili_curiosity",
+      "category": "local",
+      "specialist": "curiosity-routes.test.mjs"
     },
     {
       "tool": "bili_taste",

@@ -338,11 +338,11 @@ const STATUS = {
       },
     },
     kinds: {
-      comment: { label: '发新评论', gapSec: 180, jitterSec: 90, hourCap: 8, usedThisHour: 3, nextAt: 1792445000000, waitSec: 2500 },
-      reply: { label: '回评论', gapSec: 90, jitterSec: 45, hourCap: 15, usedThisHour: 1, nextAt: 1792445000000, waitSec: 2500 },
-      opusReply: { label: '回动态评论', gapSec: 30, jitterSec: 15, hourCap: 30, usedThisHour: 0, nextAt: 0, waitSec: 0 },
-      dm: { label: '回私信', gapSec: 45, jitterSec: 23, hourCap: 20, usedThisHour: 0, nextAt: 0, waitSec: 0 },
-      moment: { label: '发动态', gapSec: 900, jitterSec: 450, hourCap: 1, usedThisHour: 1, nextAt: 1792446000000, waitSec: 0 },
+      comment: { label: '发新评论', gapSec: 180, jitterSec: 90, hourCap: 16, usedThisHour: 3, nextAt: 1792445000000, waitSec: 2500 },
+      reply: { label: '回评论', gapSec: 90, jitterSec: 45, hourCap: 30, usedThisHour: 1, nextAt: 1792445000000, waitSec: 2500 },
+      opusReply: { label: '回动态评论', gapSec: 30, jitterSec: 15, hourCap: 40, usedThisHour: 0, nextAt: 0, waitSec: 0 },
+      dm: { label: '回私信', gapSec: 45, jitterSec: 23, hourCap: 30, usedThisHour: 0, nextAt: 0, waitSec: 0 },
+      moment: { label: '发动态', gapSec: 900, jitterSec: 450, hourCap: 2, usedThisHour: 1, nextAt: 1792446000000, waitSec: 0 },
     },
   },
   schedule: { due: false, inWindow: false, lastStartedAt: '', nextRunAt: '', lastError: '' },
@@ -764,7 +764,7 @@ const tick = () => new Promise((r) => setImmediate(r))
   const textOf = (node) => typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(textOf).join('') : node && typeof node === 'object' ? textOf(node.children) : ''
   const exactButton = (label) => flat.find((e) => e.tag === 'button' && textOf(e.children) === label)
   const click = async (label) => {
-    const button = exactButton(label)
+    const button = exactButton(label) || flat.find(e => e.tag === 'button' && 'data-bd-learning-workspace' in e.props && hasDeepText({ children: e.children }, label))
     if (!button?.props.onClick) throw new Error('找不到按钮「' + label + '」')
     await button.props.onClick()
     texts.length = 0; tags.clear(); renderOnce('点击 ' + label)
@@ -800,6 +800,8 @@ const tick = () => new Promise((r) => setImmediate(r))
   ok('首屏为运行方式，主操作在参数与恢复信息前', flat.some(e => e.props?.['data-bd-settings-page'] === 'run')
     && ['session', 'background'].every(key => flat.some(e => e.props?.['data-bd-launch-action'] === key))
     && flat.findIndex(e => 'data-bd-run-launches' in e.props) < flat.findIndex(e => 'data-bd-run-details' in e.props))
+  ok('好奇心手帐默认收起，保留启动首屏且不预取记录', flat.some(e => e.tag === 'details' && 'data-bd-curiosity-journal' in e.props && e.props.open === false)
+    && !paths.hits.some(url => /\/curiosity/.test(url)))
   await clickTab('偏好与桌宠'); snap()
   const all0 = all()
   ok('首轮有「读取中」占位', initialLoading)
@@ -822,9 +824,14 @@ const tick = () => new Promise((r) => setImmediate(r))
     createdElements.length = 0; snap(); basicCreations.push(createdElements.length)
     ok('基本页第 ' + (i + 1) + ' 次只构建当前页', createdElements.every((e) => !e.page || e.page === 'basic') && !createdElements.some((e) => ['PetTokenLedgerPanel', 'PetOtherSettings', 'PetStickersPanel', 'PetRunCard'].includes(e.type)))
   }
-  ok('基本页四卡扁平同一网格（可选的新手引导卡通栏在外，另算）',
+  ok('偏好页合并成选片、角色陪伴、报告三组，关键词只有一个编辑点',
     flat.filter((e) => 'data-bd-basic-grid' in e.props).length === 1
-    && flat.filter((e) => 'data-bd-sec' in e.props).length === 4 + flat.filter((e) => 'data-bd-onboard' in e.props).length)
+    && flat.filter((e) => 'data-bd-sec' in e.props).length === 3 + flat.filter((e) => 'data-bd-onboard' in e.props).length
+    && flat.some((e) => 'data-bd-browse-settings' in e.props && e.props['data-bd-span'] === '2')
+    && flat.filter((e) => e.props['aria-label'] === '长期偏好关键词').length === 1)
+  ok('精细选片、桌宠提醒和参考均有明确折叠入口且保留编辑控件',
+    ['data-bd-browse-refine', 'data-bd-companion-details', 'data-bd-reference-details'].every(key => flat.some(e => e.tag === 'details' && key in e.props))
+    && ['最短时长（分钟）', '最长时长（分钟）', '避开关键词', '参考文件或目录'].every(label => flat.some(e => e.props['aria-label'] === label)))
   ok('基本页创建量记录且稳定', basicCreations.length === 3 && new Set(basicCreations).size === 1, JSON.stringify(basicCreations))
   await clickTab('token 账本'); snap()
   const ledgerText = all()
@@ -854,13 +861,23 @@ const tick = () => new Promise((r) => setImmediate(r))
   }
   if (SCENARIO === 'fresh') ok('fresh：任务列表空状态', ledgerText.includes('暂无任务记录'))
   await clickTab('偏好与桌宠'); snap()
-  ok('偏好页保留人格、选片、报告、关键词和桌宠', ['角色与表达', '一天最多挑几条', '报告详细程度', '关键词', '显示桌宠'].every((needle) => all().includes(needle)))
+  ok('偏好页保留陪伴、选片、报告、关键词和桌宠，不重复人格编辑', ['角色与陪伴', '每日精选上限', '报告详细程度', '关键词', '显示桌宠'].every((needle) => all().includes(needle))
+    && !flat.some(e => 'data-bd-persona-card' in e.props))
+  ok('每日精选只解释留片报告，不再暗示是浏览或发送总限额', all().includes('只限制留片与报告收录') && all().includes('不限制继续浏览或独立互动'))
+  ok('最低播放量有唯一数字编辑与热门摘要，默认五万', flat.filter(e => e.props['aria-label'] === '最低播放量').length === 1
+    && Number(flat.find(e => e.props['aria-label'] === '最低播放量')?.props.value) === (CFG.browseMinViews ?? 50000)
+    && all().includes('播放量优先') && all().includes('至少 50,000 播放'))
   /* 🧭 新手三步卡（2026-10-28）：待办时出现、齐了消失 */
   if (SCENARIO === 'fresh') ok('fresh：初始化状态与配置入口完整', all().includes('初始化状态') && Boolean(findButton('配置')))
   if (SCENARIO === 'normal') ok('normal：完成初始化后清单不再显示', !all().includes('初始化状态'))
   ok('偏好页含设定文件路径', flat.some((e) => e.tag === 'input' && String(e.props.value || '') === CFG.workspace))
   await clickTab('互动与投递'); snap()
   const speechText = all()
+  const personaField = flat.find(e => e.props['aria-label'] === '大肥鱼的全局人格')
+  ok('全局人格在互动页常显大编辑框，说明留空默认与鱼模式范围', Boolean(personaField) && personaField.props.rows >= 8
+    && personaField.props.maxLength === 4000 && String(personaField.props.placeholder).includes('留空使用内置默认')
+    && speechText.includes('聊天及所有 AI 发言') && speechText.includes('普通会话不受影响') && speechText.includes('严肃问题认真回答')
+    && flat.some(e => 'data-bd-persona-card' in e.props) && !flat.some(e => 'data-bd-persona-details' in e.props))
   if (SCENARIO === 'normal') {
     ok('发送预览只在互动页挂载时读取完整队列', paths.hits.some(u => /\/send-review$/.test(u)) && !Object.hasOwn(STATUS.sendReview, 'items'))
     ok('发送预览显示待审正文与收件对象', speechText.includes('fixture第一条待审核评论') && speechText.includes('BV1234567890'))
@@ -920,6 +937,10 @@ const tick = () => new Promise((r) => setImmediate(r))
     ok('节奏快捷预设完整且不自动覆盖保存值', ['标准 1', '轻快 0.5', '谨慎 1.5'].every((label) => Boolean(exactButton(label))) && String(paceInput()?.props.value) === '1.5')
     ok('节奏范围来自基础与已保存系数，不拿新间隔冒充倒计时', rangeRow('comment').includes('基础 120–180 秒') && rangeRow('comment').includes('已保存 180–270 秒') && speechText.includes('不是当前倒计时') && speechText.includes('下一次成功发送后') && speechText.includes('已钉下的等待不会重算'))
     ok('解释保留小时/连发/额度/风控与安全口径', ['滚动一小时', '13 次', '45 → 90 → 180', '-352：20 分钟', '-412：60 分钟', '不是 B站 承诺的安全频率'].every((text) => speechText.includes(text)))
+    const priorHourCap = STATUS.pace.explanation.kinds.comment.hourCap
+    STATUS.pace.explanation.kinds.comment.hourCap = 37; snap()
+    ok('小时额度使用后端解释值，没有在前端复制固定表', rangeRow('comment').includes('当前本地额度 37 条/滚动小时'))
+    STATUS.pace.explanation.kinds.comment.hourCap = priorHourCap; snap()
     await click('轻快 0.5'); snap()
     ok('点击预设只改草稿、原等待仍保留', configPosts.length === startConfig && String(paceInput()?.props.value) === '0.5' && CFG.paceFactor === 1.5 && rangeRow('comment').includes('草稿 60–90 秒') && rangeRow('comment').includes('已保存 180–270 秒') && currentRow('comment') === startCurrent && STATUS.pace.explanation.kinds.comment.nextAt === pinnedAt)
     for (const invalid of ['', '0.29', '3.01', 'not-a-number']) {
@@ -1230,6 +1251,11 @@ const tick = () => new Promise((r) => setImmediate(r))
     /* 学习页：完整队列、人工决定、审核和折叠 soul。 */
     if (await clickTab('学习与记忆')) {
       snap()
+      ok('学习默认展示已学会的已批准经验，记忆检索按需创建', flat.some(e => 'data-bd-learned' in e.props)
+        && all().includes('已批准的旧记录') && !all().includes('学习长记录 02')
+        && paths.hits.some(u => /\/learn\?/.test(u) && u.includes('state=approved'))
+        && !paths.hits.some(u => /\/memory\?/.test(u)))
+      await click('待审学习'); snap(); await wait(40); snap()
       const learningText = all()
       const learningQueueText = textOf(flat.find((e) => 'data-bd-learning-queue' in e.props)?.children)
       if (SCENARIO === 'normal') {
@@ -1237,13 +1263,16 @@ const tick = () => new Promise((r) => setImmediate(r))
         ok('学习页：判重账本概览（已浏览 N 个视频 / 已回复 N 条）', learningQueueText.includes('已浏览 159 个视频') && learningQueueText.includes('已回复 199 条评论'))
       } else if (SCENARIO === 'partial') ok('partial：判重/学习缺省不会显示 undefined', !learningText.includes('刷过 undefined') && !learningText.includes('待审 undefined'))
       ok('学习页：20 条长学习记录完整渲染且有来源、例句、审计', flat.filter((e) => 'data-bd-learn-id' in e.props).length === 20
-        && learningText.includes('参考例句（外部数据）') && learningText.includes('审计：记录于') && flat.some((e) => e.tag === 'a' && e.props.href === 'https://www.bilibili.com/video/BV1bKJX6mEnY'))
+        && learningText.includes('参考例句（理解用法，不照搬）') && learningText.includes('审计：记录于') && flat.some((e) => e.tag === 'a' && e.props.href === 'https://www.bilibili.com/video/BV1bKJX6mEnY'))
       ok('学习页：列表可键盘聚焦，分页在固定区域外', flat.some((e) => 'data-bd-learn-list' in e.props && e.props.tabIndex === 0) && learningText.includes('显示 1–20 / 23 条'))
-      ok('学习页：后台审核手动按钮和状态在高级折叠外', flat.some((e) => 'data-bd-advanced' in e.props && !hasDeepText(e, '开始批量审核') && !hasDeepText(e, '停止审核')) && learningText.includes('后台自动审核'))
+      const reviewControls = flat.find(e => 'data-bd-review-controls' in e.props)
+      const reviewOptions = flat.find(e => e.tag === 'details' && hasDeepText(e, '保存审核设置'))
+      ok('学习页：合并队列内的审核控制始终可见，模型参数单独展开', Boolean(reviewControls) && Boolean(reviewOptions)
+        && !hasDeepText(reviewOptions, '开始批量审核') && !hasDeepText(reviewOptions, '停止审核')
+        && (hasDeepText(reviewControls, '开始批量审核') || hasDeepText(reviewControls, '审核中…')))
       ok('学习页：审核模型、每批、分钟及 token 参数全部保留', ['跟随后台模型', '每批最多', '最长分钟', 'token 预算', '保存审核设置'].every((text) => learningText.includes(text)) || SCENARIO === 'partial' && learningText.includes('留空 = 跟随后台模型'))
-      ok('学习页：soul 四节都在', ['最近的心情', '惦记的事', '对自己的认识', '下次想试试'].every((k) => learningText.includes(k)))
-      ok('学习页：soul 只能删不能写（pre 只读 + 无输入框）', flat.some((e) => e.tag === 'pre' && 'data-bd-soul' in e.props)
-        && !flat.some((e) => (e.tag === 'textarea' || e.tag === 'input') && /最近的心情|惦记的事/.test(String(e.props?.placeholder || '') + String(e.props?.value || ''))))
+      ok('已学会、待审与记忆三个工作区清楚分开，未预取记忆', Boolean(findButton('待审学习')) && Boolean(findButton('已学会')) && Boolean(exactButton('记忆检索'))
+        && !flat.some(e => 'data-bd-memory-result' in e.props) && !paths.hits.some(u => /\/memory\?/.test(u)))
       if (SCENARIO === 'normal') {
         await click('下一页'); snap()
         ok('学习分页：第二页 3 条并保留查询 offset', flat.filter((e) => 'data-bd-learn-id' in e.props).length === 3 && all().includes('显示 21–23 / 23 条') && paths.hits.some((url) => url.includes('/learn?') && url.includes('offset=20')))
@@ -1256,8 +1285,9 @@ const tick = () => new Promise((r) => setImmediate(r))
         await click('拒绝'); snap()
         await click('移除记录'); snap()
         ok('人工学习决定真实发送 approve/reject/forget 并携带当前视图', ['approve', 'reject', 'forget'].every((decision) => learnPosts.some((post) => post.decision === decision && post.state === 'pending' && post.limit === 20 && post.offset === 0)))
-        await click('已批准'); snap()
+        await click('已学会'); snap(); await wait(40); snap()
         ok('学习历史：已批准可改拒绝且有决定理由和版本', Boolean(exactButton('改为拒绝')) && all().includes('决定理由：') && all().includes('版本 3'))
+        await click('待审学习'); snap(); await wait(40); snap()
         await click('已拒绝'); snap()
         ok('学习历史：已拒绝可重新批准', Boolean(exactButton('重新批准')))
         await click('待审'); snap()
@@ -1265,6 +1295,7 @@ const tick = () => new Promise((r) => setImmediate(r))
         ok('后台审核：手动开始发请求并显示进行状态', reviewPosts.some((p) => !p.action) && all().includes('审核中') && Boolean(exactButton('停止审核')))
         await click('停止审核'); snap()
         ok('后台审核：停止发送 stop 并刷新状态', reviewPosts.some((p) => p.action === 'stop') && !exactButton('停止审核'))
+        await click('记忆检索'); snap(); await wait(40); snap()
         const clear = exactButton('清除章节')
         soulPosts.length = 0; confirmResult = false; await clear.props.onClick()
         ok('soul 清除取消不发送请求', soulPosts.length === 0)
@@ -1293,6 +1324,10 @@ const tick = () => new Promise((r) => setImmediate(r))
       }
       if (SCENARIO === 'review-partial') ok('部分审核 fixture：剩余不当完成且显示失败与重试', learningText.includes('本批未完成') && learningText.includes('本批剩余 17') && learningText.includes('自动重试最早') && !learningText.includes('本批完成'))
       if (SCENARIO === 'review-retry') ok('审核重试 fixture：错误、退避时间、关闭提示及手动入口可见', ['fixture暂时不可用', '自动重试最早', '自动审核未开启'].every((text) => learningText.includes(text)) && Boolean(exactButton('开始批量审核')))
+      await click('记忆检索'); snap(); await wait(40); snap()
+      ok('记忆工作区：soul 四节都在', ['最近的心情', '惦记的事', '对自己的认识', '下次想试试'].every((k) => all().includes(k)))
+      ok('记忆工作区：soul 只能删不能写（pre 只读 + 无输入框）', flat.some((e) => e.tag === 'pre' && 'data-bd-soul' in e.props)
+        && !flat.some((e) => (e.tag === 'textarea' || e.tag === 'input') && /最近的心情|惦记的事/.test(String(e.props?.placeholder || '') + String(e.props?.value || ''))))
     }
     /* 环境页仅维护环境，学习不重复混入。 */
     if (await clickTab('账号与环境')) {

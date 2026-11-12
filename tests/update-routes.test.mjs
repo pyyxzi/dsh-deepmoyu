@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { createRequire, syncBuiltinESMExports } from 'node:module'
 import { cpSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -155,7 +155,11 @@ test('a supported registry install really spawns the fixed plugin add and report
   for (const name of ['package.json', 'index.js', 'client.js', 'selfcheck.mjs', 'cordis.patch.yml']) {
     writeFileSync(join(installed, name), readFileSync(join(sourceRoot, name)))
   }
-  for (const dir of ['lib', 'presets', 'prompts', 'vendor']) cpSync(join(sourceRoot, dir), join(installed, dir), { recursive: true })
+  // A filter uses JS traversal: Node 22's native Windows directory copy can reject sandbox ACLs.
+  // Python caches are not runtime package inputs; retain every other file in this real install fixture.
+  for (const dir of ['lib', 'presets', 'prompts', 'vendor']) cpSync(join(sourceRoot, dir), join(installed, dir), {
+    recursive: true, filter: source => basename(source) !== '__pycache__' && !/\.py[co]$/i.test(source),
+  })
   const cli = join(dshHome, 'dsh-bin.js'); writeFileSync(cli, '// never executed; spawn is mocked\n')
   const { apply: applyInstalled } = await import(pathToFileURL(join(installed, 'index.js')).href)
   const f = await fixture({ dshHome, config: { dshBin: cli }, applyFn: applyInstalled })

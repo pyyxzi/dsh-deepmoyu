@@ -1,7 +1,8 @@
 """Durable, cross-process deduplication for both Bilibili MCP entry paths.
 
-Only state.json and seen.md are read for migration. No credential or message body
-is read into this database. Send reservations never expire automatically: after a
+Only state.json and seen.md are read for migration. Public subtitle snapshots are
+cached separately from permanent history. No credentials or private messages are
+read into this database. Send reservations never expire automatically: after a
 crash or an ambiguous network outcome, retrying could publish a second message.
 """
 from __future__ import annotations
@@ -22,14 +23,16 @@ from pathlib import Path
 BV_RE = re.compile(r"^BV[0-9A-Za-z]{10}$")
 READ_LEASE_SECONDS = 600
 READ_TIMEOUT_SECONDS = 180
+SUBTITLE_CACHE_MAX = 256
+SUBTITLE_CACHE_BYTES = 2_000_000
 
 # Same limits as lib/pace.mjs; SQLite is the common floor for GUI and native MCP.
 PACE = {
-    "comment": {"gap": 120, "jitter": 60, "hour": 8},
-    "reply": {"gap": 60, "jitter": 30, "hour": 15},
-    "opusReply": {"gap": 20, "jitter": 10, "hour": 30},
-    "dm": {"gap": 30, "jitter": 15, "hour": 20},
-    "moment": {"gap": 600, "jitter": 300, "hour": 1},
+    "comment": {"gap": 120, "jitter": 60, "hour": 16},
+    "reply": {"gap": 60, "jitter": 30, "hour": 30},
+    "opusReply": {"gap": 20, "jitter": 10, "hour": 40},
+    "dm": {"gap": 30, "jitter": 15, "hour": 30},
+    "moment": {"gap": 600, "jitter": 300, "hour": 2},
 }
 BURST_WINDOW, BURST_MAX, BURST_EXTRA = 600, 10, 180
 PACE_KEEP = 7200
@@ -43,6 +46,10 @@ def _finite(value, default=0):
         return result if math.isfinite(result) else float(default)
     except (TypeError, ValueError, OverflowError):
         return float(default)
+
+
+def _pace_token(value):
+    return value.lower() if isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{32}", value) else ""
 
 
 def pace_kind(key):
@@ -238,6 +245,10 @@ class RuntimeGuard:
             conn.execute("CREATE INDEX IF NOT EXISTS guard_pace_kind_at ON guard_pace_events(kind,at)")
             conn.execute("CREATE TABLE IF NOT EXISTS guard_pace_state ("
                          "name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("CREATE TABLE IF NOT EXISTS subtitle_cache ("
+                         "bvid TEXT PRIMARY KEY, fetched REAL NOT NULL, payload TEXT NOT NULL)")
+            conn.execute("CREATE TABLE IF NOT EXISTS subtitle_reads ("
+                         "bvid TEXT PRIMARY KEY, token TEXT NOT NULL, expires REAL NOT NULL)")
         finally:
             conn.close()
 
@@ -305,17 +316,19 @@ class RuntimeGuard:
             if isinstance(row, dict):
                 at = _finite(row.get("at"))
                 nxt = _finite(row.get("next"))
-                stored.append((kind, at, nxt if nxt > 0 else None))
+                stored.append((kind, at, nxt if nxt > 0 else None, row.get("token") if "token" in row else None))
             else:
-                stored.append((kind, _finite(row), None))
+                stored.append((kind, _finite(row), None, None))
 
-        def recorded_next(kind, at):
-            for s_kind, s_at, s_next in stored:
-                if s_kind == kind and s_next and abs(s_at - at) <= 2000:
+        def recorded_next(kind, at, token):
+            for s_kind, s_at, s_next, s_token in stored:
+                same_event = (_pace_token(token) == _pace_token(s_token) and bool(_pace_token(token))
+                              if token is not None else s_token is None and abs(s_at - at) <= 2000)
+                if s_kind == kind and s_next and same_event:
                     return s_next
             return None
 
-        def event(kind, stamp, next_stamp=None, pinned=False):
+        def event(kind, stamp, next_stamp=None, pinned=False, token=None):
             at = _finite(stamp) / 1000
             if kind not in PACE or at <= 0:
                 return
@@ -323,12 +336,24 @@ class RuntimeGuard:
             free = max(at, free)
             if at < now - PACE_KEEP and free <= now:
                 return
-            # GUI records success just after Python does. Reconcile that one event,
-            # not a second send; distinct pre-upgrade seed records remain distinct.
-            native = conn.execute("SELECT event_key,next FROM guard_pace_events "
-                                  "WHERE kind=? AND status='sent' AND token<>'' AND ABS(at-?)<=2 "
-                                  "ORDER BY ABS(at-?) LIMIT 1", (kind, at, at)).fetchone()
+            # The host may finish its state lock seconds after Python committed. A receipt
+            # token identifies that exact send without consuming another hourly/burst slot.
+            # Only old records with no token use the legacy two-second migration heuristic.
+            valid_token = _pace_token(token)
+            if valid_token:
+                native = conn.execute("SELECT event_key,next FROM guard_pace_events "
+                                      "WHERE kind=? AND status='sent' AND token=? LIMIT 1",
+                                      (kind, valid_token)).fetchone()
+            elif token is None:
+                native = conn.execute("SELECT event_key,next FROM guard_pace_events "
+                                      "WHERE kind=? AND status='sent' AND token<>'' AND ABS(at-?)<=2 "
+                                      "ORDER BY ABS(at-?) LIMIT 1", (kind, at, at)).fetchone()
+            else:
+                native = None
             if native:
+                if valid_token:
+                    conn.execute("DELETE FROM guard_pace_events WHERE kind=? AND status='seed' AND token=?",
+                                 (kind, valid_token))
                 # The host already pinned this interval (one random draw, shown in the GUI).
                 # Python's own independent draw must not silently lengthen it — otherwise the
                 # UI says "40s left" while the native guard still waits 90s.
@@ -339,19 +364,20 @@ class RuntimeGuard:
                     conn.execute("UPDATE guard_pace_events SET next=MAX(next,?) WHERE event_key=?",
                                  (free, native["event_key"]))
                 return
-            key = f"seed:{kind}:{int(round(at * 1000))}"
+            key = f"seed:{kind}:token:{valid_token}" if valid_token else f"seed:{kind}:{int(round(at * 1000))}"
             conn.execute("INSERT INTO guard_pace_events(event_key,kind,at,next,status,token) "
-                         "VALUES (?,?,?,?,'seed','') ON CONFLICT(event_key) DO UPDATE SET next=MAX(next,excluded.next)",
-                         (key, kind, at, free))
+                         "VALUES (?,?,?,?,'seed',?) ON CONFLICT(event_key) DO UPDATE SET next=MAX(next,excluded.next)",
+                         (key, kind, at, free, valid_token))
 
         recent = raw.get("recent")
         for row in (recent[-200:] if isinstance(recent, list) else []):
             if isinstance(row, dict):
                 kind, at = str(row.get("k") or ""), _finite(row.get("t"))
-                nxt = recorded_next(kind, at)
-                event(kind, at, nxt, pinned=nxt is not None)
-        for kind, at, nxt in stored:
-            event(kind, at, nxt, pinned=nxt is not None)
+                token = row.get("token") if "token" in row else None
+                nxt = recorded_next(kind, at, token)
+                event(kind, at, nxt, pinned=nxt is not None, token=token)
+        for kind, at, nxt, token in stored:
+            event(kind, at, nxt, pinned=nxt is not None, token=token)
         book = self._pace_state(conn)
         cool = _finite(raw.get("cooldownUntil")) / 1000
         if cool > book["cooldown_until"]:
@@ -594,6 +620,81 @@ class RuntimeGuard:
             raise ValueError("invalid bvid")
         return self._reserve("seen:" + bvid, "read")
 
+    def cached_subtitle(self, bvid):
+        """Read a bounded public transcript; history alone is never transcript evidence."""
+        bvid = str(bvid).strip()
+        if not BV_RE.fullmatch(bvid):
+            raise ValueError("invalid bvid")
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT payload FROM subtitle_cache WHERE bvid=?", (bvid,)).fetchone()
+            if row is None or len(row["payload"].encode("utf-8")) > SUBTITLE_CACHE_BYTES:
+                return None
+            try:
+                payload = json.loads(row["payload"])
+            except (ValueError, TypeError):
+                return None
+            if (not isinstance(payload, dict) or payload.get("bvid") != bvid
+                    or payload.get("error") or payload.get("message")
+                    or not str(payload.get("text") or "").strip()):
+                return None
+            return payload
+        finally:
+            conn.close()
+
+    def reserve_subtitle(self, bvid):
+        """Single-flight fetch lease independent of permanent seen/send reservations."""
+        bvid = str(bvid).strip()
+        if not BV_RE.fullmatch(bvid):
+            raise ValueError("invalid bvid")
+        now = self._clock()
+        with self._transaction() as conn:
+            self._import_legacy(conn)
+            legacy = conn.execute("SELECT * FROM guard_entries WHERE key=? AND kind='read'",
+                                  ("seen:" + bvid,)).fetchone()
+            if legacy is not None and legacy["status"] == "pending" and (legacy["expires"] or 0) > now:
+                return {"allowed": False, "status": "pending", "kind": "read",
+                        "retryAt": _iso(legacy["expires"]), "at": _iso(now)}
+            row = conn.execute("SELECT * FROM subtitle_reads WHERE bvid=?", (bvid,)).fetchone()
+            if row is not None and row["expires"] > now:
+                return {"allowed": False, "status": "pending", "kind": "read",
+                        "retryAt": _iso(row["expires"]), "at": _iso(now)}
+            token = uuid.uuid4().hex
+            conn.execute("INSERT INTO subtitle_reads(bvid,token,expires) VALUES (?,?,?) "
+                         "ON CONFLICT(bvid) DO UPDATE SET token=excluded.token,expires=excluded.expires",
+                         (bvid, token, now + self.read_lease_seconds))
+            return {"allowed": True, "kind": "read", "subtitle": True, "bvid": bvid, "token": token}
+
+    def commit_subtitle(self, reservation, payload):
+        """Publish cache + first-seen record atomically; eviction never removes history."""
+        bvid = str(reservation.get("bvid") or "")
+        if not reservation.get("subtitle") or not BV_RE.fullmatch(bvid):
+            raise ValueError("invalid subtitle reservation")
+        if (not isinstance(payload, dict) or payload.get("bvid") != bvid
+                or payload.get("error") or payload.get("message")
+                or not str(payload.get("text") or "").strip()):
+            raise ValueError("subtitle content required")
+        packed = json.dumps(payload, ensure_ascii=False)
+        now = self._clock()
+        with self._transaction() as conn:
+            changed = conn.execute("DELETE FROM subtitle_reads WHERE bvid=? AND token=?",
+                                   (bvid, reservation["token"])).rowcount
+            if changed != 1:
+                raise RuntimeError("subtitle fetch lease was lost")
+            if len(packed.encode("utf-8")) <= SUBTITLE_CACHE_BYTES:
+                conn.execute("INSERT INTO subtitle_cache(bvid,fetched,payload) VALUES (?,?,?) "
+                             "ON CONFLICT(bvid) DO UPDATE SET fetched=excluded.fetched,payload=excluded.payload",
+                             (bvid, now, packed))
+                conn.execute("DELETE FROM subtitle_cache WHERE bvid NOT IN "
+                             "(SELECT bvid FROM subtitle_cache ORDER BY fetched DESC,bvid LIMIT ?)",
+                             (SUBTITLE_CACHE_MAX,))
+            # INSERT OR IGNORE keeps the original first-seen timestamp and its provenance.
+            conn.execute("DELETE FROM guard_entries WHERE key=? AND kind='read' AND status='pending' AND expires<=?",
+                         ("seen:" + bvid, now))
+            self._import_one(conn, "seen:" + bvid, "read",
+                             {"bvid": bvid, "title": payload.get("title", ""), "at": _iso(now)})
+        return len(packed.encode("utf-8")) <= SUBTITLE_CACHE_BYTES
+
     def reserve_send(self, key, legacy_keys=()):
         if not key:
             raise ValueError("empty send key")
@@ -630,6 +731,9 @@ class RuntimeGuard:
     def release(self, reservation):
         """Only use for failed reads or a send proven not to have started."""
         with self._transaction() as conn:
+            if reservation.get("subtitle"):
+                return conn.execute("DELETE FROM subtitle_reads WHERE bvid=? AND token=?",
+                                    (reservation["bvid"], reservation["token"])).rowcount == 1
             changed = conn.execute("DELETE FROM guard_entries WHERE key=? AND token=? AND status='pending'",
                                    (reservation["key"], reservation["token"])).rowcount == 1
             if changed:
@@ -710,6 +814,9 @@ def guard_snapshot(home=None, bvids=None, limit=200):
         result["recentSends"] = [_public(row) for row in conn.execute(
             "SELECT * FROM guard_entries WHERE kind='send' ORDER BY updated DESC LIMIT ?", (limit,))]
         tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "subtitle_reads" in tables:
+            leases = conn.execute("SELECT bvid FROM subtitle_reads WHERE expires>? LIMIT ?", (now, limit)).fetchall()
+            result["activeReads"] = list(dict.fromkeys(result["activeReads"] + [row["bvid"] for row in leases]))[:limit]
         if {"guard_pace_events", "guard_pace_state"} <= tables:
             result["pace"] = {action: RuntimeGuard._pace_check(conn, action, now) for action in PACE}
     finally:

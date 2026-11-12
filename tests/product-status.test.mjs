@@ -108,3 +108,59 @@ test('cross-midnight background window is described without claiming it is activ
   const held = buildRecoverySnapshot({ now: 1000, window: { holdUntil: 2000 } })
   assert.equal(held.rows.find(item => item.state === 'held').action, 'background')
 })
+
+test('recovery identifies only recorded active hold reasons and never invents a manual stop', () => {
+  for (const reason of ['rest', 'manual', undefined, 'unexpected']) {
+    const result = buildRecoverySnapshot({ now: 1000, window: { holdUntil: 2000, holdReason: reason } })
+    const held = result.rows.find(row => row.state === 'held')
+    assert.equal(held.holdReason, reason === 'rest' || reason === 'manual' ? reason : 'unknown')
+    if (reason === 'rest') {
+      assert.match(held.label, /自然休息/)
+      assert.match(held.detail, /休息结束后重新检查/)
+      assert.doesNotMatch(held.label + held.detail, /手动/)
+    } else if (reason === 'manual') assert.match(held.label, /手动停止/)
+    else assert.doesNotMatch(held.label + held.detail, /手动|自然休息/)
+  }
+  for (const holdUntil of [0, 999, 1000, Infinity, NaN]) {
+    const result = buildRecoverySnapshot({ now: 1000, window: { holdUntil, holdReason: 'manual' } })
+    assert.equal(result.rows.some(row => row.state === 'held'), false, 'expired/invalid hold cannot retain a current reason')
+  }
+})
+
+test('queued session and background continuations stay visible without requesting manual recovery', () => {
+  const nextAt = Date.parse('2026-11-12T10:00:05+08:00')
+  const result = buildRecoverySnapshot({ now: nextAt - 1000,
+    feiyu: { active: false, goal: { phase: 'active', activation: 'disarmed' }, continuation: { state: 'waiting-retry', reason: 'max-tokens', nextAt } },
+    background: { active: false, stopReason: 'exit', continuationPending: true, nextStartAt: nextAt },
+    lastBackground: { stopReason: 'spawn-error' },
+  })
+  assert.equal(result.needsAction, false)
+  assert.equal(result.rows.some(row => row.id === 'idle'), false)
+  const session = result.rows.find(row => row.id === 'session'), background = result.rows.find(row => row.id === 'background')
+  assert.equal(session.state, 'waiting-retry')
+  assert.equal(session.nextAt, nextAt)
+  assert.match(session.label, /等待自动续刷/)
+  assert.match(session.detail, /本轮输出达到上限/)
+  assert.equal(background.state, 'waiting-retry')
+  assert.equal(background.nextStartAt, nextAt)
+  assert.match(background.label, /等待接力/)
+  assert.doesNotMatch(session.label + background.label, /失败|中断/)
+})
+
+test('continuation failures and bounded empty loops ask for action, including durable no-progress after restart', () => {
+  const out = buildRecoverySnapshot({ now: 1000,
+    feiyu: { active: false, goal: { phase: 'active', activation: 'disarmed' }, continuation: { state: 'needs-attention', reason: 'usage-unknown' } },
+    background: { active: false, stopReason: 'no-progress' }, window: { holdUntil: 2000, holdReason: 'unknown' },
+  })
+  assert.equal(out.needsAction, true)
+  assert.equal(out.rows.find(row => row.id === 'session').state, 'needs-attention')
+  assert.match(out.rows.find(row => row.id === 'session').detail, /用量尚未确认/)
+  const background = out.rows.find(row => row.id === 'background')
+  assert.equal(background.state, 'needs-attention')
+  assert.equal(background.reason, 'no-progress')
+  assert.equal(background.holdReason, 'unknown')
+  assert.doesNotMatch(background.label + background.detail, /手动停止|自然休息/)
+  const restarted = buildRecoverySnapshot({ lastBackground: { stopReason: 'no-progress', endedAt: '2026-11-12' } })
+  assert.equal(restarted.rows.find(row => row.id === 'background').reason, 'no-progress')
+  assert.equal(restarted.needsAction, true)
+})

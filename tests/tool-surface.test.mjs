@@ -27,7 +27,7 @@ const TEXT = '镜头停在倒影上的那几秒，水面和光线的变化特别
 const immediate = () => new Promise(resolve => setImmediate(resolve))
 const successfulContracts = new Set()
 
-/** Executable 39-tool inventory. Every entry runs successfully below and is fenced in ordinary mode.
+/** Executable 40-tool inventory. Every entry runs successfully below and is fenced in ordinary mode.
  * The specialist suites additionally prove the deeper lifecycle/policy named in the final column.
  * New registration without a real contract fails the exact inventory assertion.
  */
@@ -45,6 +45,7 @@ export const TOOL_SURFACE_EVIDENCE = Object.freeze({
   bili_received_replies: [{}, 'readonly', 'reply.test.mjs'],
   bili_my_notices: [{ num: 100 }, 'readonly', 'memory-chain.test.mjs'],
   bili_learn: [{ action: 'add', kind: 'style', text: '先指出具体细节，再表达自己的判断。', from: 'fixture:surface' }, 'local', 'memory-center-routes.test.mjs'],
+  bili_curiosity: [{ action: 'list' }, 'local', 'curiosity-routes.test.mjs'],
   bili_records: [{ type: 'activity', num: 3 }, 'local', 'memory-chain.test.mjs'],
   bili_soul: [{ action: 'append', section: 'mood', text: '刚读到的光线细节让我有点好奇。' }, 'local', 'memory-center-routes.test.mjs'],
   bili_taste: [{ action: 'digest' }, 'local', 'memory-chain.test.mjs'],
@@ -96,12 +97,12 @@ const readContracts = {
 function discovery(out) {
   assert.equal(out.videos.length, 4)
   assert.equal(out.videos.find(row => row.bvid === SEEN).already_seen, true)
-  assert.deepEqual(out.fresh.map(row => row.bvid), [FRESH, BV])
+  assert.deepEqual(out.fresh.map(row => row.bvid), [FRESH, BV], 'popular default orders unseen candidates by actual play counts')
   assert.equal(out.seen_summary.fresh, 2)
 }
 
 const sourceReply = name => {
-  if (['bili_search', 'bili_rank', 'bili_hot_videos', 'bili_user_videos'].includes(name)) return { videos: [{ bvid: SEEN, play: 999 }, { bvid: BV, play: 30 }, { bvid: FRESH, play: 70 }, { bvid: FRESH, play: 70 }] }
+  if (['bili_search', 'bili_rank', 'bili_hot_videos', 'bili_user_videos'].includes(name)) return { videos: [{ bvid: SEEN, play: 999000 }, { bvid: BV, play: 300000 }, { bvid: FRESH, play: 700000 }, { bvid: FRESH, play: 700000 }] }
   if (name === 'bili_guard_status') return { ok: true, seenVideos: { [SEEN]: { at: '2026-10-29', title: '合成永久已读' } } }
   if (name === 'bili_check_credential') return { mid: UID, name: '合成账号', valid: true }
   if (name === 'bili_subtitle') return { text: '合成字幕保留原文与时序', segments: 1, segments_detail: [{ from: 0.1, to: 1.2, content: '合成字幕保留原文与时序' }] }
@@ -116,7 +117,7 @@ const sourceReply = name => {
   if (name === 'bili_dm_list') return { items: [{ uid: UID, msg_seqno: SEQ, is_follow: true, days_ago: 0, said: '合成私信，仅在受控内存中使用' }, { uid: Number(UID), msg_seqno: SEQ, is_follow: true, days_ago: 0 }] }
   if (name === 'bili_dm_thread') return { messages: [{ sender_uid: UID, msg_seqno: SEQ, text: '合成私信记录' }] }
   if (name === 'bili_comments') return { comments: [{ rpid: RPID, member: { mid: UID }, content: '合成评论里的倒影很好看。' }] }
-  if (['bili_reply', 'bili_reply_opus', 'bili_send_message', 'bili_send_dynamic'].includes(name)) return { success: true, rpid_str: SENT, dynamic_id: OPUS }
+  if (['bili_reply', 'bili_reply_opus', 'bili_send_message', 'bili_send_dynamic'].includes(name)) return { success: true, guard_status: 'sent', pace_token: 'c'.repeat(32), rpid_str: SENT, dynamic_id: OPUS }
   throw new Error('UNEXPECTED_DOWNSTREAM_TOOL: ' + name)
 }
 
@@ -182,7 +183,7 @@ async function fixture(run, { permissions = false, worker = false, login = false
   }
   try {
     apply(ctx, {}); await immediate()
-    assert.deepEqual([...tools.keys()].sort(), Object.keys(TOOL_SURFACE_EVIDENCE).sort()); assert.equal(tools.size, 39)
+    assert.deepEqual([...tools.keys()].sort(), Object.keys(TOOL_SURFACE_EVIDENCE).sort()); assert.equal(tools.size, 40)
     await run({ root, home, fish, normal, goals, tools, calls, subprocesses, fetches, execute, request, child: () => child, async select(preset) { fish.session.header.agentPreset = preset; for (const fn of events.get('agent-preset/selected') || []) await fn(fish.id, preset); await immediate() } })
     if (!worker && !login && !installer) assert.deepEqual(subprocesses, [], 'read/local/send fixture must not run Python or any subprocess')
     if (!login) assert.deepEqual(fetches, [], 'MCP fixtures must not call a network endpoint')
@@ -217,6 +218,7 @@ test('local memory, ledgers, content preferences, status and video listing execu
   assert.equal((await f.execute('bili_seen', { action: 'check', bvid: BV })).already_seen, true)
   const learned = await f.execute('bili_learn'); assert.equal(learned.ok, true); assert.equal(learned.added, true); assert.ok(learned.id)
   assert.equal((await f.execute('bili_learn', { action: 'approve', id: learned.id })).review_required, true)
+  const curiosity = await f.execute('bili_curiosity'); assert.equal(curiosity.ok, true); assert.ok(Array.isArray(curiosity.items))
   assert.equal((await f.execute('bili_soul')).ok, true)
   assert.match((await f.execute('bili_soul', { action: 'read' })).text, /光线细节/)
   const taste = await f.execute('bili_taste'); assert.equal(taste.ok, true); assert.equal(taste.enough, false)
@@ -232,16 +234,22 @@ test('local memory, ledgers, content preferences, status and video listing execu
 
 const downstreamSend = { bili_reply: 'bili_reply', bili_comment: 'bili_reply', bili_reply_opus: 'bili_reply_opus', bili_dm_reply: 'bili_send_message', bili_deliver: 'bili_send_message', bili_moment: 'bili_send_dynamic' }
 for (const [name, downstream] of Object.entries(downstreamSend)) test(`${name} succeeds through its real wrapper with controlled sending and retains exact target IDs`, async () => fixture(async f => {
-  const out = await f.execute(name)
+  const out = await f.execute(name, name === 'bili_reply' ? { ...TOOL_SURFACE_EVIDENCE[name][0], rpid: RPID, root: ROOT } : undefined)
   if (name === 'bili_reply' || name === 'bili_comment') assert.equal(out.success, true, JSON.stringify(out))
   else assert.equal(out.ok, true, JSON.stringify(out))
   const sent = f.calls.find(row => row.name === downstream); assert.ok(sent, name + ' must perform its intended controlled MCP send')
   assert.equal(sent.args.text, TOOL_SURFACE_EVIDENCE[name][0].text)
   if (name === 'bili_reply' || name === 'bili_comment') assert.equal(sent.args.bvid, BV)
   if (name === 'bili_comment') assert.equal(sent.args.rpid, '0', 'bili_comment must never become a floor reply')
+  if (name === 'bili_reply') assert.equal(sent.args.rpid, RPID, 'the reply receipt follows the actual existing-comment channel')
   if (name === 'bili_reply_opus') assert.deepEqual(sent.args, { opus_id: OPUS, rpid: RPID, root: ROOT, text: TEXT })
   if (name === 'bili_dm_reply' || name === 'bili_deliver') assert.equal(sent.args.receiver_uid, UID)
   if (name === 'bili_dm_reply') assert.equal(sent.args.msg_seqno, SEQ)
+  const kind = ({ bili_reply: 'reply', bili_comment: 'comment', bili_reply_opus: 'opusReply', bili_dm_reply: 'dm', bili_deliver: 'dm', bili_moment: 'moment' })[name]
+  const pace = JSON.parse(readFileSync(join(f.home, 'state.json'), 'utf8')).pace
+  assert.equal(pace.last[kind].token, 'c'.repeat(32), name + ' keeps the native send receipt for exact shared-ledger reconciliation')
+  assert.equal(pace.recent.length, 1)
+  assert.equal(pace.recent[0].token, pace.last[kind].token)
 }, { permissions: true }))
 
 test('every sending wrapper refuses valid content with disabled permissions and performs zero account IO', async () => fixture(async f => {
@@ -299,7 +307,7 @@ test('bili_setup executes the actual installer to completion using only mocked p
   assert.fail('the controlled setup tool did not finish')
 }, { installer: true }))
 
-test('all 39 ordinary-session and post-exit stale handles fail mode_required before account, network or process IO', async () => fixture(async f => {
+test('all 40 ordinary-session and post-exit stale handles fail mode_required before account, network or process IO', async () => fixture(async f => {
   const handles = new Map(f.tools)
   for (const [name, spec] of handles) {
     const out = await spec.execute(structuredClone(TOOL_SURFACE_EVIDENCE[name][0]), { agent: f.normal })
@@ -310,8 +318,8 @@ test('all 39 ordinary-session and post-exit stale handles fail mode_required bef
   assert.deepEqual(f.calls, []); assert.deepEqual(f.fetches, []); assert.deepEqual(f.subprocesses, [])
 }))
 
-test('the 39-item evidence matrix references existing portable specialist suites', () => {
-  assert.equal(Object.keys(TOOL_SURFACE_EVIDENCE).length, 39)
+test('the 40-item evidence matrix references existing portable specialist suites', () => {
+  assert.equal(Object.keys(TOOL_SURFACE_EVIDENCE).length, 40)
   assert.deepEqual([...successfulContracts].sort(), Object.keys(TOOL_SURFACE_EVIDENCE).sort(), 'every registered tool must have completed a positive contract, not merely an invalid-input refusal')
   for (const [name, [args, category, file]] of Object.entries(TOOL_SURFACE_EVIDENCE)) {
     assert.ok(args && typeof args === 'object' && !Array.isArray(args), name)

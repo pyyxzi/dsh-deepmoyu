@@ -166,3 +166,157 @@ test('provider and tool exception events contain only safe diagnostics, includin
     assert.ok(!saved.includes(secret)); assert.ok(!saved.includes(key)); assert.match(saved, /原始输出已省略/)
   } finally { relay.close() }
 })
+
+test('one grant reads the current parent system text after preparation for each new dispatch', async () => {
+  let persona = 'PARENT_PERSONA_A', reads = 0, prepared = 0
+  let releaseSecond, preparingSecond
+  const secondReady = new Promise(resolve => { preparingSecond = resolve })
+  const secondWait = new Promise(resolve => { releaseSecond = resolve })
+  const received = []
+  const llm = fakeLlm({ async prepareCall(config) {
+    prepared++
+    if (prepared === 2) { preparingSecond(); await secondWait }
+    return { config, async *stream(options) {
+      received.push(structuredClone({ ...options, signal: undefined }))
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    } }
+  } })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    const grant = relay.open(model, { getSystemPrompt() { reads++; return persona } })
+    const client = createRelayClient(grant.env), adapter = createRelayAdapter(grant.env)
+    const payload = { action: 'stream', getSystemPrompt: 'UNTRUSTED_CHILD_CALLBACK', options: {
+      provider: 'wrong', model: 'wrong/model', messages, system: 'CHILD_BASE_SYSTEM', systemPrompt: 'LEGACY_FIELD',
+      getSystemPrompt: 'UNTRUSTED_CHILD_OPTIONS',
+    } }
+    const before = JSON.stringify(payload)
+    await (await client.post(payload)).text()
+    assert.equal(received[0].system, 'CHILD_BASE_SYSTEM\n\nPARENT_PERSONA_A')
+    const second = client.post(payload).then(response => response.text())
+    await secondReady
+    assert.equal(reads, 1, 'the next persona has not been read while model preparation is awaiting')
+    persona = 'PARENT_PERSONA_B'
+    releaseSecond()
+    await second
+    assert.equal(reads, 2)
+    assert.equal(received[0].system, 'CHILD_BASE_SYSTEM\n\nPARENT_PERSONA_A', 'an already submitted request keeps its captured text')
+    assert.equal(received[1].system, 'CHILD_BASE_SYSTEM\n\nPARENT_PERSONA_B')
+    for (const options of received) {
+      assert.equal(options.provider, 'buddy'); assert.equal(options.model, 'glm-5.3-flash')
+      assert.equal(options.systemPrompt, 'LEGACY_FIELD', 'legacy field is not converted to an unsupported object or array')
+      assert.equal(options.getSystemPrompt, undefined, 'a request body cannot supply a parent callback')
+      assert.equal(options.messages[0].source.provider, 'buddy')
+      assert.deepEqual(options.messages[0].content, messages[0].content)
+    }
+    assert.equal(JSON.stringify(payload), before)
+    for await (const _ of adapter.stream({ provider: RELAY_PROVIDER, model, messages, system: 'ADAPTER_SYSTEM' })) {}
+    assert.equal(received[2].system, 'ADAPTER_SYSTEM\n\nPARENT_PERSONA_B', 'the real child adapter forwards DSH system strings')
+    assert.equal(reads, 3)
+    grant.revoke()
+    await assert.rejects(client.post(payload), /撤销或过期/)
+    assert.equal(reads, 3, 'revoked grants do not read current parent text')
+  } finally { releaseSecond(); relay.close() }
+})
+
+test('revocation during model preparation stops dispatch before reading the current persona', async () => {
+  let started, release, reads = 0, streams = 0
+  const preparing = new Promise(resolve => { started = resolve })
+  const wait = new Promise(resolve => { release = resolve })
+  const llm = fakeLlm({ async prepareCall(config) {
+    started(); await wait
+    return { config, async *stream() { streams++; yield { type: 'finish', reason: { kind: 'stop' } } } }
+  } })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    const grant = relay.open(model, { getSystemPrompt: () => { reads++; return 'CURRENT_PERSONA' } })
+    const client = createRelayClient(grant.env)
+    const request = client.post({ action: 'stream', options: { messages: [] } })
+    const denied = assert.rejects(request)
+    await preparing
+    grant.revoke(); release()
+    await denied
+    assert.equal(reads, 0)
+    assert.equal(streams, 0)
+  } finally { release(); relay.close() }
+})
+
+test('HTTP cancellation during preparation does not read a persona or start a stream', async () => {
+  let started, release, serverAborted, reads = 0, streams = 0
+  const preparing = new Promise(resolve => { started = resolve })
+  const wait = new Promise(resolve => { release = resolve })
+  const aborted = new Promise(resolve => { serverAborted = resolve })
+  const llm = fakeLlm({ async prepareCall(config, signal) {
+    signal.addEventListener('abort', serverAborted, { once: true })
+    started(); await wait
+    return { config, async *stream() { streams++; yield { type: 'finish', reason: { kind: 'stop' } } } }
+  } })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    const grant = relay.open(model, { getSystemPrompt: () => { reads++; return 'CURRENT_PERSONA' } })
+    const client = createRelayClient(grant.env), stop = new AbortController()
+    const request = client.post({ action: 'stream', options: { messages: [] } }, stop.signal)
+    const denied = assert.rejects(request)
+    await preparing
+    stop.abort()
+    await denied
+    await aborted
+    release()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(reads, 0)
+    assert.equal(streams, 0)
+    grant.revoke()
+  } finally { release(); relay.close() }
+})
+
+test('parent prompt readers run only for streams, preserve undefined, and reject unsupported types', async () => {
+  let current, reads = 0, streams = 0
+  const received = []
+  const llm = fakeLlm({ async prepareCall(config) {
+    return { config, async *stream(options) {
+      streams++; received.push(options)
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    } }
+  } })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    assert.throws(() => relay.open(model, { getSystemPrompt: 'not-a-parent-function' }), /同步函数/)
+    const grant = relay.open(model, { getSystemPrompt() { reads++; return current } })
+    const client = createRelayClient(grant.env)
+    await (await client.post({ action: 'resolve' })).json()
+    await (await client.post({ action: 'tools-list' })).json()
+    assert.equal(reads, 0)
+    await (await client.post({ action: 'stream', options: { messages: [] } })).text()
+    assert.equal(Object.hasOwn(received[0], 'system'), false)
+    for (current of [null, { text: 'invalid object' }, ['invalid array'], Promise.resolve('async text')]) {
+      await assert.rejects(client.post({ action: 'stream', options: { messages: [] } }), error => error.code === 'RELAY_INVALID_SYSTEM_PROMPT')
+    }
+    current = 'CURRENT_PERSONA'
+    await assert.rejects(client.post({ action: 'stream', options: { messages: [], system: { text: 'unsupported child shape' } } }),
+      error => error.code === 'RELAY_INVALID_SYSTEM_PROMPT')
+    assert.equal(reads, 5, 'invalid child schema is rejected before invoking the trusted reader')
+    assert.equal(streams, 1)
+  } finally { relay.close() }
+})
+
+test('grants without a current-prompt callback retain their original field passthrough', async () => {
+  const received = []
+  const llm = fakeLlm({ async prepareCall(config) {
+    return { config, async *stream(options) { received.push(options); yield { type: 'finish', reason: { kind: 'stop' } } } }
+  } })
+  const relay = createModelRelay({ getLlm: () => llm })
+  try {
+    await relay.ready
+    const grant = relay.open(model), client = createRelayClient(grant.env)
+    const source = { messages, systemPrompt: { legacy: ['opaque', 'shape'] }, tools: [{ name: 'tool-a' }], toolChoice: 'auto', toolHistory: { version: 1 } }
+    await (await client.post({ action: 'stream', options: source, getSystemPrompt: 'untrusted-body-text' })).text()
+    assert.equal(received.length, 1)
+    for (const key of ['systemPrompt', 'tools', 'toolChoice', 'toolHistory']) assert.deepEqual(received[0][key], source[key])
+    assert.equal(Object.hasOwn(received[0], 'system'), false)
+    assert.equal(received[0].getSystemPrompt, undefined)
+    assert.deepEqual(received[0].messages[0].content, messages[0].content)
+  } finally { relay.close() }
+})

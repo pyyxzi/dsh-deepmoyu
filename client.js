@@ -980,6 +980,16 @@ window.__ModuleLoader__.load({
 [data-bd-segments]{border-color:#d5e7f5;background:#edf6fd;padding:4px;border-radius:10px;}
 [data-bd-segments] button{color:#466b84;padding:8px 13px;min-height:34px;}
 [data-bd-segments] button[aria-pressed="true"]{background:#fff;color:#126a9a;box-shadow:0 1px 5px #1b639516;}
+[data-bd-browse-settings] [data-bd-browse-topic][aria-pressed="false"]{background:transparent;border-color:transparent;box-shadow:none;}
+[data-bd-browse-settings] [data-bd-browse-topic][aria-pressed="true"]{background:#d7edfa;border-color:#79b8db;color:#114e76;font-weight:700;box-shadow:0 1px 3px #1b63951c;}
+[data-bd-browse-settings] > [data-bd-field]{flex:none;}
+[data-bd-browse-common]{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:12px;align-items:start;}
+[data-bd-browse-common]>[data-bd-field],[data-bd-browse-refine]>div>[data-bd-field]{flex:none;min-width:0;}
+[data-bd-browse-common] textarea{min-height:66px;resize:vertical;}
+[data-bd-pet-preferences],[data-bd-companion-settings],[data-bd-review-controls]{display:flex;flex-direction:column;gap:12px;}
+[data-bd-review-controls]{padding:12px 0 16px;border-bottom:1px solid #d7e8f4;}
+[data-bd-advanced]>summary{display:list-item;cursor:pointer;line-height:1.8;}
+@media(max-width:660px){[data-bd-browse-common]{grid-template-columns:minmax(0,1fr);}}
 [data-bd-pet-modal] [data-bd-sec]{background:#fff;border-color:#d7e8f4;border-radius:13px;box-shadow:0 3px 12px #24649204;padding:18px;gap:12px;}
 [data-bd-pet-modal] [data-bd-h] b{color:#2a4d65;}
 [data-bd-pet-modal] [data-bd-note]{color:#537289;line-height:1.7;}
@@ -1004,6 +1014,27 @@ window.__ModuleLoader__.load({
 [data-bd-run-details]>summary{cursor:pointer;color:#3b6681;font-size:12px;}
 [data-bd-run-details][open]>summary{margin-bottom:14px;}
 [data-bd-run-details]>[data-bd-sec]{margin-bottom:14px;}
+[data-bd-curiosity-journal]{border:1px solid #d8e4e8;border-radius:13px;background:#fffdf8;padding:14px 17px;}
+[data-bd-curiosity-journal]>summary{cursor:pointer;color:#446879;font-size:12px;line-height:1.8;}
+[data-bd-journal-title]{font-weight:700;color:#365e76;margin-right:12px;}
+[data-bd-journal-content],[data-bd-journal-explore],[data-bd-journal-finds]{display:flex;flex-direction:column;gap:13px;min-width:0;}
+[data-bd-journal-content]{padding-top:16px;}
+[data-bd-journal-form]{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;}
+[data-bd-journal-form] [data-bd-field]{margin:0;flex:1 1 300px;}
+[data-bd-journal-form] input{width:100%;box-sizing:border-box;}
+[data-bd-curiosity-id],[data-bd-find-id]{border:1px solid #e6dfd2;border-radius:11px;padding:15px;background:#fffefa;min-width:0;overflow-wrap:anywhere;}
+[data-bd-curiosity-id] h3{font-size:15px;line-height:1.7;font-weight:600;color:#284f67;margin:10px 0;}
+[data-bd-curiosity-id] p{margin:0 0 12px;}
+[data-bd-journal-manage]{flex:none;}
+[data-bd-journal-manage] summary{font-size:11px;cursor:pointer;color:#5d7482;}
+[data-bd-journal-manage]>div{margin-top:8px;}
+[data-bd-journal-eyebrow]{font-size:11px;color:#8e7957;}
+[data-bd-find-id] blockquote{font-size:17px;line-height:1.9;margin:13px 0 16px;color:#365566;white-space:pre-wrap;}
+[data-bd-find-id]>a{display:inline-block;margin-bottom:15px;}
+[data-bd-curiosity-journal] a{color:#137fa5;text-underline-offset:3px;}
+[data-bd-journal-source]{display:inline-block;margin-bottom:6px;}
+[data-bd-journal-empty]{padding:22px 15px;color:#6c7f88;line-height:1.8;background:#faf8f2;border-radius:9px;font-size:12px;}
+@media(max-width:660px){[data-bd-curiosity-journal]{padding:13px 14px;}[data-bd-curiosity-journal]>summary>[data-bd-note]{display:block;margin-left:14px;}[data-bd-journal-content] [data-bd-grow]{min-width:0;}[data-bd-journal-content]>[data-bd-row]{justify-content:space-between;}[data-bd-journal-content]>[data-bd-row]>[data-bd-grow]{display:none;}}
 [data-bd-week-recovery]>div:only-child{grid-column:1/-1;}
 [data-bd-pet-modal] [data-bd-settings-page="video"] [data-bd-pet-grid]>[data-bd-sec]{background:#fff;border-color:#d7e8f4;box-shadow:0 3px 12px #24649204;}
 [data-bd-pet-modal] [data-bd-video-stage]:not([data-warn]){background:#e8f5ff;color:#216c94;border-color:#bfdff5;}
@@ -1353,172 +1384,6 @@ window.__ModuleLoader__.load({
         })))
     }
 
-    /* 🌙 后台刷一轮…：headless 独立进程那一轮（不占对话）。模型下拉复用 /status 的
-     * models 清单（拿不到就退手填，判据与设置页一致）；token 预算以「万」为单位
-     * 显示与输入，提交时换算成整数。开跑走 POST /pet/start {mode:'background'}。 */
-    function PetBgPanel({ st, toast, onDone }) {
-      const cfg = (st && st.config) || {}
-      const rows = Array.isArray(st && st.models) ? st.models : []
-      const [model, setModel] = React.useState(null)   // null = 还没从配置初始化过（'' 是合法值：默认模型）
-      const [wan, setWan] = React.useState(null)       // 同上；'' = 不限
-      const [busy, setBusy] = React.useState(false)
-      const [tail, setTail] = React.useState(null)
-      const lock = React.useRef(false)                 // 防双发：state 的 busy 要等重渲染才生效，连点两下会漏
-      React.useEffect(() => {
-        if (model === null) setModel(String(cfg.backgroundModelId ?? cfg.modelId ?? ''))
-        if (wan === null) {
-          const t = Number(cfg.backgroundTokenBudget ?? cfg.tokenBudget) || 0
-          setWan(t > 0 ? String(Math.round(t / 10000)) : '')
-        }
-      }, [cfg])
-      /* 日志尾巴：后台那轮「在不在动」只能靠这本账 —— 它不进对话、也不进活动流水 */
-      const tailRev = React.useRef('')
-      React.useEffect(() => {
-        let dead = false
-        const pull = async () => {
-          try {
-            const r = await jget('/pet/log?n=10' + (tailRev.current ? '&rev=' + encodeURIComponent(tailRev.current) : ''))
-            if (!dead && r && r.ok !== false) {
-              if (r.unchanged) return         // ⭐ 没新增行就不动（省一次解析+渲染）
-              if (r.rev) tailRev.current = String(r.rev)
-              setTail(Array.isArray(r.entries) ? r.entries : [])
-            }
-          } catch { /* 下次轮询会补 */ }
-        }
-        pull()
-        const t = setInterval(pull, 3000)
-        return () => { dead = true; clearInterval(t) }
-      }, [])
-      const bgBusy = Boolean(st && st.bgBusy)
-      const run = async () => {
-        if (lock.current || busy || bgBusy) return          // 绝不双发：上一轮还活着就不再叠一轮
-        lock.current = true
-        setBusy(true)
-        try {
-          const body = { mode: 'background', tokenBudget: Math.max(0, Math.round((parseFloat(wan) || 0) * 10000)) }
-          if (model) body.model = model
-          const r = await jpost('/pet/start', body)
-          if (r && r.ok === false) {
-            toast('后台没跑起来：' + (r.error || '未知原因') + (r.hint ? ' —— ' + r.hint : ''), 'warn')
-            return
-          }
-          if (r && r.started) {
-            toast('后台那轮跑起来了 —— 几分钟，做完日志里会有回执', 'good')
-            if (onDone) onDone()
-          } else {
-            toast('后台没跑起来：' + ((r && r.error) || '可能上一轮还没结束'), 'warn')
-          }
-        } catch (e) { toast('后台没跑起来：' + String(e?.message ?? e), 'warn') }
-        finally { lock.current = false; setBusy(false) }
-      }
-      const cur = model === null ? '' : String(model)
-      const extra = cur && !rows.some((m) => m.id === cur) ? [{ id: cur, label: cur + '（不在当前清单里）' }] : []
-      return h('div', { 'data-bd-pet-card': '', 'data-wide': '' },
-        h('div', { 'data-bd-pet-cardhead': '' }, h('b', {}, '后台刷一轮'), h('span', {}, 'headless 独立进程')),
-        h('div', { 'data-bd-pet-pad': '' },
-          bgBusy ? h('span', { 'data-bd-pet-badge': '', 'data-warn': '' }, '后台正跑着呢 —— 等它做完再开下一轮') : null,
-          h('div', { 'data-bd-row': '' },
-            h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '模型'),
-            rows.length
-              ? h('select', {
-                'data-bd-input': '', 'data-bd-num': '', style: { width: '190px' },
-                value: cur, onChange: (e) => setModel(e.target.value),
-              },
-              h('option', { value: '' }, '默认（跟着当前对话）'),
-              extra.length ? h('option', { key: 'extra', value: extra[0].id }, extra[0].label) : null,
-              rows.map((m) => h('option', { key: m.id, value: m.id }, m.label || m.id)))
-              : h('input', {
-                'data-bd-input': '', style: { width: '190px' }, placeholder: 'provider/model（留空 = 默认）',
-                value: cur, onChange: (e) => setModel(e.target.value),
-              })),
-          h('div', { 'data-bd-row': '' },
-            h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, 'token 预算（万 · 0 = 不限）'),
-            h('input', {
-              'data-bd-input': '', 'data-bd-num': '', style: { width: '88px' }, type: 'number', min: 0, step: 1,
-              placeholder: '不限', value: wan === null ? '' : wan,
-              onChange: (e) => setWan(e.target.value),
-            })),
-          h('div', { 'data-bd-note': '' }, '1 万 = 10000 token。后台预算是任务目标；实际运行时长在「设置 → 后台刷」中调整。'),
-          h('div', { 'data-bd-row': '' },
-            h('button', {
-              'data-bd-btn': '', 'data-primary': '', disabled: busy || bgBusy, onClick: run,
-            }, busy ? '开跑…' : '开跑'),
-            busy ? h('i', { 'data-bd-pet-spin': '' }) : null)),
-        tail && tail.length
-          ? h('div', {
-            'data-bd-pet-log': '',
-            style: { maxHeight: '122px', borderTop: '1px solid #d8e6ee' },
-          },
-          tail.slice(-4).map((e, i) => h('div', { 'data-bd-pet-logline': '', 'data-t': petEntryTone(e), key: i },
-            h('time', {}, petFmtTime(e && e.at)), h('span', {}, petEntrySummary(e)))))
-          : null)
-    }
-
-    /* 📜 运行日志：GET /pet/log，3 秒自动刷新；type 着色（start 绿 / stop 灰 / error 红 / note 蓝）。
-     * 自动滚到底，但使用者往上翻时暂停自动滚（离底 <28px 才重新粘住），不然永远翻不上去。
-     * 顶部「停止鲸鱼摸鱼」复用现有 POST /feiyu {action:'stop'}（跟设置页「停一下」同一个端点）。 */
-    function PetLogPanel({ toast }) {
-      const [entries, setEntries] = React.useState(null)
-      const [busy, setBusy] = React.useState(false)
-      const [err, setErr] = React.useState('')
-      const listRef = React.useRef(null)
-      const stick = React.useRef(true)
-      const lock = React.useRef(false)
-      const revRef = React.useRef('')
-      React.useEffect(() => {
-        let dead = false
-        const pull = async () => {
-          try {
-            const r = await jget('/pet/log?n=200' + (revRef.current ? '&rev=' + encodeURIComponent(revRef.current) : ''))
-            if (dead) return
-            if (!r || r.ok === false) { setErr((r && r.error) || '读不到'); return }
-            if (r.unchanged) return            // ⭐ 日志没新增行：不重解析、不重渲染
-            if (r.rev) revRef.current = String(r.rev)
-            setEntries(Array.isArray(r.entries) ? r.entries : [])
-            setErr('')
-          } catch (e) { if (!dead) setErr(String(e?.message ?? e)) }
-        }
-        pull()
-        const t = setInterval(pull, 3000)
-        return () => { dead = true; clearInterval(t) }
-      }, [])
-      React.useEffect(() => {
-        const el = listRef.current
-        if (el && stick.current) el.scrollTop = el.scrollHeight
-      }, [entries])
-      const onScroll = () => {
-        const el = listRef.current
-        if (!el) return
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 28
-      }
-      const onStop = async () => {
-        if (lock.current) return
-        lock.current = true
-        setBusy(true)
-        try {
-          const r = await jpost('/feiyu', { action: 'stop' })
-          if (r && r.ok === false) toast('没停成：' + (r.error || r.hint || '未知原因'), 'warn')
-          else toast(r && r.rounds != null ? `上岸啦～这趟一共游了 ${r.rounds} 轮。` : '它本来就没在刷。', 'good')
-        } catch (e) { toast('没停成：' + String(e?.message ?? e), 'warn') }
-        finally { lock.current = false; setBusy(false) }
-      }
-      return h('div', { 'data-bd-pet-card': '', 'data-wide': '' },
-        h('div', { 'data-bd-pet-cardhead': '' },
-          h('b', {}, '运行日志'),
-          h('span', {}, '每 3 秒自动刷新'),
-          h('button', {
-            'data-bd-btn': '', 'data-sm': '', style: { marginLeft: '8px' }, disabled: busy, onClick: onStop,
-          }, busy ? '停…' : '停止鲸鱼摸鱼')),
-        err ? h('div', { 'data-bd-pet-pad': '' }, h('div', { 'data-bd-note': '' }, '读不到日志：' + err)) : null,
-        h('div', { 'data-bd-pet-log': '', ref: listRef, onScroll },
-          !entries
-            ? h('div', { 'data-bd-pet-logline': '' }, h('span', {}, '正在读…'))
-            : entries.length === 0
-              ? h('div', { 'data-bd-pet-logline': '' }, h('span', {}, '还没动静 —— 开一次会话或跑一轮后台，这儿就会一条条记下来。'))
-              : entries.map((e, i) => h('div', { 'data-bd-pet-logline': '', 'data-t': petEntryTone(e), key: i },
-                h('time', {}, petFmtTime(e && e.at)), h('span', {}, petEntrySummary(e))))))
-    }
-
     /* 🐟 状态卡：字段全部来自 /status（feiyu 激活/轮次/今日挑选/本轮 token、bgBusy、loggedIn） */
     function PetStatusCard({ st, fails }) {
       const fy = (st && st.feiyu) || {}
@@ -1582,6 +1447,7 @@ window.__ModuleLoader__.load({
         gear: ['M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
         pulse: ['M3 12h4l3-8 4 16 3-8h4'], hide: ['M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.3A10.2 10.2 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3 3.7M6.2 6.2A22 22 0 0 0 2 12s4 7 10 7a10.3 10.3 0 0 0 5-1.3'],
         sliders: ['M4 7h16M4 17h16M8 4v6M16 14v6'], spark: ['M12 3l2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z'],
+        compass: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M16 8l-3 5-5 3 3-5z'],
         film: ['M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 16h4M16 8h4M16 16h4'],
         chip: ['M7 7h10v10H7zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4'],
         dots: ['M5 12h.01M12 12h.01M19 12h.01'], key: ['M14 7a5 5 0 1 1-10 0 5 5 0 0 1 10 0M13 10l8 8M17 14l-2 2M20 17l-2 2'],
@@ -1620,7 +1486,7 @@ window.__ModuleLoader__.load({
       /* 📌 P3-39：挂载时的初始快照。保存只提交与快照**不同**的键 —— 没动过的键不再
        *   整包重发（以前每次都把七个键原样打回 /config，纯噪音写入）；全没动就提示
        *   「没有改动」。 */
-      const [baseline] = React.useState(initial)
+      const [baseline, setBaseline] = React.useState(initial)
       const tell = (text, tone) => { if (typeof say === 'function') say(String(text || ''), tone) }
       const update = (key, value) => setDraft(old => ({ ...old, [key]: value }))
       const toggle = (key, title, note) => ToggleRow({ label: title, note, on: draft[key], disabled: Boolean(busy), onChange: value => update(key, value) })
@@ -1640,12 +1506,204 @@ window.__ModuleLoader__.load({
           h('span', { 'data-bd-note': '' }, draft.quietHoursStart === draft.quietHoursEnd ? '起止时间相同，安静时段不生效。' : '按本地时间执行，支持跨午夜。')) : null,
         toggle('petReducedMotion', '减少桌宠动效', '停用浮动、泡泡和事件动画，并遵循系统的减少动态效果设置。'),
         h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '当前：' + (st?.companion?.label || '自然陪伴')),
-          h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: () => {
+          h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: async () => {
             /* P3-39：只提交与初始快照不同的键，没有改动就不发请求 */
             const changed = Object.fromEntries(Object.entries(draft).filter(([key, value]) => value !== baseline[key]))
             if (!Object.keys(changed).length) { tell('陪伴节奏：没有改动'); return }
-            patch(changed, '陪伴节奏')
+            if (await patch(changed, '陪伴节奏')) setBaseline({ ...draft })
           } }, '保存陪伴节奏')))
+    }
+
+    function PetBrowseSettings({ st, busy, patch, say }) {
+      const cfg = st?.config || {}
+      const initial = () => ({ browseTopics: Array.isArray(cfg.browseTopics) ? [...cfg.browseTopics] : [],
+        keywords: (Array.isArray(cfg.keywords) ? cfg.keywords : []).join('\n'),
+        browseAvoidKeywords: (Array.isArray(cfg.browseAvoidKeywords) ? cfg.browseAvoidKeywords : []).join('\n'),
+        browseExplorePercent: String(cfg.browseExplorePercent ?? 25), browseMinMinutes: String(cfg.browseMinMinutes ?? 0),
+        browseMaxMinutes: String(cfg.browseMaxMinutes ?? 0), browseRecentDays: String(cfg.browseRecentDays ?? 7), browseSort: cfg.browseSort || 'click',
+        browseMinViews: String(cfg.browseMinViews ?? 50000) })
+      const [draft, setDraft] = React.useState(initial)
+      const [baseline, setBaseline] = React.useState(initial)
+      const update = (key, value) => setDraft(old => ({ ...old, [key]: value }))
+      const topics = ['科技', '知识', '生活', '美食', '游戏', '动画', '音乐', '影视', '动物', '运动', '旅行']
+      const field = (label, control) => h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, label), control)
+      const select = (key, label, options) => field(label, h('select', { 'data-bd-input': '', 'aria-label': label, value: draft[key], disabled: Boolean(busy), onChange: e => update(key, e.target.value) },
+        ...options.map(([value, text]) => h('option', { key: value, value }, text))))
+      const minutes = (key, label) => field(label, h('input', { 'data-bd-input': '', 'aria-label': label, type: 'number', min: 0, max: 1440, step: 1,
+        value: draft[key], disabled: Boolean(busy), onChange: e => update(key, e.target.value), style: { width: '100%', boxSizing: 'border-box' } }))
+      const save = async () => {
+        const integer = (key, max, label) => {
+          const value = Number(draft[key])
+          if (String(draft[key]).trim() === '' || !Number.isSafeInteger(value) || value < 0 || value > max) throw new Error(label + '需要填写 0 至 ' + max + ' 之间的整数')
+          return value
+        }
+        try {
+          const value = { ...draft, keywords: [...new Set(draft.keywords.split('\n').map(word => word.trim()).filter(Boolean))],
+            browseAvoidKeywords: [...new Set(draft.browseAvoidKeywords.split('\n').map(word => word.trim()).filter(Boolean))],
+            browseExplorePercent: integer('browseExplorePercent', 100, '探索比例'), browseRecentDays: integer('browseRecentDays', 365, '发布时间'),
+            browseMinMinutes: integer('browseMinMinutes', 1440, '最短时长'), browseMaxMinutes: integer('browseMaxMinutes', 1440, '最长时长'),
+            browseMinViews: integer('browseMinViews', 2_000_000_000, '最低播放量') }
+          if (value.browseMaxMinutes > 0 && value.browseMinMinutes > value.browseMaxMinutes) throw new Error('最短时长不能大于最长时长；最长填 0 表示不限')
+          if (value.browseAvoidKeywords.length > 30 || value.browseAvoidKeywords.some(word => word.length > 80)) throw new Error('避开关键词最多 30 个，每个不超过 80 字')
+          const comparable = { ...draft, keywords: value.keywords.join('\n'), browseAvoidKeywords: value.browseAvoidKeywords.join('\n') }
+          const changed = Object.fromEntries(Object.entries(value).filter(([key]) => JSON.stringify(comparable[key]) !== JSON.stringify(baseline[key])))
+          if (!Object.keys(changed).length) { say('刷视频偏好：没有改动'); return }
+          if (await patch(changed, '刷视频偏好')) setBaseline(comparable)
+        } catch (error) { say(String(error?.message || error), 'warn') }
+      }
+      return h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-browse-settings': '' },
+        h('div', { 'data-bd-h': '' }, h(PetIcon, { name: 'compass' }), h('b', {}, '刷视频偏好')),
+        h('div', { 'data-bd-note': '' }, '默认优先热门，至少 5 万播放；也可自定热度门槛。类别、关键词、日期和时长继续生效。保存后用于下一次启动。'),
+        h('div', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '感兴趣的类别'),
+          h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '感兴趣的类别', style: { flexWrap: 'wrap' } },
+            ...topics.map(topic => h('button', { key: topic, 'data-bd-btn': '', 'data-bd-browse-topic': '', 'data-sm': '', type: 'button', disabled: Boolean(busy), 'aria-pressed': draft.browseTopics.includes(topic),
+              onClick: () => update('browseTopics', draft.browseTopics.includes(topic) ? draft.browseTopics.filter(value => value !== topic) : [...draft.browseTopics, topic]) }, topic))),
+          h('div', { 'data-bd-note': '' }, '可多选，留空随兴趣。')),
+        h('div', { 'data-bd-browse-common': '' },
+          field('喜欢的关键词', h('textarea', { 'data-bd-input': '', 'aria-label': '长期偏好关键词', rows: 2, placeholder: '一行一个，例如 DeepSeek、手工、做饭',
+            value: draft.keywords, disabled: Boolean(busy), onChange: e => update('keywords', e.target.value) })),
+          select('browseRecentDays', '视频发布时间', [['0', '不限，旧片也看'], ['1', '最近 1 天'], ['7', '最近 7 天'], ['30', '最近 30 天'], ['90', '最近 90 天'], ['365', '最近一年'],
+            ...(!['0', '1', '7', '30', '90', '365'].includes(draft.browseRecentDays) ? [[draft.browseRecentDays, '最近 ' + draft.browseRecentDays + ' 天']] : [])])),
+        field('最低播放量', h('input', { 'data-bd-input': '', 'aria-label': '最低播放量', type: 'number', min: 0, max: 2_000_000_000, step: 1000,
+          value: draft.browseMinViews, disabled: Boolean(busy), onChange: e => update('browseMinViews', e.target.value) })),
+        h('div', { 'data-bd-row': '', 'aria-label': '播放量快捷选择' }, ...[['0', '不限'], ['10000', '1 万'], ['50000', '5 万'], ['100000', '10 万']].map(([value, text]) => h('button', {
+          key: value, type: 'button', 'data-bd-btn': '', 'data-sm': '', 'aria-pressed': draft.browseMinViews === value, disabled: Boolean(busy), onClick: () => update('browseMinViews', value) }, text))),
+        h('div', { 'data-bd-note': '', 'data-bd-view-threshold': '' }, Number(draft.browseMinViews) > 0 ? '播放门槛草稿：至少 ' + Number(draft.browseMinViews).toLocaleString() + ' 次；保存后用于过滤候选视频。' : '播放门槛草稿：不限播放量。'),
+        h('details', { 'data-bd-advanced': '', 'data-bd-browse-refine': '' },
+          h('summary', {}, '精细选片', h('span', { 'data-bd-note': '' }, ' · '
+            + (Number(draft.browseMinMinutes) || Number(draft.browseMaxMinutes) ? (Number(draft.browseMinMinutes) || 0) + '–' + (Number(draft.browseMaxMinutes) || '不限') + ' 分钟' : '时长不限')
+            + ' · 避开 ' + draft.browseAvoidKeywords.split('\n').filter(word => word.trim()).length + ' 个词'
+            + ' · ' + ({ mixed: '探索 ' + draft.browseExplorePercent + '%', pubdate: '最新优先', click: '播放量优先', totalrank: '平台综合' }[draft.browseSort])
+            + ' · ' + (Number(draft.browseMinViews) > 0 ? '至少 ' + Number(draft.browseMinViews).toLocaleString() + ' 播放' : '播放不限'))),
+          h('div', {},
+        select('browseSort', '选片顺序', [['mixed', '兴趣与探索兼顾'], ['pubdate', '最新优先'], ['click', '播放量优先'], ['totalrank', '平台综合顺序']]),
+        h('div', { 'data-bd-row': '', style: { alignItems: 'stretch' } }, minutes('browseMinMinutes', '最短时长（分钟）'), minutes('browseMaxMinutes', '最长时长（分钟）')),
+        h('div', { 'data-bd-note': '' }, '0 表示不限。日期、时长缺失时先读取详情核对，避免误跳过。'),
+        field('探索陌生内容的比例', h('div', { 'data-bd-row': '' },
+          h('input', { 'data-bd-input': '', 'aria-label': '探索陌生内容的比例', type: 'range', min: 0, max: 100, step: 1, value: draft.browseExplorePercent,
+            disabled: Boolean(busy), onChange: e => update('browseExplorePercent', e.target.value), style: { flex: '1 1 180px', minWidth: 0 } }),
+          h('output', { 'data-bd-badge': '' }, draft.browseExplorePercent + '%'))),
+        h('div', { 'data-bd-note': '' }, '在「兴趣与探索兼顾」时生效。低一些更贴口味，高一些更容易发现新东西；不会要求凑满数量。'),
+        field('避开关键词', h('textarea', { 'data-bd-input': '', 'aria-label': '避开关键词', rows: 2, maxLength: 2400, placeholder: '一行一个，例如剧透、营销号或 UP 名称',
+          value: draft.browseAvoidKeywords, disabled: Boolean(busy), onChange: e => update('browseAvoidKeywords', e.target.value) })),
+        h('div', { 'data-bd-note': '' }, '最多 30 个避开关键词。类别和喜欢词为软偏好，日期、时长与避开词用于筛选。'))),
+        h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '运行时间在「运行方式」中安排。'),
+          h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy), onClick: save }, '保存刷视频偏好')))
+    }
+
+    function PetCuriosityJournal({ st, busy, onExplore }) {
+      const [expanded, setExpanded] = React.useState(false)
+      const [pane, setPane] = React.useState('explore')
+      const [snapshot, setSnapshot] = React.useState(null)
+      const [question, setQuestion] = React.useState('')
+      const [error, setError] = React.useState('')
+      const [working, setWorking] = React.useState('')
+      const [refresh, setRefresh] = React.useState(0)
+      const [findIndex, setFindIndex] = React.useState(0)
+      const alive = React.useRef(true), visible = React.useRef(false), epoch = React.useRef(0), lock = React.useRef(false)
+      visible.current = expanded
+      React.useEffect(() => { alive.current = true; return () => { alive.current = false; epoch.current += 1 } }, [])
+      const accept = result => {
+        if (!result || result.ok === false || !Array.isArray(result.items) || !Array.isArray(result.finds)) throw new Error(result?.error || '手帐没有返回可读记录')
+        return result
+      }
+      React.useEffect(() => {
+        const generation = ++epoch.current
+        if (!expanded || lock.current) return
+        let dead = false
+        lock.current = true; setWorking('read')
+        ;(async () => {
+          try {
+            const result = accept(await jget('/curiosity?state=all'))
+            if (!dead && alive.current && visible.current && generation === epoch.current) { setSnapshot(result); setError('') }
+          } catch (failure) {
+            if (!dead && alive.current && visible.current && generation === epoch.current) setError(String(failure?.message || failure))
+          } finally {
+            lock.current = false
+            if (alive.current) {
+              setWorking('')
+              if (visible.current && generation !== epoch.current) setRefresh(value => value + 1)
+            }
+          }
+        })()
+        return () => { dead = true; epoch.current += 1 }
+      }, [expanded, refresh])
+      const mutate = async (action, item) => {
+        if (lock.current || busy || !visible.current) return
+        const text = question.trim()
+        if (action === 'open' && !text) { setError('先写一个想弄清的问题。'); return }
+        if (action === 'forget' && typeof window.confirm === 'function' && !window.confirm('从手帐中忘记这条线索及其拾光笔记？B站内容和浏览判重记录保持不变。\n\n' + item.question)) return
+        lock.current = true; setWorking(action === 'open' ? 'open' : item.id)
+        const generation = epoch.current
+        try {
+          const body = action === 'open' ? { action, question: text, query: text } : { action, id: item.id, version: item.version }
+          const result = accept(await jpost('/curiosity', body))
+          if (alive.current && visible.current && generation === epoch.current) {
+            setSnapshot(result); setError(''); if (action === 'open') setQuestion(current => current.trim() === text ? '' : current)
+          }
+        } catch (failure) {
+          if (alive.current && visible.current && generation === epoch.current) {
+            const message = String(failure?.message || failure)
+            setError(['CURIOSITY_STALE', 'CURIOSITY_CHANGED'].includes(failure?.code) || /CURIOSITY_(?:STALE|CHANGED)|记录已变化|版本/.test(message) ? '这条线索已有更新，请刷新后核对再操作。' : message)
+          }
+        } finally {
+          lock.current = false
+          if (alive.current) {
+            setWorking('')
+            if (visible.current && generation !== epoch.current) setRefresh(value => value + 1)
+          }
+        }
+      }
+      const link = value => {
+        try { const url = new URL(String(value)); return url.protocol === 'https:' && ['www.bilibili.com', 'bilibili.com'].includes(url.hostname) && /^\/video\/BV[0-9A-Za-z]{10}/.test(url.pathname) ? url.href : '' } catch { return '' }
+      }
+      const items = Array.isArray(snapshot?.items) ? snapshot.items : [], finds = Array.isArray(snapshot?.finds) ? snapshot.finds : []
+      const counts = snapshot?.counts || {}, active = Boolean(st.feiyu?.active || st.bgBusy)
+      const disabled = Boolean(busy || working), selectedFind = finds.length ? finds[Math.min(findIndex, finds.length - 1)] : null
+      const states = { active: '正在惦记', paused: '先放一放', resolved: '已收起' }
+      return h('details', { 'data-bd-curiosity-journal': '', open: expanded, onToggle: event => setExpanded(event.currentTarget.open) },
+        h('summary', {}, h('span', { 'data-bd-journal-title': '' }, '好奇心手帐'),
+          h('span', { 'data-bd-note': '' }, snapshot ? ` · ${Number(counts.active) || 0} 条在意的线索 · ${finds.length} 段拾光` : '留一个问题，带着它去逛逛')),
+        expanded ? h('div', { 'data-bd-journal-content': '' },
+          h('div', { 'data-bd-row': '' },
+            h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '手帐内容' },
+              ...[['explore', '一起探索'], ['finds', '拾光回看']].map(([key, label]) => h('button', { key, type: 'button', 'data-bd-journal-pane': key, 'aria-pressed': pane === key, onClick: () => setPane(key) }, label))),
+            h('span', { 'data-bd-grow': '' }),
+            h('button', { 'data-bd-btn': '', 'data-sm': '', disabled, onClick: () => setRefresh(value => value + 1) }, '刷新手帐')),
+          error ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, error) : null,
+          working === 'read' && !snapshot ? h('div', { 'data-bd-note': '', role: 'status' }, '正在翻开手帐…') : null,
+          pane === 'explore' ? h('div', { 'data-bd-journal-explore': '' },
+            h('form', { 'data-bd-journal-form': '', onSubmit: event => { event.preventDefault(); mutate('open') } },
+              h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '想和她一起弄清什么？'),
+                h('input', { 'data-bd-input': '', 'aria-label': '留一个好奇的问题', maxLength: 80, value: question, placeholder: '例如：老电影里的雨声是怎么做出来的', disabled: Boolean(busy), onChange: event => setQuestion(event.target.value) })),
+              h('button', { 'data-bd-btn': '', type: 'submit', disabled: disabled || !question.trim() }, working === 'open' ? '正在记下…' : '留个问题')),
+            h('div', { 'data-bd-note': '' }, '问题先留在本地。点「带着它去逛逛」会新开会话，沿用运行参数和发送权限。管理手帐只影响之后选题；当前探索请在运行控制中暂停。'),
+            active ? h('div', { 'data-bd-note': '' }, '当前任务运行中，结束或暂停后再开启新的探索。') : null,
+            !items.length && snapshot ? h('div', { 'data-bd-journal-empty': '' }, '手帐还是空的。有想追问的事，先留下来。') : null,
+            ...items.map(item => h('article', { key: item.id, 'data-bd-curiosity-id': item.id },
+              h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-badge': '', 'data-live': item.status === 'active' ? '' : undefined }, states[item.status] || item.status),
+                h('span', { 'data-bd-note': '' }, item.origin === 'fish' ? '她从看过的内容里想到的' : '你留下的问题'),
+                h('span', { 'data-bd-grow': '' }),
+                h('details', { 'data-bd-journal-manage': '' }, h('summary', {}, '管理线索'),
+                  h('div', { 'data-bd-row': '' }, ...[[item.status === 'active' ? 'pause' : 'resume', item.status === 'active' ? '先放一放' : '接着惦记'],
+                    ...(item.status !== 'resolved' ? [['resolve', '这次先到这']] : []), ['forget', '忘记这条']].map(([action, label]) => h('button', { key: action, 'data-bd-btn': '', 'data-sm': '', disabled, onClick: () => mutate(action, item) }, label))))),
+              h('h3', {}, String(item.question || '')),
+              /^BV[0-9A-Za-z]{10}$/.test(String(item.bvid || '')) ? h('a', { href: 'https://www.bilibili.com/video/' + item.bvid, target: '_blank', rel: 'noopener noreferrer', 'data-bd-journal-source': '' }, '最初看到的那条视频') : null,
+              item.notes?.length ? h('p', { 'data-bd-note': '' }, '最近拾光：' + String(item.notes.at(-1)?.text || '')) : null,
+              h('div', { 'data-bd-row': '' },
+                h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, `${Array.isArray(item.notes) ? item.notes.length : 0} 段有来源的笔记`),
+                h('button', { 'data-bd-btn': '', 'data-primary': '', 'data-bd-curiosity-explore': item.id, disabled: disabled || active || item.status !== 'active' || (st.toolScope?.checked && !st.toolScope.supported),
+                  onClick: () => onExplore(item.id) }, '带着它去逛逛')))))
+            : h('div', { 'data-bd-journal-finds': '' },
+              h('div', { 'data-bd-note': '' }, '这些是她读后写下的理解，带着视频出处；时间点供回看，不代表逐句核验。'),
+              selectedFind ? h('article', { 'data-bd-find-id': selectedFind.id },
+                h('span', { 'data-bd-journal-eyebrow': '' }, selectedFind.question || '路上捡到的一点光'),
+                h('blockquote', {}, String(selectedFind.text || '')),
+                link(selectedFind.url) ? h('a', { href: link(selectedFind.url), target: '_blank', rel: 'noopener noreferrer' }, '回到视频' + (Number(selectedFind.seconds) > 0 ? ' · ' + Math.floor(selectedFind.seconds / 60) + ':' + String(Math.floor(selectedFind.seconds % 60)).padStart(2, '0') : '')) : h('span', { 'data-bd-note': '' }, '暂无可回看的视频链接'),
+                h('div', { 'data-bd-row': '' }, h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, `${Math.min(findIndex, finds.length - 1) + 1} / ${finds.length} · 只保存在本地`),
+                  h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: finds.length < 2, onClick: () => setFindIndex(value => (value + 1) % finds.length) }, '再翻一张')))
+                : h('div', { 'data-bd-journal-empty': '' }, '还没有拾光。她读到真实内容、留下一点发现后，会把出处一起夹在这里。')))
+          : null)
     }
 
     /* ⭐ 设置大弹窗（2026-10-26 桌宠化改造）：从桌宠 ⚙️ 进来的居中弹窗。
@@ -1723,6 +1781,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   const [learnError, setLearnError] = React.useState('')
   const [learnBusy, setLearnBusy] = React.useState({})
   const [learnRefresh, setLearnRefresh] = React.useState(0)
+  const [learningWorkspace, setLearningWorkspace] = React.useState('learned')
+  const learningWorkspaceRef = React.useRef(learningWorkspace)
+  learningWorkspaceRef.current = learningWorkspace
   const [mirrorNote, setMirrorNote] = React.useState('')
   const [soulBusy, setSoulBusy] = React.useState('')
   const [memoryQuery, setMemoryQuery] = React.useState('')
@@ -1767,7 +1828,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   }, [])
 
   const learnView = {
-    state: learnState,
+    state: learningWorkspace === 'learned' ? 'approved' : learnState,
     kind: learnKind,
     filter: learnFilter,
     limit: 20,
@@ -1776,12 +1837,13 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   learnViewRef.current = learnView
 
   React.useEffect(() => {
-    if (view !== 'learning') return
+    if (view !== 'learning' || learningWorkspace === 'memory') return
     let dead = false
+    let missing = false
     let timer = null
     const queryView = { ...learnView }
     const request = async () => {
-      if (dead || !alive.current || learnInFlight.current.size || learnPulling.current) return
+      if (dead || missing || !alive.current || learnInFlight.current.size || learnPulling.current) return
       const seq = ++learnRequest.current
       learnPulling.current = true
       const query = '?state=' + encodeURIComponent(queryView.state)
@@ -1790,7 +1852,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         + '&limit=' + queryView.limit + '&offset=' + queryView.offset
       try {
         const r = await jget('/learn' + query)
-        if (!r || r.ok === false) throw new Error((r && r.error) || '读学习记录失败')
+        if (!r || r.ok === false || !Array.isArray(r.items)) throw new Error((r && r.error) || '学习记录接口尚未加载，完整重启 DSH 后重试')
         const current = learnViewRef.current || {}
         const same = current.state === queryView.state && current.kind === queryView.kind
           && current.filter === queryView.filter && Number(current.offset) === Number(queryView.offset)
@@ -1799,9 +1861,14 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           setLearnError('')
         }
       } catch (e) {
-        if (!dead && alive.current && seq === learnRequest.current) setLearnError(String(e && e.message || e))
+        if (!dead && alive.current && seq === learnRequest.current) {
+          if (e?.status === 404) { missing = true; if (timer) clearInterval(timer) }
+          setLearnError(e?.status === 404 ? '学习记录接口不存在，请完整重启 DSH 后手动重新读取。' : String(e && e.message || e))
+        }
       } finally {
         learnPulling.current = false
+        // A view switch can finish while its predecessor is still in flight. Resume the selected view promptly.
+        if (alive.current && learningWorkspaceRef.current !== 'memory' && (dead || seq !== learnRequest.current)) setLearnRefresh(n => n + 1)
       }
     }
     request()
@@ -1811,10 +1878,10 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       learnRequest.current += 1
       if (timer) clearInterval(timer)
     }
-  }, [view, learnState, learnKind, learnFilter, learnOffset, learnRefresh])
+  }, [view, learningWorkspace, learnState, learnKind, learnFilter, learnOffset, learnRefresh])
 
   React.useEffect(() => {
-    if (view !== 'learning') return
+    if (view !== 'learning' || learningWorkspace !== 'memory') return
     let dead = false
     const seq = ++memoryRequest.current
     const timer = setTimeout(async () => {
@@ -1825,7 +1892,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       } catch (e) { if (!dead && alive.current && seq === memoryRequest.current) setMemoryError(String(e?.message || e)) }
     }, memoryQuery ? 220 : 0)
     return () => { dead = true; clearTimeout(timer); memoryRequest.current += 1 }
-  }, [view, memorySource, memoryQuery, memoryOffset, memoryRefresh, st?.rev])
+  }, [view, learningWorkspace, memorySource, memoryQuery, memoryOffset, memoryRefresh, st?.rev])
 
   const icon = (name) => h(PetIcon, { name })
   const sectionHead = (_name, title, extra) => h('div', { 'data-bd-h': '' }, h('b', {}, title), extra || null)
@@ -1997,6 +2064,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   const tasteTop = Array.isArray(tasteInfo.top) ? tasteInfo.top : []
   const tasteLines = Array.isArray(tasteInfo.lines) ? tasteInfo.lines : []
   const focusLearning = (state) => {
+    setLearningWorkspace(state === 'approved' ? 'learned' : 'review')
     setLearnState(state); setLearnFilter(''); setLearnKind(''); setLearnOffset(0); setLearnQ(null)
     learnQueueRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
   }
@@ -2064,6 +2132,16 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     } }
     finally { memoryActionLock.current = false; if (alive.current) setMemoryWorking('') }
   }
+  const learningUseNote = (row) => {
+    const practice = row.practice && typeof row.practice === 'object' ? row.practice : {}
+    const reported = Number.isSafeInteger(practice.reported) && practice.reported > 0 ? practice.reported : 0
+    if (!row.when && !reported) return null
+    return h('div', { 'data-bd-learning-application': '' },
+      row.when ? h('div', { 'data-bd-note': '' }, '适用场景：' + String(row.when)) : null,
+      reported ? h('div', { 'data-bd-note': '' }, '实践记录（角色自报）：' + reported + ' 次 · '
+        + ({ tried: '已经尝试', helpful: '自评有帮助', unhelpful: '自评需调整' }[practice.lastOutcome] || '已记录'),
+        practice.lastNote ? h('div', {}, String(practice.lastNote)) : null) : null)
+  }
   const memoryLabels = { all: '全部记忆', learning: '学习经验', soul: '心情记录', voice: '语气札记', taste: '口味样本', seen: '浏览历史', history: '版本与审计' }
   const memoryItems = Array.isArray(memoryData?.items) ? memoryData.items : []
   const memoryExplorerCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-memory-explorer': '' },
@@ -2085,6 +2163,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               row.label ? h('strong', { 'data-bd-label': '', 'data-bd-grow': '' }, row.label) : null,
               h('time', { 'data-bd-note': '' }, formatTime(row.at) || '时间未记录')),
             h('p', {}, row.text),
+            learningUseNote(row),
+            row.example ? h('blockquote', { 'data-bd-example': '' }, h('span', { 'data-bd-note': '' }, '参考例句（理解用法，不照搬）'), h('div', {}, String(row.example))) : null,
             row.from ? h('div', { 'data-bd-note': '' }, '来源：' + row.from) : null,
             row.why ? h('div', { 'data-bd-note': '' }, '决定理由：' + row.why) : null,
             row.state ? h('span', { 'data-bd-note': '' }, '当前状态：' + ({ pending: '待审', approved: '已批准', rejected: '已拒绝' }[row.state] || row.state)) : null,
@@ -2093,9 +2173,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               row.actions.includes('forget') ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(memoryWorking) || Boolean(busy), onClick: () => changeMemory(row, 'forget') }, memoryWorking === row.source + ':' + row.id ? '正在移除…' : '从当前记忆移除') : null)
               : h('span', { 'data-bd-note': '' }, '只读历史记录')))),
     h('div', { 'data-bd-row': '' },
-      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, memoryData ? `匹配 ${Number(memoryData.matched) || 0} 条 · 当前 ${memoryItems.length ? memoryOffset + 1 : 0}–${memoryOffset + memoryItems.length}；审计范围为最近 100 条` : '按需读取，离页停止'),
+      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, memoryData ? `匹配 ${Number(memoryData.matched ?? memoryData.total) || 0} 条 · 当前 ${memoryItems.length ? memoryOffset + 1 : 0}–${memoryOffset + memoryItems.length}；审计范围为最近 100 条` : '按需读取，离页停止'),
       h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: memoryOffset <= 0 || Boolean(memoryWorking), onClick: () => { setMemoryOffset(Math.max(0, memoryOffset - 20)); setMemoryData(null) } }, '前 20 条'),
-      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: !memoryData?.more || Boolean(memoryWorking), onClick: () => { setMemoryOffset(memoryOffset + 20); setMemoryData(null) } }, '后 20 条'),
+      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: !(memoryData?.hasMore ?? memoryData?.more) || Boolean(memoryWorking), onClick: () => { setMemoryOffset(Number.isSafeInteger(memoryData?.nextOffset) ? memoryData.nextOffset : memoryOffset + 20); setMemoryData(null) } }, '后 20 条'),
       h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(memoryWorking), onClick: () => setMemoryRefresh((n) => n + 1) }, '重新读取记忆')))
   const q = learnQ && sameLearnView(learnView) ? learnQ : null
   const items = q && Array.isArray(q.items) ? q.items : []
@@ -2122,10 +2202,11 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         one.decidedAt ? h('span', { 'data-bd-note': '' }, '决定于 ' + formatTime(one.decidedAt)) : null,
         learnBusy[one.id] ? h('span', { 'data-bd-note': '', role: 'status' }, '处理中…') : null),
       h('div', { 'data-bd-label': '' }, String(one.text || '')),
+      learningUseNote(one),
       one.example ? h('blockquote', { 'data-bd-example': '' },
-        h('span', { 'data-bd-note': '' }, '参考例句（外部数据）'), h('div', {}, String(one.example))) : null,
-      one.from ? h('div', { 'data-bd-note': '', 'data-bd-source': '' },
-        '来源：' + String(one.from),
+        h('span', { 'data-bd-note': '' }, '参考例句（理解用法，不照搬）'), h('div', {}, String(one.example))) : null,
+      one.from || Array.isArray(one.sources) && one.sources.length ? h('div', { 'data-bd-note': '', 'data-bd-source': '' },
+        '来源：' + String(one.from || one.sources.join('；')),
         ...links.map((bvid) => h('a', { key: bvid, href: 'https://www.bilibili.com/video/' + bvid, target: '_blank', rel: 'noopener noreferrer' }, '打开 ' + bvid))) : null,
       one.why ? h('div', { 'data-bd-note': '' }, '决定理由：' + String(one.why)) : null,
       h('div', { 'data-bd-note': '' }, `审计：记录于 ${formatTime(one.at) || '未知'} · 版本 ${Number(one.version) || 1}`),
@@ -2134,9 +2215,10 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         canReject ? h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: pending, onClick: () => decideLearn(one.id, 'reject') }, icon('dots'), one.state === 'approved' ? '改为拒绝' : '拒绝') : null,
         h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: pending, onClick: () => decideLearn(one.id, 'forget') }, icon('gear'), '移除记录')))
   }) : null
-  const learnCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-learning-queue': '', ref: learnQueueRef },
-    h('div', { 'data-bd-row': '' }, sectionHead('list', '学习队列'),
+  const learnCard = () => h('section', { 'data-bd-sec': '', 'data-bd-span': '2', 'data-bd-learning-queue': '', 'data-bd-learned': learningWorkspace === 'learned' ? '' : undefined, ref: learnQueueRef },
+    h('div', { 'data-bd-row': '' }, sectionHead('list', learningWorkspace === 'learned' ? '已学会 · 已批准经验' : '学习审核与历史'),
       h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, `待审 ${Number(learnInfo.pending) || 0} · 已批准 ${Number(learnInfo.approved) || 0} · 已拒绝 ${Number(learnInfo.rejected) || 0}`)),
+    learningWorkspace === 'review' ? reviewCard : null,
     /* 判重账本概览（2026-10-27 从旧设置页搬进来）：「刷过不再刷、回过不再回」记了多少得有地方看 */
     (() => {
       const sn = st && st.seen
@@ -2145,32 +2227,35 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         `判重账本：已浏览 ${Number(sn.videos) || 0} 个视频（今日新增 ${Number(sn.videosToday) || 0} 个）· `
         + `已回复 ${Number(sn.replied) || 0} 条评论`)
     })(),
-    h('div', { 'data-bd-note': '' }, '已批准内容可注入后续提示词。记录保留例句、来源、决定理由和版本；移除当前记录后仍保留审计。'),
+    h('div', { 'data-bd-note': '' }, '已批准经验按当前情境选入后续提示词。适用情境和实践记录帮助她下次用上；实践为角色自报，不代表效果已核实。移除当前记录后仍保留审计。'),
     h('div', { 'data-bd-row': '' },
-      ...[['pending', '待审'], ['approved', '已批准'], ['rejected', '已拒绝'], ['all', '全部']].map(([value, label]) => h('button', {
+      ...(learningWorkspace === 'review' ? [['pending', '待审'], ['rejected', '已拒绝'], ['all', '全部']] : []).map(([value, label]) => h('button', {
         key: value, 'data-bd-btn': '', 'data-sm': '', 'data-primary': learnState === value ? '' : undefined,
         onClick: () => { setLearnState(value); setLearnOffset(0); setLearnQ(null) },
       }, label)),
       h('select', { 'data-bd-input': '', 'aria-label': '学习记录类别', style: { width: '130px', flex: '0 1 130px' }, value: learnKind, onChange: (e) => { setLearnKind(e.target.value); setLearnOffset(0); setLearnQ(null) } },
         h('option', { value: '' }, '全部类别'), ...kinds.map((kind) => h('option', { key: kind, value: kind }, labels[kind] || kind)))),
     h('input', {
-      'data-bd-input': '', value: learnFilter, maxLength: 160, placeholder: '按正文、例句、来源或决定理由筛选',
+      'data-bd-input': '', value: learnFilter, maxLength: 160, placeholder: '按正文、适用场景、例句、来源或决定理由筛选',
       'aria-label': '筛选学习记录', onChange: (e) => { setLearnFilter(e.target.value); setLearnOffset(0); setLearnQ(null) },
     }),
-    learnError ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, '学习记录读取失败：' + learnError) : null,
-    !q ? h('div', { 'data-bd-list-empty': '', role: 'status' }, '正在读取学习记录…')
-      : !items.length ? h('div', { 'data-bd-list-empty': '' }, learnFilter ? '无匹配的学习记录' : '该状态暂无学习记录')
+    learnError ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, '学习记录读取失败：' + learnError) : null,
+    !q ? h('div', { 'data-bd-list-empty': '', role: 'status' }, learnError ? '读取失败，已保存的经验未被删除。请重新读取。' : '正在读取学习记录…')
+      : !items.length ? h('div', { 'data-bd-list-empty': '' }, learnFilter ? '无匹配的学习记录，可清空关键词或更换类别。'
+        : learningWorkspace === 'learned' ? '暂无已批准经验。待审内容通过审核后会出现在这里。' : '该状态暂无学习记录；已批准的内容可在“已学会”查看。')
         : h('div', { 'data-bd-learn-list': '', tabIndex: 0, 'aria-label': '学习记录列表' }, ...learnRows),
-    q ? h('div', { 'data-bd-row' : '' },
-      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, `显示 ${items.length ? learnOffset + 1 : 0}–${learnOffset + items.length} / ${q.matched == null ? items.length : q.matched} 条`),
+    h('div', { 'data-bd-row' : '' },
+      h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, q ? `显示 ${items.length ? learnOffset + 1 : 0}–${learnOffset + items.length} / ${q.matched ?? q.total ?? items.length} 条` : '按需读取，切到记忆检索后停止刷新'),
       h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: learnOffset <= 0 || Boolean(busy), onClick: () => { setLearnOffset(Math.max(0, learnOffset - 20)); setLearnQ(null) } }, '上一页'),
-      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: !q.more || Boolean(busy), onClick: () => { setLearnOffset(learnOffset + 20); setLearnQ(null) } }, '下一页')) : null
+      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: !(q?.hasMore ?? q?.more) || Boolean(busy), onClick: () => { setLearnOffset(Number.isSafeInteger(q?.nextOffset) ? q.nextOffset : learnOffset + 20); setLearnQ(null) } }, '下一页'),
+      h('button', { 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy), onClick: () => setLearnRefresh(n => n + 1) }, '重新读取学习'))
   )
 
   const reviewStatus = (st && st.learnReview) || {}
+  const hasReviewBatch = Boolean(reviewStatus.id || reviewStatus.batchKey || reviewStatus.lastStartedAt || reviewStatus.lastFinishedAt
+    || reviewStatus.running || reviewStatus.complete || reviewStatus.lastError || Number(reviewStatus.count) > 0 || Number(reviewStatus.approved) > 0 || Number(reviewStatus.rejected) > 0)
   const reviewModels = Array.isArray(st && st.models) ? st.models : []
-  const reviewCard = h('section', { 'data-bd-sec': '', 'data-bd-span': '2' },
-    sectionHead('pulse', '后台自动审核'),
+  const reviewCard = h('div', { 'data-bd-review-controls': '' },
     h('div', { 'data-bd-row': '', 'data-bd-toggle': '' },
       h('div', { 'data-bd-grow': '' },
         h('div', { 'data-bd-label': '' }, '自动审核待审内容'),
@@ -2209,16 +2294,15 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         try { const r = check(await jpost('/learn/review', { action: 'stop' }), '停止模型审核失败'); if (r.learnReview) setSt((old) => ({ ...old, learnReview: r.learnReview })); safeSay('模型审核已请求停止。', 'good') }
         catch (e) { safeSay(String(e && e.message || e), 'warn') } finally { setBusy('') }
       } }, '停止审核') : null),
-    h('div', { 'data-bd-row': '' },
+    hasReviewBatch ? h('div', { 'data-bd-row': '', 'data-bd-review-receipt': '' },
       h('span', { 'data-bd-badge': '', 'data-live': reviewStatus.running ? '' : undefined }, reviewStatus.running ? '审核中' : reviewStatus.complete ? '本批完成' : reviewStatus.lastError ? '本批未完成' : '未运行'),
-      h('span', { 'data-bd-badge': '' }, '全部待审 ' + Number(reviewStatus.pending ?? learnInfo.pending ?? 0)),
       h('span', { 'data-bd-badge': '' }, '本批批准 ' + Number(reviewStatus.approved || 0)),
       h('span', { 'data-bd-badge': '' }, '本批拒绝 ' + Number(reviewStatus.rejected || 0)),
-      reviewStatus.remaining != null ? h('span', { 'data-bd-badge': '' }, '本批剩余 ' + Number(reviewStatus.remaining)) : null),
-    reviewStatus.model ? h('div', { 'data-bd-note': '' }, (reviewStatus.running ? '正在使用：' : '最近使用：') + reviewStatus.model) : null,
+      reviewStatus.remaining != null ? h('span', { 'data-bd-badge': '' }, '本批剩余 ' + Number(reviewStatus.remaining)) : null) : null,
+    hasReviewBatch && reviewStatus.model ? h('div', { 'data-bd-note': '' }, (reviewStatus.running ? '正在使用：' : '最近使用：') + reviewStatus.model) : null,
     reviewStatus.lastError ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, '审核提示：' + reviewStatus.lastError) : null,
     !reviewStatus.running && Number(reviewStatus.nextRetryAt) > 0 ? h('div', { 'data-bd-note': '' }, '自动重试最早：' + formatTime(reviewStatus.nextRetryAt) + (reviewStatus.enabled ? '' : '（自动审核未开启）')) : null,
-    h('div', { 'data-bd-note': '' }, reviewStatus.lastFinishedAt ? '上次结束：' + formatTime(reviewStatus.lastFinishedAt) : '暂无审核记录。启用自动审核后，将在下次检查时处理待审队列。'))
+    h('div', { 'data-bd-note': '' }, reviewStatus.lastFinishedAt ? '上次结束：' + formatTime(reviewStatus.lastFinishedAt) : '后台自动审核：开启后处理待审队列，也可手动批量审核。'))
 
   /* 🔄 更新通道（2026-10-30 使用者「加一个更新通道，方便及时更新」）
    * 只在这里查/升级；普通鱼工具拿不到升级能力（换版本要重启宿主，不能让会话模型自己决定）。
@@ -2355,8 +2439,12 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
   return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': view === 'learning' ? 'learning' : 'other' },
     h('div', { 'data-bd-pghead': '' }, h('div', {}, h('b', {}, view === 'learning' ? '学习与记忆' : '账号与环境'),
       h('p', {}, view === 'learning' ? '管理学习审核、角色记忆、口味统计和历史记录。' : '管理账号登录、运行依赖和本地数据。'))),
+    view === 'learning' ? h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '学习工作区' },
+      ...[['learned', '已学会'], ['review', '待审学习'], ['memory', '记忆检索']].map(([key, label]) => h('button', { key, type: 'button', 'data-bd-learning-workspace': key,
+        'aria-pressed': learningWorkspace === key, onClick: () => { setLearningWorkspace(key); setLearnQ(null); setLearnOffset(0); setLearnError('') } }, label,
+        key !== 'memory' ? h('span', { 'data-bd-note': '' }, ' · ' + Number(learnInfo[key === 'learned' ? 'approved' : 'pending'] || 0)) : null))) : null,
     h('div', { 'data-bd-pet-grid': '', 'data-bd-other': '' },
-      ...(view === 'learning' ? [memoryOverviewCard, memoryExplorerCard, reviewCard, learnCard, soulCard] : [accountCard, updateCard, asrCard, mirrorCard, groundCard])))
+      ...(view === 'learning' ? learningWorkspace !== 'memory' ? [learnCard()] : [memoryOverviewCard, memoryExplorerCard, soulCard] : [accountCard, updateCard, asrCard, mirrorCard, groundCard])))
 }
 
 
@@ -2675,14 +2763,14 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             h('button', { 'data-bd-btn': '', 'data-primary': '', type: 'submit', disabled }, working === 'collect' ? '正在收集…' : '加入表情库'))))
     }
 
-    function PetSettingsModal({ onClose, toast, ctx, status, initialTab = 'run' }) {
+    function PetSettingsModal({ onClose, toast, ctx, status, initialTab = 'run', initialRunMode = 'session' }) {
       const [tab, setTab] = React.useState(initialTab)
       const activeGroup = ({ stickers: 'learning', ledger: 'logs', review: 'logs', other: 'basic' })[tab] || tab
       React.useEffect(() => {
         const body = modalRef.current?.querySelector('[data-bd-pet-body]')
         if (body) body.scrollTop = 0
       }, [tab])
-       const [runMode, setRunMode] = React.useState('session')
+       const [runMode, setRunMode] = React.useState(initialRunMode === 'background' ? 'background' : 'session')
        const [logMode, setLogMode] = React.useState('events')
       const [runDrafts, setRunDrafts] = React.useState({})
       const runLock = React.useRef(false)
@@ -2696,7 +2784,6 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [msg, setMsg] = React.useState('')
       const [msgTone, setMsgTone] = React.useState('')
       /* 输入一律绑本地草稿：5 秒轮询会把正在打的字冲掉 */
-      const [kws, setKws] = React.useState(null)
       const [wsDir, setWsDir] = React.useState(null)      // 跟 uiWorkspace 服务的名字区分开
       const [rl, setRl] = React.useState(null)
       const [perDay, setPerDay] = React.useState(null)
@@ -2891,7 +2978,6 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       }
       React.useEffect(() => {
         if (!cfg) return
-        if (kws === null) setKws((cfg.keywords || []).join('\n'))
         if (wsDir === null) setWsDir(cfg.workspace || '')
         if (rl === null) setRl(cfg.reportLevel || 'full')
         if (perDay === null) setPerDay(String(cfg.perDay ?? 5))
@@ -2920,6 +3006,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         setBusy(JSON.stringify(p))
         try {
           const r = await jpost('/config', p)
+          if (!r || r.ok === false) throw new Error(r?.error || '设置保存失败')
+          if ('persona' in p && typeof r.config?.persona !== 'string') throw new Error('未收到人格保存回执，请重新读取设置后重试。')
           if (r?.config) setSt((old) => ({ ...old, config: r.config }))
           const clamped = Array.isArray(r?.clamped) ? r.clamped : []
           const clampTxt = clamped.map((c) => `${c.key} 想要 ${c.want}，最多只能 ${c.got}`).join('；')
@@ -3387,26 +3475,26 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           }
         } catch (e) { say(String(e?.message ?? e), 'warn') }
       }
-      const startRun = async (mode) => {
-        if (runLock.current) return
-        if (mode === 'session' && st.toolScope?.checked && !st.toolScope.supported) { say('当前 DSH 不支持会话工具隔离，无法启动会话运行。', 'warn'); return }
+      const startRun = async (mode, { curiosityId = '' } = {}) => {
+        if (runLock.current) return false
+        if (mode === 'session' && st.toolScope?.checked && !st.toolScope.supported) { say('当前 DSH 不支持会话工具隔离，无法启动会话运行。', 'warn'); return false }
         let options
-        try { options = readRun(mode) } catch (e) { say(String(e?.message ?? e), 'warn'); return }
+        try { options = readRun(mode) } catch (e) { say(String(e?.message ?? e), 'warn'); return false }
         runLock.current = true
         setBusy('start-' + mode)
         say('')
+        let sessionId
         try {
-          let sessionId
           if (mode === 'session') {
             const created = await jpost('/pet/session-new', newSessionContext(ctx))
-            if (!created?.ok || !created.sessionId) throw new Error((created?.error || '没能创建会话') + (created?.hint ? '；' + created.hint : ''))
+            if (!created?.ok || !created.sessionId) throw Object.assign(new Error((created?.error || '没能创建会话') + (created?.hint ? '；' + created.hint : '')), { sessionId: created?.sessionId })
             sessionId = created.sessionId
           }
           /* ⭐ 时段不走请求体：host 从 config 里读常设时段，手动开始只负责"现在就跑" */
           const body = mode === 'session'
             ? { mode, model: options.model, tokenBudget: options.tokenBudget, durationMinutes: options.durationMinutes, maxRounds: options.maxRounds }
             : { mode, model: options.model, tokenBudget: options.tokenBudget, durationMinutes: options.durationMinutes }
-          const r = await jpost('/pet/start', { ...body, ...(sessionId ? { sessionId } : {}) })
+          const r = await jpost('/pet/start', { ...body, ...(sessionId ? { sessionId } : {}), ...(mode === 'session' && curiosityId ? { curiosityId } : {}) })
           if (!r?.ok || r.started === false) throw new Error((r?.error || r?.hint || '没有启动') + (r?.error && r?.hint ? '；' + r.hint : ''))
           if (sessionId) {
             try {
@@ -3416,7 +3504,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             say('会话任务已启动。', 'good')
           } else say('后台任务已启动。', 'good')
           try { const fresh = await jget('/status'); if (fresh?.ok) setSt(fresh) } catch { /* 下次轮询补上 */ }
-        } catch (e) { say(String(e?.message ?? e), 'warn') }
+          return true
+        } catch (e) { const retainedSessionId = sessionId || e?.sessionId; say(String(e?.message ?? e) + (retainedSessionId ? '；已创建的会话仍保留：' + retainedSessionId : ''), 'warn'); return false }
         finally { runLock.current = false; setBusy('') }
       }
       const controlRun = async (action) => {
@@ -3442,12 +3531,36 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           models.map((m) => h('option', { key: m.id, value: m.id }, m.label || m.id)))
           : h('input', { ...props, placeholder: 'provider/model；留空使用默认模型' })
       }
+      const stopLabel = reason => ({ user: '手动停止', exit: '本段已结束', 'round-limit': '已达本趟轮数上限', 'token-budget': '本趟 token 预算已用完',
+        'total-budget': '累计 token 上限已到', 'time-limit': '已到运行时限', 'max-tokens': '输出达到本次上限', 'model-error': '模型请求失败',
+        interrupted: '任务被中断', 'mode-exit': '已切出鲸鱼摸鱼模式', error: '执行出错', 'spawn-error': '后台启动失败' }[reason] || String(reason || ''))
+      const runState = mode => {
+        const f = st.feiyu || {}, bg = st.backgroundRun || {}, hold = st.bgWindow || {}, continuation = f.continuation || {}
+        if (mode === 'session') {
+          if (continuation.state === 'waiting-retry') return { label: '等待自动续刷', note: (continuation.reason === 'max-tokens' ? '输出达到本次上限，稍后自动接着刷。' : (stopLabel(continuation.reason) || '本轮暂时结束') + '，稍后自动重试续刷。') + (Number(continuation.nextAt) > 0 ? ' 预计 ' + petFmtTime(continuation.nextAt) + '。' : ''), waiting: true }
+          if (continuation.state === 'needs-attention') return { label: '需要处理', note: (stopLabel(continuation.reason || f.stopReason) || '当前无法自动续刷') + '，请核对后点击「继续运行」。', warning: true }
+          if (f.active && f.goal?.activation === 'disarmed') return { label: '需要处理', note: '本轮仍在收尾，但自动续刷已停用；不会继续下一轮。', warning: true }
+          if (f.active) return { label: '运行中', note: f.source === 'manual' ? '正在处理当前手动刷站任务。' : '正在按当前目标继续浏览。' }
+          const paused = f.goal && ['paused', 'blocked'].includes(f.goal.phase)
+          const disarmed = f.goal?.activation === 'disarmed' || f.goal?.phase === 'active'
+          return { label: paused ? '已暂停' : disarmed ? '续刷未启用' : '空闲',
+            note: f.stopReason ? '停止原因：' + stopLabel(f.stopReason) + '。' : disarmed ? '任务记录仍在，当前没有自动续刷。点击「继续运行」后恢复。' : paused ? '当前没有继续浏览，可核对任务后继续。' : '当前没有运行中的会话刷站任务。', warning: Boolean(paused || disarmed) }
+        }
+        if (bg.continuationPending) return { label: '等待后台接力', note: '本段已结束，接力任务已排队' + (Number(bg.nextStartAt) > 0 ? '，预计 ' + petFmtTime(bg.nextStartAt) : '') + '。可停止接力。', waiting: true }
+        if (st.bgBusy) return { label: bg.task === 'learn-review' ? '学习审核中' : '运行中', note: bg.task === 'learn-review' ? '后台正在审核学习记录，当前不是刷视频任务。' : '后台正在按本趟时限继续浏览。' }
+        if (Number(hold.holdUntil) > Date.now()) return { label: hold.holdReason === 'rest' ? '自然休息中' : hold.holdReason === 'manual' ? '本时段已停止' : '自动运行已暂停',
+          note: (hold.holdReason === 'rest' ? '自然休息至 ' : hold.holdReason === 'manual' ? '手动停止，暂停至 ' : '暂停至 ') + petFmtTime(hold.holdUntil)
+            + (hold.holdReason === 'rest' ? '，之后在有效时段内自动恢复。' : '；点「开始后台刷」可立即恢复。') }
+        return { label: '空闲', note: '当前没有运行中的后台任务。' }
+      }
       const runPage = (mode) => {
         const session = mode === 'session'
         const options = runSettings(mode)
         const fy = st.feiyu || {}
-        const live = session ? Boolean(fy.active) : Boolean(st.bgBusy)
+        const state = runState(mode)
+        const live = session ? Boolean(fy.active || state.waiting) : Boolean(st.bgBusy || st.backgroundRun?.continuationPending)
         const tokens = fy.tokens || {}
+        const windowDirty = !session && (String(options.windowStart || '') !== String(cfg.backgroundWindowStart || '') || String(options.windowEnd || '') !== String(cfg.backgroundWindowEnd || ''))
         return h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': mode },
           h('div', { 'data-bd-pet-grid': '' },
             h('section', { 'data-bd-sec': '' }, heading('sliders', '运行参数'),
@@ -3463,26 +3576,31 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                   h('label', { 'data-bd-field': '', 'data-bd-grow': '' }, h('span', { 'data-bd-label': '' }, '结束（可跨午夜）'),
                     h('input', { 'data-bd-input': '', type: 'time', value: options.windowEnd || '', onChange: (e) => updateRun(mode, 'windowEnd', e.target.value) }))),
               ] : []),
+              windowDirty ? h('div', { 'data-bd-msg': '', 'data-warn': '', 'data-bd-window-draft': '', role: 'status' }, '连续时段有未保存草稿。请先「保存默认设置」让新时段生效；直接开始后台刷仍使用已保存的时段。') : null,
               h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, session ? '最多运行几分钟（0 = 不限时）' : '没填时段时，一轮刷几分钟'),
                 h('input', { 'data-bd-input': '', type: 'number', min: session ? 0 : 1, max: session ? 1440 : 180, step: 1,
                   value: options.durationMinutes, onChange: (e) => updateRun(mode, 'durationMinutes', e.target.value) })),
+              h('details', { 'data-bd-advanced': '', 'data-bd-run-resources': '' }, h('summary', {}, '资源上限', h('span', { 'data-bd-note': '' }, ' · '
+                + (Number(options.tokenBudget) > 0 ? Number(options.tokenBudget).toLocaleString() + ' token' : 'token 不限')
+                + (session ? ' · 最多 ' + options.maxRounds + ' 轮' : ' · 软预算'))), h('div', {},
               session ? h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '最多刷多少轮'),
                 h('input', { 'data-bd-input': '', type: 'number', min: 1, max: numLim('maxRounds', 1, 1000)[1], step: 1,
                   value: options.maxRounds, onChange: (e) => updateRun(mode, 'maxRounds', e.target.value) })) : null,
               h('label', { 'data-bd-field': '' }, h('span', { 'data-bd-label': '' }, '这趟 token 预算（0 = 不限）'),
                 h('input', { 'data-bd-input': '', type: 'number', min: 0, max: 5000000, step: 1000,
-                  value: options.tokenBudget, onChange: (e) => updateRun(mode, 'tokenBudget', e.target.value) })),
+                  value: options.tokenBudget, onChange: (e) => updateRun(mode, 'tokenBudget', e.target.value) })))),
               h('div', { 'data-bd-note': '' }, session
                 ? '轮数与 token 预算在每轮结束后检查；到达时限后暂停续轮。会话内的新消息按宿主中断规则处理。'
                 : (String(options.windowStart || '') && String(options.windowEnd || '')
-                  ? `时段任务：${options.windowStart}–${options.windowEnd} 内一直刷，一轮接一轮到时段结束；中途关掉 DSH，重新打开也会在时段内自动接着刷。手动「停止」后本时段不再自动拉起。token 预算是软目标，不能精确截断。`
+                  ? `${windowDirty ? '时段草稿（未生效）' : '已保存时段'}：${options.windowStart}–${options.windowEnd}。保存后的时段内会持续接力至结束；重新打开 DSH 后仍按已保存时段调度。手动「停止」后本时段不再自动拉起。token 预算是软目标，不能精确截断。`
                   : '后台时段为空时，按单次运行时长执行；提前结束会在剩余时长内续接。后台 token 预算为软目标，不能按精确用量自动截断。')),
               h('div', { 'data-bd-row': '' },
                 h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => saveRun(mode) }, '保存默认设置')),
               h('div', { 'data-bd-note': '' }, '两种方式分别保存。模型、时长与预算用于下一次启动；后台时段保存后生效。运行中任务不受草稿影响。')),
-            h('section', { 'data-bd-sec': '' }, heading('pulse', '运行状态'),
+            h('section', { 'data-bd-sec': '', 'data-bd-run-state': mode }, heading('pulse', '运行状态'),
               h('span', { 'data-bd-badge': '', 'data-live': live ? '' : undefined },
-                live ? '运行中' : session && (fy.goal?.phase === 'paused' || fy.goal?.phase === 'blocked') ? '已暂停' : '空闲'),
+                state.label),
+              h('div', { 'data-bd-note': '', 'data-bd-run-state-note': '', role: state.warning ? 'alert' : 'status' }, state.note),
               session ? h('div', { 'data-bd-readout': '' },
                 h('div', {}, h('b', {}, fy.goal ? (fy.goal.rounds || 0) + ' / ' + (fy.goal.maxRounds || 0) : fy.source === 'manual' ? '手动刷站' : '—'), h('span', {}, '已刷轮数')),
                 h('div', {}, h('b', {}, tokens.thisRun === null || tokens.thisRun === undefined || tokens.tokensUnknown ? '未计量' : Number(tokens.thisRun).toLocaleString()), h('span', {}, '本趟 token')),
@@ -3510,10 +3628,16 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') }
               } }, '停止后台任务') : null,
               !session && st.lastRunAt ? h('div', { 'data-bd-note': '' }, '上次运行：' + petFmtTime(st.lastRunAt)) : null,
+              (() => {
+                const rows = Array.isArray(st.activity) ? st.activity : []
+                const last = rows.slice().reverse().find(row => ['call', 'done', 'fail'].includes(row.kind) && row.text)
+                return last ? h('div', { 'data-bd-note': '', 'data-bd-last-action': '' }, '最近动作（状态快照）：' + String(last.text).slice(0, 240))
+                  : h('div', { 'data-bd-note': '', 'data-bd-last-action': '' }, '状态快照暂无工具动作，执行明细请查看运行日志。')
+              })(),
               h('div', { 'data-bd-note': '' }, '执行明细保存在「记录与用量」中。'),
               /* ⏸️ 免跑牌期间如实说（st.bgWindow.holdUntil 由宿主 /status 提供） */
               !session && st.bgWindow && Number(st.bgWindow.holdUntil) > Date.now()
-                ? h('div', { 'data-bd-note': '' }, `本时段已停止自动拉起（到 ${new Date(st.bgWindow.holdUntil).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}）；点「开始后台刷」可立刻恢复。`)
+                ? h('div', { 'data-bd-note': '' }, st.bgWindow.holdReason === 'rest' ? '自然休息期间不会接力；休息结束后重新检查时段。' : '暂停期间不自动拉起，手动开始可恢复。')
                 : null)))
       }
 
@@ -3546,8 +3670,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, st.schedule && st.schedule.lastError ? '上次失败：' + st.schedule.lastError : st.schedule && st.schedule.lastStartedAt ? '上次启动：' + petFmtTime(st.schedule.lastStartedAt) : '尚未启动'),
             st.schedule && st.schedule.nextRunAt ? h('span', { 'data-bd-note': '' }, '下次检查：' + petFmtTime(st.schedule.nextRunAt)) : null)) : null)
       const basicCards = [
-        () => h('div', { 'data-bd-sec': '', 'data-bd-basic-card': 'pet' },
-          heading('spark', '桌宠'),
+        () => h('div', { 'data-bd-pet-preferences': '' },
           ToggleRow({
             label: '显示桌宠', on: !(st && st.petShow === false), disabled: Boolean(busy),
             note: st && st.petShow === false
@@ -3560,9 +3683,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             note: '按已配置频率显示闲聊，频率由陪伴节奏控制。',
             onChange: (v) => patch({ idleChatter: v }, '闲聊泡泡'),
           }), h(PetCompanionSettings, { st, busy, patch, say })),
-        () => h('div', { 'data-bd-sec': '' },
-          heading('spark', '角色与表达'),
-          h('div', { 'data-bd-note': '' }, '人格与陪伴设置仅用于鲸鱼摸鱼模式。留空使用默认设定。'),
+        () => h('div', { 'data-bd-sec': '', 'data-bd-basic-card': 'character' },
+          heading('spark', '角色与陪伴'),
+          h('div', { 'data-bd-note': '' }, '选择她陪你冲浪的方式，仅在鲸鱼摸鱼模式中生效。'),
           h('div', { 'data-bd-field': '' },
             h('span', { 'data-bd-label': '' }, '陪伴档位'),
             h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '陪伴档位' },
@@ -3574,24 +3697,16 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           h('div', { 'data-bd-row': '' },
             h('span', { 'data-bd-grow': '' }),
             h('button', { 'data-bd-btn': '', 'data-sm': '', 'data-primary': '', disabled: Boolean(busy), onClick: () => patch({ interactionStyle: interactionStyle || 'companion' }, '陪伴档位') }, '保存档位')),
-          h('textarea', {
-            'data-bd-input': '', rows: 4, 'aria-label': '大肥鱼的人格设定', value: persona === null ? '' : persona,
-            placeholder: '例如：关注技术内容，表达简洁，保留个人观点。',
-            onChange: (e) => setPersona(e.target.value),
-          }),
+          h('details', { 'data-bd-advanced': '', 'data-bd-companion-details': '' }, h('summary', {}, '桌宠与提醒', h('span', { 'data-bd-note': '' }, ' · '
+            + (cfg.focusMode ? '专注中' : cfg.idleChatter === false ? '闲聊关闭' : ({ rare: '低频闲聊', normal: '标准闲聊', lively: '活泼闲聊' }[cfg.chatterFrequency || 'normal']))
+            + (cfg.quietHoursEnabled ? ' · 安静 ' + (cfg.quietHoursStart || '23:00') + '–' + (cfg.quietHoursEnd || '08:00') : ''))), h('div', {}, basicCards[0]()))),
+        () => h('div', { 'data-bd-sec': '', 'data-bd-basic-card': 'reports' },
+          heading('list', '报告与参考'),
+          h('div', { 'data-bd-note': '' }, '只限制留片与报告收录的精选数量，不限制继续浏览或独立互动，也不是每天要完成的数量。'),
           h('div', { 'data-bd-row': '' },
-            h('span', { 'data-bd-note': '', 'data-bd-grow': '' },
-              persona && persona.length > 400 ? `已写 ${persona.length} 字（每轮都占一份 token）` : ''),
-            h('button', {
-              'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy),
-              onClick: () => patch({ persona: String(persona || '').trim() }, '人格设定'),
-            }, '保存'))),
-        () => h('div', { 'data-bd-sec': '' },
-          heading('list', '限量与报告'),
-          h('div', { 'data-bd-row': '' },
-            h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '一天最多挑几条'),
+            h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '每日精选上限'),
             h('input', {
-              'data-bd-input': '', 'data-bd-num': '', type: 'number', 'aria-label': '一天最多挑几条',
+              'data-bd-input': '', 'data-bd-num': '', type: 'number', 'aria-label': '每日精选上限',
               min: numLim('perDay', 0, 50)[0], max: numLim('perDay', 0, 50)[1],
               value: perDay === null ? '5' : perDay, onChange: (e) => setPerDay(e.target.value),
             })),
@@ -3604,30 +3719,15 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             h('option', { value: 'full' }, '完整'),
             h('option', { value: 'brief' }, '精简'),
             h('option', { value: 'off' }, '不写'))),
+          h('details', { 'data-bd-advanced': '', 'data-bd-reference-details': '' }, h('summary', {}, '参考文件', h('span', { 'data-bd-note': '' }, wsDir ? ' · 已设置' : ' · 未设置')), h('div', {}, h('input', {
+            'data-bd-input': '', 'aria-label': '参考文件或目录', placeholder: '参考文件或目录（可选）',
+            value: wsDir === null ? '' : wsDir, onChange: (e) => setWsDir(e.target.value),
+          }), h('div', { 'data-bd-note': '' }, '为报告提供背景资料，不改变新会话所属工作区。'))),
           h('div', { 'data-bd-row': '' },
             h('button', {
               'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy),
-              onClick: () => patch({ perDay: clampField('perDay', perDay, 0, 50), reportLevel: rl || 'full' }, '限量与报告'),
-            }, '保存'))),
-        () => h('div', { 'data-bd-sec': '' },
-          heading('dots', '长期偏好'),
-          h('div', { 'data-bd-note': '' }, '关键词与参考文件提供长期背景，不限制她刷什么。参考路径不改变新会话所属工作区。'),
-          h('textarea', {
-            'data-bd-input': '', 'aria-label': '长期偏好关键词', rows: 3, placeholder: '一行一个',
-            value: kws === null ? '' : kws, onChange: (e) => setKws(e.target.value),
-          }),
-          h('input', {
-            'data-bd-input': '', 'aria-label': '参考文件或目录', placeholder: '参考文件或目录（可选）',
-            value: wsDir === null ? '' : wsDir, onChange: (e) => setWsDir(e.target.value),
-          }),
-          h('div', { 'data-bd-row': '' },
-            h('button', {
-              'data-bd-btn': '', disabled: Boolean(busy),
-              onClick: async () => {
-                const list = String(kws || '').split('\n').map((s) => s.trim()).filter(Boolean)
-                await patch({ keywords: list, workspace: String(wsDir || '').trim() }, '长期偏好')
-              },
-            }, '保存'))),
+              onClick: () => patch({ perDay: clampField('perDay', perDay, 0, 50), reportLevel: rl || 'full', workspace: String(wsDir || '').trim() }, '报告与参考'),
+            }, '保存报告设置'))),
         () => {
           const info = st && st.pace && st.pace.explanation
           const saved = Number(cfg.paceFactor ?? info?.factor ?? 1)
@@ -3664,12 +3764,13 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
             !valid ? h('div', { 'data-bd-msg': '', 'data-warn': '' }, `请填 ${lo}–${hi} 之间的数字；空白或越界草稿不会保存。`) : null,
             h('div', { 'data-bd-note': '' }, info?.notes.interval || '保存只影响下一次成功发送后新钉下的间隔与随机抖动；已钉下的等待不会重算。'),
             info ? h('div', { 'data-bd-sub': '', 'data-bd-pace-preview': '' },
-              h('div', { 'data-bd-h': '' }, changed ? '未保存草稿预览（不是当前倒计时）' : '间隔范围（不是当前倒计时）'),
+              h('div', { 'data-bd-h': '' }, changed ? '间隔草稿与当前小时额度（不是当前倒计时）' : '当前间隔与小时额度（不是当前倒计时）'),
               ...Object.entries(info.kinds).map(([key, v]) => h('div', { key, 'data-bd-note': '', 'data-bd-pace-range': key },
                 h('b', {}, v.label),
                 `：基础 ${range(v, 1)} · 已保存 ${range(v, saved)}`,
                 changed ? ` · 草稿 ${range(v, draft)}` : '',
-                ` · 每滚动小时最多 ${v.hourCap} 条`)))
+                ` · 当前本地额度 ${v.hourCap} 条/滚动小时`)),
+              h('div', { 'data-bd-note': '' }, '小时额度按后端当前策略显示，不随间隔倍数改变；草稿只预览间隔，实际等待见发送状态。'))
               : h('div', { 'data-bd-note': '' }, '节奏说明尚未就绪；不会猜基础范围，完整重启 DSH 后重试。'),
             h('div', { 'data-bd-row': '' },
               h('button', {
@@ -3816,10 +3917,32 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
               h('span', { 'data-bd-badge': '', 'data-live': s.done ? '' : undefined }, s.done ? '✓ 已完成' : '待办'),
               h('span', { 'data-bd-grow': '', style: { fontWeight: s.done ? 400 : 600 } }, s.label),
               s.done ? null : h('button', { 'data-bd-btn': '', 'data-sm': '', onClick: () => setTab(s.view) }, '配置')))) : null,
-          h('div', { 'data-bd-pet-grid': '', 'data-bd-basic-grid': '' }, basicCards[1](), basicCards[3](), basicCards[0](), basicCards[2]()))
+          h('div', { 'data-bd-pet-grid': '', 'data-bd-basic-grid': '' }, h(PetBrowseSettings, { st, busy, patch, say }), basicCards[1](), basicCards[2]()))
+      }
+      const personaCard = () => {
+        const draft = String(persona === null ? cfg.persona || '' : persona)
+        const saved = String(cfg.persona || '').trim()
+        const changed = draft.trim() !== saved
+        return h('section', { 'data-bd-sec': '', 'data-bd-persona-card': '' },
+          h('div', { 'data-bd-row': '' }, heading('spark', '全局人格'),
+            h('span', { 'data-bd-badge': '' }, saved ? '自定义人格' : '内置默认')),
+          h('div', { 'data-bd-note': '' }, '覆盖鲸鱼摸鱼模式的聊天及所有 AI 发言，包括会话与后台刷站、评论与回复、动态和私信。普通会话不受影响；桌宠的本地状态通知使用固定文案。'),
+          h('div', { 'data-bd-note': '' }, '填写后以你的全局人格为准；留空使用内置默认：活泼可爱，像群友一样接梗、善意嘴硬，严肃问题认真回答。评论和动态用自己的话，不照搬原句或写成引用解说。'),
+          h('textarea', { 'data-bd-input': '', rows: 8, maxLength: 4000, 'aria-label': '大肥鱼的全局人格', value: draft,
+            placeholder: '留空使用内置默认。可以完整描述性格、相处方式与表达偏好，不必提供固定台词。',
+            style: { minHeight: '168px', resize: 'vertical' }, onChange: e => setPersona(e.target.value) }),
+          h('div', { 'data-bd-row': '' },
+            h('span', { 'data-bd-note': '', 'data-bd-grow': '', 'data-bd-persona-status': '', role: 'status' },
+              changed ? '有未保存修改 · ' + draft.length + '/4000 字' : saved ? '已保存自定义人格 · 后续表达使用此设定' : '当前使用内置默认人格'),
+            h('button', { 'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy) || !changed,
+              onClick: async () => {
+                const value = draft.trim()
+                if (await patch({ persona: value }, '全局人格')) setPersona(current => current === draft ? value : current)
+              } }, '保存全局人格')))
       }
       const speechPage = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'speech' },
-        pageHead('互动与投递', '管理公开发言、私信投递、自动回复和发送限制。'),
+        pageHead('互动与投递', '管理全局人格、公开发言、私信投递、自动回复和发送限制。'),
+        personaCard(),
         h(PetSendReviewPanel, { st, patch, busy, say }),
         h('div', { 'data-bd-pet-grid': '' },
           h('section', { 'data-bd-sec': '' }, heading('spark', '公开发言'), ToggleRow({
@@ -3899,7 +4022,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
                 onChange: (v) => patch({ dmReplyFollowedOnly: v }, '仅回复已关注的用户'),
               }))) : null,
             h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => patch({ dmMode: dmMode || 'off', dmUid: String(dmUid || '').trim() }, '私信投递设置') }, '保存投递设置')),
-          basicCards[4](), h('section', { 'data-bd-sec': '' }, heading('pulse', '发送状态'), (() => {
+          basicCards[3](), h('section', { 'data-bd-sec': '' }, heading('pulse', '发送状态'), (() => {
             const pc = st && st.pace
             if (!pc || pc.ok === false) return h('div', { 'data-bd-note': '' }, '发送节奏读取失败。可重启 DSH 后重新加载。')
             const cd = pc.cooldown
@@ -4002,39 +4125,53 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         const f = st?.feiyu || {}
         const bg = st?.backgroundRun || {}
         const sessionOn = Boolean(f.active)
-        const backgroundOn = Boolean(st?.bgBusy)
+        const backgroundOn = Boolean(st?.bgBusy || bg.continuationPending)
         const windowOn = Boolean(st?.bgWindow?.start && st?.bgWindow?.end)
-        const active = sessionOn || backgroundOn
-        const mode = sessionOn ? '当前会话' : backgroundOn ? (bg.task === 'learn-review' ? '后台学习审核' : '后台连续冲浪') : windowOn ? '定时窗口' : '未安排'
+        const sessionState = runState('session'), backgroundState = runState('background')
+        const waitingSession = Boolean(sessionState.waiting)
+        const active = sessionOn || backgroundOn || waitingSession
+        const holdOn = Number(st?.bgWindow?.holdUntil) > Date.now()
+        const scheduleState = st.schedule || {}
+        const scheduleNext = c.scheduleEnabled ? scheduleState.lastError ? '定时检查失败：' + scheduleState.lastError
+          : Number(scheduleState.nextRunAt) > 0 || scheduleState.nextRunAt ? '下次定时检查：' + petFmtTime(scheduleState.nextRunAt)
+            : scheduleState.inWindow ? '当前在每日定时窗口内，等待宿主检查；每天启动一次。' : '等待进入每日定时窗口。' : ''
+        const mode = sessionOn || waitingSession ? '当前会话' : backgroundOn ? (bg.task === 'learn-review' ? '后台学习审核' : '后台连续冲浪') : holdOn ? backgroundState.label
+          : windowOn ? '连续时段已安排' : c.scheduleEnabled ? '每日定时已安排' : '未安排'
+        const next = sessionOn || waitingSession ? sessionState.note : backgroundOn ? backgroundState.note : holdOn ? backgroundState.note
+          : windowOn ? (st.bgWindow.active ? '当前在连续时段内，等待后台调度。' : '到已保存的连续时段后自动开始。') : scheduleNext || '等待手动开始'
         const schedule = c.scheduleEnabled ? (c.scheduleAllDay ? '全天检查' : `${c.scheduleStart || '18:00'}–${c.scheduleEnd || '09:00'}`) : '未开启'
-        const selectedBackground = backgroundOn || (!sessionOn && runMode === 'background')
+        const selectedBackground = backgroundOn || (!sessionOn && !waitingSession && runMode === 'background')
         const budgetValue = sessionOn ? f.tokens?.budget : backgroundOn ? bg.tokenBudget : selectedBackground ? c.backgroundTokenBudget : c.sessionTokenBudget
         const budget = Number(budgetValue) > 0 ? Number(budgetValue).toLocaleString() + ' token / 趟' : '本趟不限（受总闸约束）'
         return h('section', { 'data-bd-sec': '', 'data-bd-run-plan': '' },
-          h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('pulse'), h('b', {}, '运行计划')), h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, active ? '正在执行' : '待命')),
+          h('div', { 'data-bd-row': '' }, h('div', { 'data-bd-h': '', 'data-bd-grow': '' }, icon('pulse'), h('b', {}, '运行计划')), h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, sessionOn || st.bgBusy ? '正在执行' : active ? '等待续刷' : '待命')),
           h('div', { 'data-bd-run-plan-grid': '' },
             h('div', {}, h('span', {}, '现在'), h('strong', {}, mode)),
-            h('div', {}, h('span', {}, '下一步'), h('strong', {}, sessionOn ? '按当前目标续轮' : backgroundOn ? '按时段或本趟时限运行' : Number(st?.bgWindow?.holdUntil) > Date.now() ? '本时段已手动停止自动拉起' : windowOn ? '到窗口时自动接力' : '等待手动开始')),
+            h('div', {}, h('span', {}, '下一步'), h('strong', {}, next)),
             h('div', {}, h('span', {}, '模型'), h('strong', {}, sessionOn ? f.modelActive || f.model || '当前会话模型' : backgroundOn ? bg.model || '后台模型' : (selectedBackground ? c.backgroundModelId : c.sessionModelId) || '沿用宿主默认')),
             h('div', {}, h('span', {}, '预算'), h('strong', {}, budget)),
             h('div', {}, h('span', {}, '定时'), h('strong', {}, schedule)),
             h('div', {}, h('span', {}, '完成反馈'), h('strong', {}, selectedBackground ? '桌宠提醒 + 运行日志' : '当前会话 + 运行日志'))),
-          h('div', { 'data-bd-note': '' }, active ? '这项任务不会因为切换设置页而停止；后台任务完成或失败后会回写结果。' : '当前会话、后台连续刷、定时窗口分别保存，互相不会覆盖参数。'))
+          scheduleNext ? h('div', { 'data-bd-note': '', 'data-bd-schedule-plan': '', role: scheduleState.lastError ? 'alert' : 'status' }, scheduleNext) : null,
+          h('div', { 'data-bd-note': '' }, active ? '切换设置页不会停止任务。等待续刷与接力也可用暂停或停止按钮取消。' : '当前会话、后台连续刷、定时窗口分别保存，互相不会覆盖参数。'))
       }
       const runView = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'run' },
         pageHead('运行方式', '会话运行、后台运行与定时计划。'),
         st.toolScope?.checked && !st.toolScope.supported ? h('div', { 'data-bd-msg': '', 'data-warn': '', role: 'alert' }, '当前 DSH 不支持会话工具隔离。会话运行不可用，后台运行和本地管理仍可使用。') : null,
         h('div', { 'data-bd-run-launches': '' }, ...['session', 'background'].map(mode => {
           const isSession = mode === 'session', options = runSettings(mode)
-          const active = isSession ? Boolean(st.feiyu?.active) : Boolean(st.bgBusy)
+          const state = runState(mode)
+          const active = isSession ? Boolean(st.feiyu?.active || state.waiting) : Boolean(st.bgBusy || st.backgroundRun?.continuationPending)
           const title = isSession ? '新开会话刷' : '后台刷'
           return h('section', { key: mode, 'data-bd-run-launch': mode },
-            h('div', { 'data-bd-row': '' }, icon(isSession ? 'play' : 'moon'), h('h2', { 'data-bd-grow': '' }, title), h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, active ? '运行中' : '未运行')),
+            h('div', { 'data-bd-row': '' }, icon(isSession ? 'play' : 'moon'), h('h2', { 'data-bd-grow': '' }, title), h('span', { 'data-bd-badge': '', 'data-live': active ? '' : undefined }, state.label)),
             h('p', {}, isSession ? '在独立会话中运行，保留对话与执行进度。' : '在后台执行，支持连续时段与每日定时计划。'),
+            state.warning || state.waiting || !isSession && Number(st.bgWindow?.holdUntil) > Date.now() ? h('div', { 'data-bd-note': '' }, state.note) : null,
             h('div', { 'data-bd-launch-meta': '' }, h('span', { title: options.model || '' }, options.model || (isSession ? '当前会话模型' : '宿主默认模型')), h('span', {}, Number(options.tokenBudget) > 0 ? Number(options.tokenBudget).toLocaleString() + ' token' : '不设单次 token 上限')),
             h('button', { 'data-bd-btn': '', 'data-primary': '', 'data-bd-launch-action': mode, disabled: Boolean(busy) || active || (isSession && st.toolScope?.checked && !st.toolScope.supported),
               onClick: () => startRun(mode) }, busy === 'start-' + mode ? '正在启动…' : isSession ? '新开会话刷' : '开始后台刷'))
         })),
+        h(PetCuriosityJournal, { st, busy, onExplore: curiosityId => { setRunMode('session'); return startRun('session', { curiosityId }) } }),
         h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '运行方式' }, ...[['session','会话参数'], ['background','后台与定时']].map(([mode, label]) => h('button', { key: mode, 'aria-pressed': runMode === mode, onClick: () => setRunMode(mode) }, label))),
         runPage(runMode), runMode === 'background' ? scheduleCard() : null,
         h('details', { 'data-bd-run-details': '', open: Boolean(st.recovery?.needsAction) }, h('summary', {}, '运行计划与恢复'), runPlan(), weeklyRecoveryCard({ showReview: false })))
@@ -4060,7 +4197,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           h('span', { 'data-bd-grow': '' }),
           st.feiyu?.active ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => controlRun('stop') }, '暂停会话') : null,
           st.bgBusy ? h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: async () => { setBusy('stop-bg'); try { const r = await jpost('/pet/stop', {}); if (!r?.ok) throw new Error(r?.error || '停止失败'); say('已请求停止后台任务', 'good') } catch (e) { say(String(e?.message ?? e), 'warn') } finally { setBusy('') } } }, '停止后台任务') : null),
-        logMode === 'events' ? settingLogCard() : basicCards[5]())
+        logMode === 'events' ? settingLogCard() : basicCards[4]())
       const videoPage = () => h('div', { 'data-bd-page-content': '', 'data-bd-settings-page': 'video' },
         h('div', { 'data-bd-pghead': '' }, icon('film'), h('div', {}, h('b', {}, '视频工作室'),
           h('p', {}, '视频制作、制作记录与本地成片。'))), pvCard())
@@ -4134,7 +4271,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     }
 
     const StablePetSettingsModal = typeof React.memo === 'function' ? React.memo(PetSettingsModal, (a, b) =>
-      a.ctx === b.ctx && a.onClose === b.onClose && a.toast === b.toast && a.initialTab === b.initialTab
+      a.ctx === b.ctx && a.onClose === b.onClose && a.toast === b.toast && a.initialTab === b.initialTab && a.initialRunMode === b.initialRunMode
       && a.status?.[0] === b.status?.[0] && a.status?.[1] === b.status?.[1] && a.status?.[2] === b.status?.[2]) : PetSettingsModal
 
     /* 🐾 桌宠本体：状态灯 / 拖拽 / 弹菜单 / 新开会话刷（B 流程）都在这里编排。
@@ -4143,10 +4280,11 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
     function PetRoot({ ctx }) {
       const [st, setSt, fails] = useStatus(5000)
       const [pos, setPos] = React.useState(null)        // null = 还没从 localStorage/默认位初始化
-      const [panel, setPanel] = React.useState(null)    // null | menu | bg | log | status | settings（互斥）
+      const [panel, setPanel] = React.useState(null)    // null | menu | status | settings（互斥）
       const [dragging, setDragging] = React.useState(false)
       const [sessBusy, setSessBusy] = React.useState(false)
        const [settingsTab, setSettingsTab] = React.useState('run')
+      const [settingsRunMode, setSettingsRunMode] = React.useState('session')
       const [bubbles, setBubbles] = React.useState([])
       const [toasts, toast] = useToasts()
       const drag = React.useRef(null)
@@ -4312,18 +4450,19 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         try {
           let r1 = null
           try { r1 = await jpost('/pet/session-new', newSessionContext(ctx)) }
-          catch (e) { toast('创建会话失败：' + String(e?.message ?? e), 'warn'); return }
+          catch (e) { toast('创建会话失败：' + String(e?.message ?? e) + (e?.sessionId ? '；已创建的会话仍保留：' + e.sessionId : ''), 'warn'); return }
           if (!r1 || r1.ok === false) {
-            toast('创建会话失败：' + ((r1 && r1.error) || '未知原因') + (r1 && r1.hint ? '；' + r1.hint : ''), 'warn')
+            toast('创建会话失败：' + ((r1 && r1.error) || '未知原因') + (r1 && r1.hint ? '；' + r1.hint : '') + (r1?.sessionId ? '；已创建的会话仍保留：' + r1.sessionId : ''), 'warn')
             return
           }
           /* 切过去看它刷：uiWorkspace 是宿主服务，可能没有/名字可能不同 ⇒ 全程防御式；
            * 切不过去也不拦开刷 —— 会话照样开了，只是没自动跳过去。 */
+          let opened = false
           try {
             const ws = (typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : null)
-            if (ws && typeof ws.openSession === 'function') ws.openSession(r1.sessionId)
+            if (ws && typeof ws.openSession === 'function') { await ws.openSession(r1.sessionId); opened = true }
           } catch { /* 切换会话失败不影响开刷 */ }
-          toast('已开会话，鱼进去了', 'good')
+          toast(opened ? '已开会话，鱼进去了' : '会话已创建（' + r1.sessionId + '），无法自动打开时可从侧栏进入。', opened ? 'good' : 'info')
           let r2 = null
           try { r2 = await jpost('/pet/start', { mode: 'session', sessionId: r1.sessionId }) }
           catch (e) { toast('开刷没成：' + String(e?.message ?? e), 'warn'); return }
@@ -4497,10 +4636,10 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           item('session', 'play', '新开会话刷',
             sessBusy ? '正在开会话…' : `${modelTxt} · 预算 ${petFmtWan(cfg.sessionTokenBudget ?? cfg.tokenBudget)}`,
             () => { setPanel(null); runNewSession() }, sessBusy, sessBusy),
-          item('background', 'moon', '后台刷', '运行时长与定时参数', () => setPanel('bg')),
+          item('background', 'moon', '后台刷', '运行时长与定时参数', () => { setSettingsTab('run'); setSettingsRunMode('background'); setPanel('settings') }),
           item('logs', 'list', '运行记录', '', () => { setSettingsTab('logs'); setPanel('settings') }),
           item('status', 'pulse', '运行状态', '', () => setPanel('status')),
-          item('settings', 'gear', '工作台', '', () => { setSettingsTab('run'); setPanel('settings') }),
+          item('settings', 'gear', '工作台', '', () => { setSettingsTab('run'); setSettingsRunMode('session'); setPanel('settings') }),
           h('hr', { 'data-bd-pet-sep': '' }),
           item('hide', 'hide', '隐藏桌宠', '', hidePet),
            h('footer', { 'data-bd-menu-token': '' },
@@ -4542,10 +4681,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
              同时 [data-bd-pet][data-align] / [data-flip] 这些选择器也要求卡片是它的后代。 */
           panel === 'menu' ? menuCard : null,
           panel === 'menu' && preview ? h(PetMenuPreview, { key: preview.kind, kind: preview.kind, anchor: preview.anchor, st, fails, tokenValue, tokenNote, onEnter: holdPreview, onLeave: leavePreview }) : null,
-          panel === 'bg' ? h(PetBgPanel, { st, toast, onDone: () => setPanel('log') }) : null,
-          panel === 'log' ? h(PetLogPanel, { toast }) : null,
           panel === 'status' ? h(PetStatusCard, { st, fails }) : null,
-          panel === 'settings' ? h(StablePetSettingsModal, { onClose: closeSettings, toast, ctx, status: [st, setSt, fails], initialTab: settingsTab }) : null,
+          panel === 'settings' ? h(StablePetSettingsModal, { onClose: closeSettings, toast, ctx, status: [st, setSt, fails], initialTab: settingsTab, initialRunMode: settingsRunMode }) : null,
           h('div', { key: 'toast', 'data-bd-pet-toast': '', role: 'status', 'aria-live': 'polite', 'aria-atomic': false },
             toasts.map((t) => h('div', { key: t.id, 'data-tone': t.tone || undefined }, t.text))),
         ]))

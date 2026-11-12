@@ -2,6 +2,12 @@
 
 本表对应 2.4.2。完整结果和环境边界见 [发布审查记录](RELEASE_AUDIT.md)。测试中的“发送成功”是受控 MCP 的包装器契约，不代表向真实账号发送过内容。
 
+当前未发布源码新增好奇心手帐专项，见[玩法记录](FUN_FEATURE_REFERENCES.md)。可执行工具矩阵与 `tool-evidence.json` 已同步为40项；下面的历史环境结论不代表本地新代码已经发布。
+
+2026-11-12 本地优化的独立审计、修复与 Node/Python/宿主/清洁安装实测见[本地兼容性审计](LOCAL_COMPAT_AUDIT_2026-11-12.md)。
+
+后续本地放宽节奏、修正误计数与浏览调度的行为见[活跃度调整](ACTIVITY_TUNING.md)；前述审计数字保留为对应时点的历史结果。
+
 ## 全部角色工具
 
 `tests/tool-surface.test.mjs` 保存可执行的 `TOOL_SURFACE_EVIDENCE`。它校验注册工具清单与正向执行集合完全相等，并逐项核对有意义的输入、准确下游调用和返回字段；另外对全部工具执行普通模式和退出后的旧句柄拒绝检查。
@@ -23,6 +29,7 @@
 | `bili_learn` | 新增待审、工具不能自行批准 |
 | `bili_records` | 活动来源、稳定事件标识 |
 | `bili_soul` | 指定章节追加和读回 |
+| `bili_curiosity` | 留题/实际字幕后记理解、暂放/收起/删除、回看卡投影；模式/后台作用域证据、版本冲突、坏记录保护与选择启动冻结目标 |
 | `bili_taste` | 统计与样本不足状态 |
 | `bili_my_dynamics` | 动态列表、长 ID、评论状态 |
 | `bili_opus_comments` | 长动态/评论标识与回复资格 |
@@ -57,6 +64,8 @@
 | 新会话、工作区和有效权限 | `pet-session.test.mjs`、`pet-run-routes.test.mjs`、`pet-run-settings.test.mjs` |
 | 后台桥接、取消、计量 | `background-tools.test.mjs`、`model-relay.test.mjs`、`manual-browsing.test.mjs`、真实 headless relay |
 | 时段、定时与恢复 | `automation*.test.mjs`、`background-window.test.mjs`、`product-status*.test.mjs` |
+| 持续刷站与断链恢复 | `session-continuation.test.mjs` 使用安装宿主原始driver、双监听次序、预算/时间/停止/介入；`scheduler-continuation.test.mjs` 覆盖接力空档、原截止、快空转与峰谷认领 |
+| 热门筛选真实生效 | `browse-preferences.test.mjs`、`browsing-run-context.test.mjs`、`manual-browsing.test.mjs`：计数格式、门槛/排序、来源冻结、未知详情核实、偏好跳过不记已读及补查保留 |
 | 配置事务、授权与防护 | `config-safety.test.mjs`、`authorization.test.mjs`、`send-review-routes.test.mjs` |
 | 登录与环境升级 | `login.test.mjs`、`python-env.test.mjs`、`install-routes.test.mjs` |
 | 真实 Python MCP | `check-real-mcp.mjs`，实际 FastMCP 握手与本地 SQLite 守卫 |

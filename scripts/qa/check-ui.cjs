@@ -72,7 +72,7 @@ const MUTANTS = [
   ['删掉 flex-wrap（还原布局 bug）', (t) => t.replace('gap:10px;flex-wrap:wrap;}', 'gap:10px;}'), 'normal'],
   ['卡片去掉 border', (t) => t.replace('border:1px solid var(--dsw-alias-border-l2,', 'outline:none;--x:'), 'normal'],
   ['撞上限停下徽章仍显示「空闲」（漏了 blocked 相位）',
-    (t) => t.replace("fy.goal?.phase === 'paused' || fy.goal?.phase === 'blocked'", "fy.goal?.phase === 'paused'"), 'blocked'],
+    (t) => t.replace("['paused', 'blocked'].includes(f.goal.phase)", "['paused'].includes(f.goal.phase)"), 'blocked'],
   /* 📡 活动流水：id 合并（call/done 一行）+ sinceUid 增量 + live 每趟都进 —— 流水不动
      用户就以为卡死了，这三条是「让使用者看见操作」的底线。 */
   ['流水永远追加（不按 id 合并）', (t) => t.replace('const at = row.id ? next.findIndex((x) => x && x.id === row.id) : -1', 'const at = -1'), 'normal'],
@@ -193,14 +193,20 @@ console.log('\n═══ ③ 后端契约（源码级，渲染树看不见的）
   okB('/status 有 rev 短路（wantRev 对上就直接 unchanged）',
     /const wantRev = url\.searchParams\.get\('rev'\)/.test(ix) && ix.includes("unchanged: true"),
     'status 路由没有 rev 分支')
-  /* ⏱️ 2026-10-28「刷多久」语义：后台时长是工作量目标。提示词要写明刷满；
-     提前干净收工要自动接力（bg-continue），手动停/出错/时限到不接力。 */
-  okB('后台提示词写明「要把本轮时间刷满」（工作量目标，不是上限）',
-    ix.includes('要把本轮时间刷满'),
-    'promptFor 还是旧的「做完一小段就结束进程」口径')
-  okB('后台提前收工自动接力（bg-continue），保险丝 _chain + 剩余 2 分钟门槛',
-    ix.includes("petLog('bg-continue'") && /opts\._chain/.test(ix) && /remainMs >= 120_000/.test(ix) && /stopReason === 'exit'/.test(ix),
-    '接力逻辑缺了关键护栏')
+  /* 持续推进有价值的工作；空源可结束小段，由宿主按墙钟和停因决定接力。 */
+  okB('后台复用角色目标，按进度推进，空源收尾不反复查闸凑时长',
+    /buildFeiyuObjective\(\{[^\n]*mode: 'background'/.test(ix)
+      && ix.includes('有可做的事就接着推进') && ix.includes('不忙等、不反复查闸凑时长')
+      && ix.includes('JSON.stringify(renderBrowseProgress(opts._browseContext))')
+      && ix.includes('browseProgressBrief(local?.progress'),
+    '后台缺少共享目标、进度上下文或明确的空源收尾指引')
+  okB('后台干净收工持续接力，临近截止停下，快速无工作空转八次触发保险丝',
+    ix.includes("petLog('bg-continue'") && /opts\._chain/.test(ix) && /remainMs > 2500/.test(ix)
+      && /runState\.stopReason === 'exit' && code === 0 && !runState\.error/.test(ix)
+      && /Date\.now\(\) - t0 < 10_000 && !runState\.workCalls/.test(ix)
+      && /runState\.noProgressStreak >= 8/.test(ix)
+      && /_noProgressStreak: runState\.noProgressStreak/.test(ix) && ix.includes("runState.stopReason = 'no-progress'"),
+    '接力缺少干净退出、截止时限、实际工作检查或连续空转保险丝')
   /* ⭐ 2026-10-28 后台「时段」任务：常设指令（配置即持久化），段内一直刷。 */
   okB('后台时段进了 /config 白名单（漏表 = 保存被静默丢掉）',
     ix.includes("'backgroundWindowStart', 'backgroundWindowEnd'"),
@@ -209,14 +215,15 @@ console.log('\n═══ ③ 后端契约（源码级，渲染树看不见的）
     ix.includes("runDuty('bg-window'") && ix.includes('backgroundWindowActive(') && ix.includes('backgroundWindowEndAt('),
     '时段常设指令没接进调度钩子')
   okB('手动停止挂免跑牌（bgWindowHold），时段内不再自动拉起、重启也认',
-    /bgWindowHold: endAt/.test(ix) && /Number\(st\.bgWindowHold\)/.test(ix),
+    /bgWindowHold: Math\.max\(Number\(fresh\.bgWindowHold\) \|\| 0, endAt\)/.test(ix)
+      && /bgWindowHoldReason: 'manual'/.test(ix) && /Number\(st\.bgWindowHold\)/.test(ix),
     '停止后会被调度钩子重新拉起')
   okB('/pet/start 请求体不带时段字段（契约被 E2E 严格钉死），host 从 config 读常设时段',
     ix.includes('backgroundWindowActive(ws, we)') && ix.includes('runDuty(\'pet\', { ...run, ...(windowEndAt ? { windowEndAt } : {}) })'),
     '时段字段漏进了请求体')
   /* 🗨️🎨 2026-10-28 拟人包：收工小结 / 心情色 / 闲聊 / 需要你 —— 全是显示层，不碰行为。 */
   okB('收工小结是人话（wrapUpLine 走 petEvent 通道），额度满了会说破',
-    ix.includes('const wrapUpLine') && ix.includes('petEvent: st.petEvent && st.petEvent.at') && ix.includes('后半程我只看不发'),
+    ix.includes('const wrapUpLine') && ix.includes('petEvent: st.petEvent && st.petEvent.at') && ix.includes('视频评论额度暂不可用'),
     'petEvent 通道或小结文案缺失')
   okB('时段任务连刷 3 小时会自己歇 15 分钟（按 bgWindowSince 墙钟累计，休息/接力互斥）',
     ix.includes('bgWindowSince') && /continuousMs > 3 \* 3600_000/.test(ix) && /!restUntil && runState\.stopReason === 'exit'/.test(ix),

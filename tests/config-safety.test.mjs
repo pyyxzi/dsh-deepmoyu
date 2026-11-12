@@ -78,3 +78,32 @@ test('cross-origin browser config requests are rejected before any body writes',
     assert.equal(readFileSync(join(home, 'config.json'), 'utf8'), before)
   })
 })
+
+test('viewing preferences persist transactionally and malformed ranges do not overwrite saved choices', async () => {
+  await withHome(async ({ add, config, home }) => {
+    const a = add(), b = add()
+    const first = a.begin('/config'), second = b.begin('/config')
+    assert.equal((await first.finish({ browseTopics: ['科技', '知识'], browseRecentDays: 0, browseMinViews: 100000, browseSort: 'click' })).status, 200)
+    assert.equal((await second.finish({ browseAvoidKeywords: ['剧透'], browseExplorePercent: 50 })).status, 200)
+    assert.deepEqual(config().browseTopics, ['科技', '知识']); assert.equal(config().browseRecentDays, 0)
+    assert.deepEqual(config().browseAvoidKeywords, ['剧透']); assert.equal(config().browseExplorePercent, 50)
+    assert.equal(config().autoComment, false)
+    assert.equal(config().browseMinViews, 100000); assert.equal(config().browseSort, 'click')
+    assert.equal((await a.begin('/config').finish({ browseMinViews: 0 })).status, 200)
+    assert.equal(config().browseMinViews, 0, 'an explicit zero disables the popularity floor')
+    assert.equal((await a.begin('/config').finish({ browseMaxMinutes: 10 })).status, 200)
+    const before = readFileSync(join(home, 'config.json'), 'utf8')
+    // a's in-memory cfg is stale after b writes; the durable lock must still reject reversed bounds.
+    const pendingA = a.begin('/config'), pendingB = b.begin('/config')
+    assert.equal((await pendingB.finish({ browseMaxMinutes: 5 })).status, 200)
+    assert.equal((await pendingA.finish({ browseMinMinutes: 8 })).status, 400)
+    assert.equal(config().browseMaxMinutes, 5); assert.equal(config().browseMinMinutes, 0)
+    for (const patch of [{ browseTopics: '科技' }, { browseRecentDays: '7' }, { browseExplorePercent: true }, { browseAvoidKeywords: [''] }, { browseSort: 'random' }, { browseMinViews: '50000' }, { browseMinViews: -1 }, { browseMinMinutes: 10, browseMaxMinutes: 5 }]) {
+      const saved = readFileSync(join(home, 'config.json'), 'utf8')
+      const response = await a.begin('/config').finish(patch)
+      assert.equal(response.status, 400, JSON.stringify(patch)); assert.equal(response.body.code, 'CONFIG_INPUT')
+      assert.equal(readFileSync(join(home, 'config.json'), 'utf8'), saved)
+    }
+    assert.notEqual(before, readFileSync(join(home, 'config.json'), 'utf8'))
+  })
+})

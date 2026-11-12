@@ -26,6 +26,7 @@ asr-install.log
 feiyu.json
 send-review.json
 learn.json
+jobs-tmp.json
 voice.md
 soul.md
 seen.md
@@ -36,6 +37,7 @@ seen.md
 /dist/
 /coverage/
 .qa-output/
+.tmp-qa-out/
 .tmp/
 *.tgz
 *.zip
