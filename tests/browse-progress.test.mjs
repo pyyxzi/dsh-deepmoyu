@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import { createBrowseProgress, observeBrowseProgress, browseProgressBrief } from '../lib/browse-progress.mjs'
 
 const A = 'BV14AHP6VExR', B = 'BV14AHP6VExS', C = 'BV14AHP6VExT'
-const NOW = Date.now()
+// Include the private fixture's digit sequence in a legitimate timestamp:
+// privacy checks must inspect stored values/keys, not arbitrary number substrings.
+const NOW = 1794488400123
 const observe = (state, tool, args, result) => observeBrowseProgress(state, { tool, args, result, now: NOW })
 
 test('a run keeps remaining candidates across reads, missing subtitles and repeated discovery', () => {
@@ -30,7 +32,7 @@ test('repeated blocked sends lead to read work, preserving retry time and unknow
   assert.deepEqual(brief.next.args, { bvid: A })
   assert.equal(brief.blockedSendKinds[0].retryAt, NOW + 60000)
   assert.equal(brief.blockedSendKinds[1].reason, 'unknown-result')
-  assert.doesNotMatch(JSON.stringify(state), /私密|私信|外部错误|123/)
+  assert.doesNotMatch(JSON.stringify(state), /私密|私信|外部错误|"uid"\s*:|"123"/)
   assert.equal(browseProgressBrief(state, NOW + 60001).blockedSendKinds.length, 1)
   assert.deepEqual(createBrowseProgress(NOW).blockedSendKinds, [], 'another run has no shared state')
 })
