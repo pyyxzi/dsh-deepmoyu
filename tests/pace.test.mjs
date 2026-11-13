@@ -9,9 +9,10 @@ const MIN = 60_000
 const NOW = new Date(2026, 9, 28, 12, 0, 0).getTime()
 
 // Match the host's existing paceDone policy without mutating the supplied book.
+// 🩹 2026-11-14：宿主对动态不重钉（kind !== 'moment' 才乘 factor），这里必须一致。
 const takeWithFactor = (book, kind, now, factor, rand = 0.5) => {
   const next = paceTake(book, kind, now, rand)
-  next.last[kind].next = now + Math.round((next.last[kind].next - now) * factor)
+  if (kind !== 'moment') next.last[kind].next = now + Math.round((next.last[kind].next - now) * factor)
   return next
 }
 
@@ -61,14 +62,22 @@ test('paceExplain describes base and effective intervals for every preset and ki
     for (const kind of PACE_KINDS) {
       const spec = PACE[kind]
       const row = info.kinds[kind]
+      /* 🩹 2026-11-14：动态不吃节奏系数（paceDone 只对非动态重钉），展示必须跟行为一致：
+       *    任何系数下动态的 effective 都等于 base，且 scalesWithFactor 如实标注。 */
+      const f = kind === 'moment' ? 1 : factor
       assert.equal(row.baseGapSec, spec.gap / 1000)
       assert.equal(row.baseJitterSec, spec.jitter / 1000)
       assert.equal(row.baseMinSec, spec.gap / 1000)
       assert.equal(row.baseMaxSec, (spec.gap + spec.jitter) / 1000)
-      assert.equal(row.effectiveGapSec, Math.round(spec.gap * factor) / 1000)
-      assert.equal(row.effectiveJitterSec, Math.round(spec.jitter * factor) / 1000)
+      assert.equal(row.effectiveGapSec, Math.round(spec.gap * f) / 1000)
+      assert.equal(row.effectiveJitterSec, Math.round(spec.jitter * f) / 1000)
       assert.equal(row.effectiveMinSec, row.effectiveGapSec)
-      assert.equal(row.effectiveMaxSec, Math.round((spec.gap + spec.jitter) * factor) / 1000)
+      assert.equal(row.effectiveMaxSec, Math.round((spec.gap + spec.jitter) * f) / 1000)
+      assert.equal(row.scalesWithFactor, kind !== 'moment')
+      if (kind === 'moment') {
+        assert.equal(row.effectiveMinSec, row.baseMinSec)
+        assert.equal(row.effectiveMaxSec, row.baseMaxSec)
+      }
       assert.equal(row.hourCap, spec.hour)
       assert.equal(row.hourWindowSec, 3600)
       assert.equal(row.hourCapScalesWithFactor, false)
@@ -81,6 +90,10 @@ test('paceExplain describes base and effective intervals for every preset and ki
   assert.deepEqual([fast.kinds.comment.effectiveMinSec, fast.kinds.comment.effectiveMaxSec], [60, 90])
   assert.deepEqual([fast.kinds.opusReply.effectiveMinSec, fast.kinds.opusReply.effectiveMaxSec], [10, 15])
   assert.deepEqual([fast.kinds.dm.effectiveMinSec, fast.kinds.dm.effectiveMaxSec], [15, 22.5])
+  /* 动态在任何系数下都是 1800–2100 秒。 */
+  assert.deepEqual([fast.kinds.moment.effectiveMinSec, fast.kinds.moment.effectiveMaxSec], [1800, 2100])
+  const slow = paceExplain(null, NOW, PACE_PRESETS.cautious)
+  assert.deepEqual([slow.kinds.moment.effectiveMinSec, slow.kinds.moment.effectiveMaxSec], [1800, 2100])
 })
 
 test('paceExplain uses the existing factor bounds without quantizing custom factors', () => {
@@ -134,10 +147,10 @@ test('hourly caps remain rolling and may dominate an apparently short interval',
 
 test('local hourly headroom increases without changing gaps, burst, risk, or quota policy', () => {
   assert.deepEqual(Object.fromEntries(PACE_KINDS.map(kind => [kind, PACE[kind].hour])), {
-    comment: 16, reply: 30, opusReply: 40, dm: 30, moment: 2,
+    comment: 16, reply: 30, opusReply: 40, dm: 30, moment: 3,
   })
   assert.deepEqual(PACE_KINDS.map(kind => [PACE[kind].gap, PACE[kind].jitter]), [
-    [120_000, 60_000], [60_000, 30_000], [20_000, 10_000], [30_000, 15_000], [600_000, 300_000],
+    [120_000, 60_000], [60_000, 30_000], [20_000, 10_000], [30_000, 15_000], [1_800_000, 300_000],
   ])
   const recent = Array.from({ length: 16 }, (_, i) => ({ k: 'comment', t: NOW - 20 * MIN + i * 1000 }))
   assert.equal(paceCheck({ recent: recent.slice(0, 8) }, 'comment', NOW).ok, true)

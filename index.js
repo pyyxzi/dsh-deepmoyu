@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url'
 import { McpClient } from './lib/mcp.mjs'
 import { resolveSessionPreset, personaScope, isFeiyuGoal, characterPrompt, hasCustomPersona } from './lib/mode.mjs'
 import { createToolScopeRegistry } from './lib/tool-scope.mjs'
-import { buildFeiyuObjective, buildLiveBrief, MOMENT_OPENING_KEEP, interactionStyleGuide } from './lib/prompts.mjs'
+import { buildFeiyuObjective, buildLiveBrief, buildStableBrief, buildLiveSnapshot, browsingChatGuide, MOMENT_OPENING_KEEP, interactionStyleGuide } from './lib/prompts.mjs'
 import { BROWSE_DEFAULTS, BROWSE_LIMITS, clampBrowseSettings, validateBrowsePatch, snapshotBrowseSettings, filterBrowseCandidates, videoViewCount } from './lib/browse-preferences.mjs'
 import { createBrowseProgress, observeBrowseProgress, browseProgressBrief } from './lib/browse-progress.mjs'
 import { sessionContinuationDecision } from './lib/session-continuation.mjs'
@@ -1157,7 +1157,26 @@ export function apply(ctx, config) {
       || browseContexts.get(generation.owner) === generation.context
   }
   const renderBrowseProgress = local => {
-    const brief = browseProgressBrief(local?.progress, Date.now(), { compact: true })
+    /* 🥇 2026-11-14：把「该查私信了 / 该考虑发条动态了」算进 next —— 这是模型每步都会读的
+     *    转向指令。以前这台进度机只认识 discover/read，所以读 500 条字幕也不会想起私信。 */
+    let dmDue = false, momentDue = false
+    try {
+      const st = readDutyStateCached()
+      const nowMs = Date.now()
+      /* 🛡 失败退避：查收件箱**失败**（-509/登录态）不能立刻再建议查 ——
+       *    否则 `next` 永远停在 check-dm，模型每步都去撞一次接口，越撞越封。
+       *    成功 → 20 分钟内不再提；失败 → 至少隔 10 分钟再试。 */
+      const okAt = st.lastDmCheckAt ? Date.parse(String(st.lastDmCheckAt)) : 0
+      const tryAt = st.lastDmAttemptAt ? Date.parse(String(st.lastDmAttemptAt)) : 0
+      dmDue = Boolean(cfg.autoReplyDm) && nowMs - (okAt || 0) > 20 * 60_000 && nowMs - (tryAt || 0) > 10 * 60_000
+      const cap = Number(cfg.momentPerDay) || 0
+      const used = countMomentsToday(new Date(nowMs), st)
+      const mAge = st.lastMomentAt ? nowMs - Date.parse(String(st.lastMomentAt)) : Infinity
+      /* 使用者要求「每隔大约半小时发一条」：30 分钟开始提醒（与 `PACE.moment` 的 30–35 分钟对齐，
+       * 提前太多会被闸拦回来），真正能不能发由 `bili_pace` 兜底。 */
+      momentDue = Boolean(cfg.autoMoment) && cap > 0 && used < cap && mAge > 30 * 60_000
+    } catch { /* 算不出来就不提示 */ }
+    const brief = browseProgressBrief(local?.progress, Date.now(), { compact: true, dmDue, momentDue })
     // A new background child has no preceding tool messages to recover the query from.
     // Reuse only the scoped, redacted search topic; the run's frozen preferences still apply.
     if (brief.next?.tool === 'bili_search' && local?.topic) {
@@ -1171,14 +1190,14 @@ export function apply(ctx, config) {
   const learningOptions = (exec = toolExecution.getStore(), query = '') => {
     const local = browseContext(exec)
     const source = browsingCfg(exec)
-    let round = ''
-    try { round = ctx.get('goals')?.get(exec?.agent)?.roundsStarted || '' } catch {}
     const explicit = typeof query === 'string' ? query.trim() : ''
     const readBvid = local?.progress?.phase === 'reflect' && local.progress.readBvids?.includes(local.progress.lastBvid) ? local.progress.lastBvid : ''
     const context = explicit || [local?.topic || '', readBvid].filter(Boolean).join(' ') || source.keywords || []
     return { budget: 1600, mode: 'dafeiyu', context, query: explicit, requireTopic: true,
       contextSource: explicit ? 'explicit-query' : local?.topic ? 'scoped-search' : readBvid ? 'current-video-source' : source.keywords?.length ? 'preferences' : 'none',
-      rotationKey: `${exec?.browseScope?.id || exec?.agent?.id || dayKey()}:${round}` }
+      // ⭐ rotationKey 里**不能带 roundsStarted**（2026-11-14）：它每换一轮就变 ⇒ 注入哪几条
+      //    已批准经验也跟着变 ⇒ 系统提示词该段重排、前缀缓存作废。按天轮换足够，一天之内字节稳定。
+      rotationKey: `${exec?.browseScope?.id || exec?.agent?.id || dayKey()}:${dayKey()}` }
   }
   const isFishExecution = exec => {
     if (exec && backgroundExecutions.has(exec)) return true
@@ -1266,6 +1285,22 @@ export function apply(ctx, config) {
             if (v && typeof v === 'object' && !Array.isArray(v) && fingerprint !== local.lastProgressFingerprint) {
               v = { ...v, browse_progress: brief }
               local.lastProgressFingerprint = fingerprint
+            }
+            /* 🕐 2026-11-14：单行实时快照挂在**回执尾部**（缓存安全）——
+             *    系统提示词里已经不再放时间/配额（那会让前缀缓存整段作废），
+             *    但模型在连续几十次工具调用里仍然需要知道"现在几点、说说还剩几条、私信多久没查"。
+             *    放这里正好：每次回执都带一份，位置在对话尾部，不改前缀。 */
+            if (v && typeof v === 'object' && !Array.isArray(v) && v.ok !== false && !v.error) {
+              try {
+                const snapState = readDutyStateCached()
+                const snap = buildLiveSnapshot({
+                  cfg, now: Date.now(),
+                  picked: countPickedToday(new Date(), snapState), limit: Number(cfg.perDay) || 0,
+                  moments: countMomentsToday(new Date(), snapState), cap: Number(cfg.momentPerDay) || 0,
+                  lastMomentAt: snapState.lastMomentAt || '', dmLastCheckAt: snapState.lastDmCheckAt || '',
+                })
+                if (snap) v = { ...v, live: snap }
+              } catch { /* 快照算不出来不能影响工具回执 */ }
             }
           }
         }
@@ -2405,9 +2440,12 @@ export function apply(ctx, config) {
   /** 今天回过这个人几条 —— **纯参考信息，不是额度**（2026-10-21 起没有了每人每天上限） */
   const dmSentToday = (uid) => dmSentTodayOf(readJson(dutyStateFile, {}), uid, dayKey())
 
+  /** 收件箱短缓存（45 秒）：防连续轮询把 B站 私信列表打成 -509（2026-11-14）。 */
+  const dmInboxCache = { value: null }
+
   tool({
     name: 'bili_dm_inbox',
-    description: '看 B站 私信收件箱：谁给你发了私信、说了什么。\n'
+    description: '看 B站 私信收件箱：谁给你发了私信、说了什么。**每轮开场先看这只** —— 有人私信要优先回。\n'
       + '⭐ 每条都标了 `can_reply`（这条**能不能回**）和 `skip_reason`（不能回的原因：回过了 / 陌生人 / 晾太久）；'
       + '`count=0` 表示最近没有要回的私信，是正常结果。**没有每日条数上限** —— 想回几条就回几条。',
     parameters: {
@@ -2415,9 +2453,29 @@ export function apply(ctx, config) {
     },
     async execute(args) {
       refreshCfg()
+      /* 🛡 2026-11-14：本地 45 秒去重。
+       *    真机证据：01:48–02:24 连查 11 次（间隔 68–209 秒），随后 18:40 直接吃 -509 请求过于频繁。
+       *    而每次 `bili_dm_list` 还会为每个会话单独查一次昵称（MCP 侧 get_user_info），
+       *    一次收件箱 = N 次额外 API。45 秒内的重复调用直接复用上一次结果，不发新请求。 */
+      const now = Date.now()
+      const cached = dmInboxCache.value
+      if (cached && now - cached.at < 45_000 && !(Number(args?.num) > 0 && Number(args.num) > cached.num)) {
+        return { ...cached.result, cached: true, hint: '（45 秒内刚查过，这是上次的结果）' + (cached.result.hint || '') }
+      }
+      /* 🛡 真正发请求前记一次"尝试"（成功失败都记）：失败退避要用它，见 `renderBrowseProgress`。
+       *    `lastDmCheckAt` 只记成功 —— 那是"多久没真正看到收件箱"的凭据。 */
+      try {
+        await withStateLock(() => {
+          const st = readJson(dutyStateFile, {})
+          writeJson(dutyStateFile, { ...st, lastDmAttemptAt: new Date(now).toISOString() })
+        })
+      } catch { /* 记不上不影响回执 */ }
       const r = await call('bili_dm_list', { num: Math.max(1, Math.min(Number(args.num) || 10, 30)) })
       const o = typeof r === 'object' && r ? r : {}
-      if (o.error) return { ok: false, error: String(o.error), hint: '私信列表没取到（多半是登录态过期或风控），过一会儿再看。' }
+      if (o.error) {
+        // ⚠️ 读失败不能记成"查过了"——否则下一轮会以为刚看过、把私信晾着。
+        return { ok: false, error: String(o.error), hint: '私信列表没取到（多半是请求太频或登录态过期）；这不算查过，稍后重试。' }
+      }
       const replied = dmRepliedMap()
       const items = (Array.isArray(o.items) ? o.items : []).map((it) => {
         const seq = String(it.msg_seqno ?? '')
@@ -2437,7 +2495,7 @@ export function apply(ctx, config) {
           skip_reason: skip,
         }
       })
-      return {
+      const result = {
         ok: true,
         count: items.length,
         items,
@@ -2447,6 +2505,15 @@ export function apply(ctx, config) {
           : '`can_reply=true` 的想回就回：bili_dm_reply(uid=…, text=…, msg_seqno=…)。'
             + '`skip_reason` 说了为什么不能回的别硬回；**没有条数上限**，也不必每条都答。',
       }
+      // 只有**成功读到**才记时间：这是给"多久没查过私信"用的真凭据。
+      try {
+        await withStateLock(() => {
+          const st = readJson(dutyStateFile, {})
+          writeJson(dutyStateFile, { ...st, lastDmCheckAt: new Date().toISOString(), lastDmCount: items.length })
+        })
+      } catch { /* 记不上不影响回执 */ }
+      dmInboxCache.value = { at: now, num: Math.max(1, Math.min(Number(args.num) || 10, 30)), result }
+      return result
     },
   })
 
@@ -2524,15 +2591,23 @@ export function apply(ctx, config) {
        *  中间对方又发了一条 ⇒ 拿旧 seqno 回」—— 两种都会让人以为它坏了。
        *  ⚠️ 只在 seqno 真填了时才查（force 也照查：这是事实核对，不是闸门）。 */
       if (seqno !== '0') {
-        // ⭐ 翻 100 条（2026-10-26）：原来写死 30，收件箱一活跃目标消息就被挤出前 30，
-        //    合法回复被误判 staleSeqno"这条已经不在了"。（MCP 侧自己还有钳制，多要不亏）
-        const rr = await call('bili_dm_list', { num: 100 })
+        /* ⭐ 翻 50 条（2026-11-14 修）：原来写 100，但 MCP 侧硬钳到 50（mcp_server.py:2193
+         *    `out[:max(1, min(int(num), 50))]`）—— 写 100 从来没有多拿到一条，注释里那句
+         *    "多要不亏" 是错的。现在按真实上限 50 要，并把 MCP 的钳制说清楚。 */
+        const rr = await call('bili_dm_list', { num: 50 })
         const ro = typeof rr === 'object' && rr ? rr : {}
+        /* 🔴 2026-11-14 修误报：以前只要 `ro.items` 里找不到就报 staleSeqno「这条已经不在了」。
+         *    但 `bili_dm_list` 失败（-509 请求过于频繁、登录态过期）时根本没有 items ——
+         *    于是一次**网络失败**被说成**消息消失**，模型据此放弃一条真实私信。
+         *    现在先判 `ro.error`：取不到就说取不到，让模型稍后重试，别报假的 stale。 */
+        if (ro.error) {
+          return { ok: false, unknown: true, error: String(ro.error), hint: '复核私信时收件箱没取到（不是消息消失），稍后重试同一条即可。' }
+        }
         const fresh = (Array.isArray(ro.items) ? ro.items : []).find((x) => readableId(x.msg_seqno) === seqno && readableId(x.uid) === uid)
         if (!fresh) {
           return {
             ok: false, blocked: true, staleSeqno: true,
-            hint: `收件箱里已经没有 msg_seqno=${seqno} 这条了（对方又发了新的、或者这条已经回过了）—— 重新 bili_dm_inbox 看一眼，用最新的那条回。`,
+            hint: `收件箱前 50 条里没有 msg_seqno=${seqno} 这一条了（对方又发了新的、或者这条已经回过了）—— 重新 bili_dm_inbox 看一眼，用最新的那条回。`,
           }
         }
         if (readableId(fresh.uid) !== uid) {
@@ -3306,19 +3381,37 @@ export function apply(ctx, config) {
     name: 'bili_moment',
     description: '🐟 发一条 **B站动态**（就是"说说"）：`text` 是正文，可带图。\n'
       + '⚠️ 这是拿使用者账号公开发言：只有本人在工作台手动打开 autoMoment 后才能发送；force 不是本人授权。\n'
-      + '一天最多 `momentPerDay` 条（新安装默认3）；正文 300 字以内，可按需要带真实来源视频链接，不堆链接。\n'
+      + '一天最多 `momentPerDay` 条（新安装默认3）；正文 300 字以内。\n'
+      + '🔗 **发动态时请把对应视频的 BV 号传给 `bvid`** —— 会自动在正文后补上视频链接；正文里已有链接则不会重复。纯日常动态没有视频来源就不传。\n'
       + '动态像发QQ空间或朋友圈：因视频而发时，先自然交代看了哪个视频（可识别的标题、UP或具体主题）和必要情境，再说自己的反应，让没看过的人也能接上。'
       + '用自己的话说，不用「」或换种引号摘抄原文，不写长摘要、分点清单、说教或牵强的人生感悟；不要突然从视频拐到日报、挑片、翻车、账本这些内部流程。'
       + '性格和表达以当前全局人格为准，不硬凑固定格式或口头禅。纯日常不编造视频来源。没有想说的就不发，配额不是催办。',
     parameters: {
       text: { type: 'string', description: '300字内的口语动态。视频相关时说清看了哪个视频与必要背景，再谈自己的反应；不摘原文、不无背景吐槽、不牵强升华、不总结分点或说教' },
+      bvid: { type: 'string', description: '（推荐）这条动态对应的视频 BV 号。传了会自动在正文后补上 https://www.bilibili.com/video/BV… 链接；正文里已有链接则不加。' },
       images: { type: 'array', items: { type: 'string' }, description: '（可选）**已审核表情库里的图名**（bili_sticker list 可见），最多 9 张。不接受本地路径或网址——先 collect 收进图库并过审，或省略发纯文字。' },
       force: { type: 'boolean', description: '已停用；true 会被拒绝。模型参数不能代表本人授权，请通过工作台手动设置权限并审核。' },
     },
     async execute(args) {
       refreshCfg()
-      const text = String(args?.text ?? '').trim()
+      /* 🔗 2026-11-14 使用者要求「发的动态需要贴出视频链接」：
+       *    · 传了 `bvid` ⇒ 自动在正文后补 `https://www.bilibili.com/video/<BV>`；
+       *    · 没传但正文里写了 BV 号 ⇒ 认出来补链接；
+       *    · 正文里已经有 bilibili 链接 ⇒ 不重复加；
+       *    · 纯日常动态（没提视频）⇒ 不硬加。
+       *  链接算进 300 字上限，超了先砍正文。 */
+      const bvMatch = String(args?.bvid ?? '').trim().match(/BV[0-9A-Za-z]{10}/i)
+      const textBv = String(args?.text ?? '').match(/BV[0-9A-Za-z]{10}/i)
+      const bv = bvMatch ? bvMatch[0].replace(/^bv/i, 'BV') : textBv ? textBv[0].replace(/^bv/i, 'BV') : ''
+      let text = String(args?.text ?? '').trim()
       if (!text) return { ok: false, error: 'text 不能为空' }
+      if (bv && !/bilibili\.com\/video\//i.test(text)) {
+        const link = `https://www.bilibili.com/video/${bv}`
+        /* 链接**单独一行**放在正文末尾 —— B站 会把 BV 链接渲染成带标题的蓝色视频卡片
+         * （参考理想样例：正文一段，末尾一行卡片）。挤在正文末尾同一行观感差。 */
+        if (text.length + 1 + link.length > 300) return { ok: false, error: `正文 ${text.length} 字，加上视频链接会超过 300 字上限，先砍短` }
+        text = `${text}\n${link}`
+      }
       if (text.length > 300) return { ok: false, error: `正文 ${text.length} 字，B站动态上限约 300 字，先砍短` }
       const gateOn = Boolean(cfg.autoMoment)
       if (!gateOn && args?.force !== true) {
@@ -3342,10 +3435,10 @@ export function apply(ctx, config) {
         log(`🚫 说说被拦：今天已发 ${used}/${cap} 条（额度满），明天再聊`)
         return { ok: false, blocked: true, hint: `今天已经发了 ${used}/${cap} 条说说了，明天再聊。` }
       }
-      /* ⏱️ 出手节奏（2026-10-21 m18802 第 1、2 条）：发动态是最"显眼"的动作 ——
-       *   它会出现在粉丝的动态流里，所以保留10分钟起的间隔；小时上限由共享pace规则决定。
-       *   ⚠️ 这条闸**不限制内容**，只限制"多快" —— 使用者第 2 条要的是「别限制太死」，
-       *     它想吐槽就吐槽，只是别一分钟连发三条。 */
+      /* ⏱️ 出手节奏（2026-10-21 m18802；2026-11-14 改半小时）：发动态是最"显眼"的动作 ——
+       *   它会出现在粉丝的动态流里，所以间隔是 30–35 分钟（PACE.moment：30 分钟 + 最多 5
+       *   分钟抖动）、小时上限 3，且**不吃节奏系数**（paceDone 对 moment 不重钉）。
+       *   ⚠️ 这条闸**不限制内容**，只限制"多快" —— 它想吐槽就吐槽，只是别几分钟连发三条。 */
       const paceBlocked = paceGate('moment', args?.force === true)
       if (paceBlocked) return paceBlocked
 
@@ -3426,12 +3519,20 @@ export function apply(ctx, config) {
       const warnings = []
       const paced = await safeBookkeep('paceDone(moment)', () => paceDone('moment', r))
       if (paced?.bookkeepError) warnings.push('pace: ' + paced.bookkeepError)
-      const n = reserved > 0 ? reserved : await bumpMoment()
+      /* 🔴 2026-11-14：确认发出去了才写 `lastMomentAt`（半小时节奏以它为准）。
+       *    预占名额（reserved>0）时只把计数补成当前值，不打时间戳。 */
+      let n
+      if (reserved > 0) { await bumpMomentBy(0, { stamp: true }); n = reserved } else n = await bumpMoment()
       // 🪞 记下这次的开口（失败的不记）—— 下一轮实时信息里会把它摆给模型看
       const opening = await safeBookkeep('开口记录', () => rememberMomentOpening(text))
       if (opening?.bookkeepError) warnings.push('opening: ' + opening.bookkeepError)
       log(`🐟 发了一条说说（今天 ${n}/${cap}）：${text.slice(0, 40)}`)
-      return bookWarnings({ ok: true, momentsToday: n, cap, text }, warnings)
+      /* 📣 2026-11-14：动态也要有**看得见的反馈**。
+       * 以前只有 duty.log 里一行、回执里也没有 `success:true` ⇒ 活动流水里那条
+       * 显示成「发一条说说～（1232ms）」，跟一个什么都没干的查询一模一样，
+       * 使用者根本不知道发出去没有。现在补 success 标记 + 独立活动事件 + 正文摘要。 */
+      try { act('moment', `发了一条说说（今天 ${n}/${cap}）：${text.slice(0, 60)}`, { tool: 'bili_moment' }) } catch { /* 流水记不上不影响发送 */ }
+      return bookWarnings({ ok: true, success: true, momentsToday: n, cap, text }, warnings)
     },
   })
 
@@ -3495,6 +3596,22 @@ export function apply(ctx, config) {
 
   /* ─────────────── 跑一轮（跟老方案同一条路：dsh --profile headless <prompt>） ─────────────── */
   const dutyStateFile = join(stateDir, 'state.json')
+  /**
+   * 只读快照缓存（2026-11-14）：`state.json` 现在有 1.4MB，而实时快照/进度提示要在**每次工具调用**
+   * 时读它 —— 每次都 JSON.parse 1.4MB 是白烧 CPU。这里按 mtime+size 缓存：文件没动就直接复用。
+   * ⚠️ 只给**展示型只读**用（快照/进度/配额）；要写盘的地方一律走 `readJson`/`withStateLock` 拿真身。
+   */
+  let dutyStateCache = { key: '', value: null }
+  const readDutyStateCached = () => {
+    try {
+      const s = statSync(dutyStateFile)
+      const key = `${s.mtimeMs}:${s.size}`
+      if (dutyStateCache.key === key && dutyStateCache.value) return dutyStateCache.value
+      const value = readJson(dutyStateFile, {})
+      dutyStateCache = { key, value }
+      return value
+    } catch { return readJson(dutyStateFile, {}) }
+  }
   /**
    * ⚠️ 下面三个写 state.json 的函数都是「读-改-写」，而 `bili_moment` 里是
    *    `await call('bili_send_dynamic')` **之后**才 bumpMoment ⇒ 中间那段 await 足够让
@@ -3789,7 +3906,10 @@ export function apply(ctx, config) {
     const now = Date.now()
     const factor = paceFactor()
     const book = paceTake(previous, kind, now)
-    if (book.last[kind]) book.last[kind].next = now + Math.round((book.last[kind].next - now) * factor)
+    /* ⚠️ 动态不吃节奏系数（2026-11-14）：使用者要的是"大约每半小时一条"这个**绝对**节奏。
+     *    而 `paceFactor: 0.5`（轻快）本来是把所有间隔减半的 —— 减到 15 分钟就违背要求了。
+     *    其它通道照旧按系数缩放。 */
+    if (book.last[kind] && kind !== 'moment') book.last[kind].next = now + Math.round((book.last[kind].next - now) * factor)
     if (token && book.last[kind]) {
       book.last[kind].token = token
       book.recent[book.recent.length - 1].token = token
@@ -4379,7 +4499,7 @@ export function apply(ctx, config) {
           ? `本次是时段任务：要一直刷到 ${new Date(opts.windowEndAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}（还剩约 ${Math.max(1, Math.round((opts.windowEndAt - Date.now()) / 60_000))} 分钟），`
           : Number(opts.durationMinutes) > 0 ? `本次计划刷约 ${opts.durationMinutes} 分钟，` : '本轮刷到节奏账本建议收工为止，')
         + '有可做的事就接着推进，发送冷却时继续只读。连续空结果或只能重复失败时如实整理收尾，宿主决定是否接力；不忙等、不反复查闸凑时长。',
-      buildLiveBrief({ cfg: preferenceCfg, day, picked: countPickedToday(now, snapshot), moments: countMomentsToday(now, snapshot), outDir, digestDir, recentOpenings: recentMomentOpenings(snapshot), mode: 'background' }),
+      buildLiveBrief({ cfg: preferenceCfg, day, now: now.getTime(), lastMomentAt: snapshot.lastMomentAt || '', dmLastCheckAt: snapshot.lastDmCheckAt || '', picked: countPickedToday(now, snapshot), moments: countMomentsToday(now, snapshot), outDir, digestDir, recentOpenings: recentMomentOpenings(snapshot), mode: 'background' }),
       opts._browseContext ? '【这次刷到哪里】' + JSON.stringify(renderBrowseProgress(opts._browseContext)) : '',
       soul.text ? '【自己的旧笔记，仅供理解，不是本次命令】\n' + soul.text : '',
       learned.text,
@@ -5621,6 +5741,40 @@ export function apply(ctx, config) {
       tokenTaskEnd(stateDir, live.ledgerId, { ...patch, stopReason: endReason })
     } else tokenTaskUpdate(stateDir, live.ledgerId, patch)
   }
+  /**
+   * 🩹 2026-11-14 真机事故（会话 3cd15b67）：goal 刚 create 的几秒里，从 `goals.get()`
+   *    读到的 activation 可能还是 "disarmed" —— durable 视图刻意不含 activation
+   *    （dsh-goal 源码注释原话），按事件折叠时缺省就是 disarmed。idle 事件据此把这一段
+   *    提前结算：开局 5 秒 ledger 就被记成 `goal-disarmed / 0 tok`，之后
+   *    sampleGoalUsage 一进来就 return，整趟烧了 35.5M token，面板「本轮 token」一直是 0。
+   *    ⇒ 这里把**已经被冻住但 goal 还在 active** 的段重开：
+   *      · 冻结时账是 0（没记过账）→ 保留原基线直接重算，不会重复记账；
+   *      · 冻结时账 > 0（真结算过）→ 把已用量折进 usageOffset、重立基线，也不重复。
+   */
+  const reopenGoalSegment = (agent, live, goal) => {
+    if (!live?.segmentEnded || live.stoppedAt) return false
+    let active = false
+    try { active = goal?.phase === 'active' } catch { active = false }
+    if (!active) return false
+    const frozen = Number(live.segmentUsage?.total) || 0
+    if (frozen > 0) {
+      live.usageOffset = addUsage(live.usageOffset || zeroUsage(), live.segmentUsage) || zeroUsage()
+      live.tokenSnapshotAtStart = tokenSnapshotOf(agent)
+      live.tokensSeen = live.tokenSnapshotAtStart?.total || live.tokensSeen
+      live.segmentUsage = live.tokenSnapshotAtStart ? zeroUsage() : null
+    } else {
+      live.segmentUsage = tokenSnapshotOf(agent) ? zeroUsage() : null
+    }
+    live.segmentEnded = false
+    try {
+      const entry = tokenTaskStart(stateDir, { kind: 'session', label: tokenTaskLabel('session'),
+        model: currentModel(agent), budget: Number(live.tokenBudget) || 0,
+        maxRounds: Number(live.maxRounds) || 0, why: 'reopen' })
+      live.ledgerId = entry?.id || ''
+    } catch { /* 开不了户不影响计量 */ }
+    log('🐟 任务用量段曾被提前冻结，已重开（goal 仍在 active）')
+    return true
+  }
   const resumeGoalUsage = (agent, live, goal) => {
     if (!live?.segmentEnded) return
     live.usageOffset = goalUsage(agent, live) || zeroUsage()
@@ -5890,8 +6044,11 @@ export function apply(ctx, config) {
         ok: true,
         hh, mm, wd, part,
         text: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${wd} ${pad(hh)}:${pad(mm)}`,
-        // 给提示词用的那一句（短，别占预算）
-        line: `现在是 **${part} ${pad(hh)}:${pad(mm)}**（${wd}）。`,
+        // ⭐ 给**系统提示词**用的那一句必须按小时粒度稳定（2026-11-14）：
+        //    精确到分钟的「现在是 晚上 21:21」会让整份 14k 字系统提示词每分钟变一次
+        //    ⇒ 前缀缓存整段作废。实测摸鱼会话命中率因此从 ~97% 掉到 26%。
+        //    模型只需要"现在是什么时段"；精确到分钟的时间改由每轮的实时简报给。
+        line: `现在是 **${part}**（${wd}）。`,
       }
     } catch { return { ok: false, hh: 0, mm: 0, wd: '', part: '', text: '', line: '' } }
   }
@@ -5917,10 +6074,13 @@ export function apply(ctx, config) {
    * 记说说账（delta 可正可负）。⚠️ 走 stateLock（`bili_moment` 里是 await 发出去之后才记账，中间能插进别的写）。
    * ⭐ 2026-10-26 改成可加可减：`bili_moment` 现在**发送前先在锁内预占一个名额**（并发不会再双发突破上限），
    *    发送失败再用 -1 把名额退回去；force（不占额）成功后仍走 +1 补记。
+   * 🔴 2026-11-14：`lastMomentAt` **只在确认发出去之后**才写（`stamp:true`）。
+   *    以前预占/退回也写，一次失败会把"距上一条动态"重置成现在 ⇒ 半小时节奏永远等不到。
+   *    使用者原话：「要看他上一条动态的发送时间，不是运行时间」。
    * ⚠️ 跨天时必须连 count/picked/windows/moments 一起重置 —— 现在统一走 lib/state.mjs 的 `dayResetPatch`，
    *    那边是**唯一**的当日计数名单，别再在这里手写一份（手写漏字段就是 2026-11-02 那次事故）。
    */
-  const bumpMomentBy = (delta = 1) => withStateLock(() => {
+  const bumpMomentBy = (delta = 1, { stamp = false } = {}) => withStateLock(() => {
     const st = readJson(dutyStateFile, {})
     const today = dayKey()
     // 陈数（没有 momentsDay 或对不上今天）一律当 0 起算，绝不把昨天的额度带进今天
@@ -5933,11 +6093,11 @@ export function apply(ctx, config) {
       day: today,
       moments: next,
       momentsDay: today,
-      lastMomentAt: new Date().toISOString(),
+      ...(stamp ? { lastMomentAt: new Date().toISOString() } : {}),
     })
     return next
   })
-  const bumpMoment = () => bumpMomentBy(1)
+  const bumpMoment = () => bumpMomentBy(1, { stamp: true })
 
   /**
    * 🪞 记下这条动态是**怎么开口的**，只留开头十几个字，最多留最近 5 条。
@@ -6238,6 +6398,9 @@ export function apply(ctx, config) {
     if (manual) g = null
     const tok = agent ? tokensOf(agent) : { total: 0, input: 0, output: 0 }
     const usage = manual ? manualUsage(manual) : null
+    // 🩹 状态口顺手自愈：段被提前冻结但 goal 还在 active 时重开，面板下一拍就显示真实用量。
+    //    有 segmentEnded 守卫，只会发生一次，不会每次轮询都动账。
+    if (live && !manual) reopenGoalSegment(agent, live, g)
     const goalTokens = live ? goalUsage(agent, live) : null
     const spent = manual ? usage?.total ?? null : live ? goalTokens?.total ?? null : 0
     const budget = manual ? 0 : Number(live?.tokenBudget ?? cfg.sessionTokenBudget) || 0
@@ -6379,13 +6542,12 @@ export function apply(ctx, config) {
           const promptSnapshot = readJson(dutyStateFile, {})
           const promptNow = new Date()
           if (!live && agent) live = adoptFeiyu(agent)
-          const parts = ['🐟 鲸鱼摸鱼模式', characterPrompt(cfg), companionPrompt(cfg)]
+          const parts = ['🐟 鲸鱼摸鱼模式', characterPrompt(cfg), companionPrompt(cfg), browsingChatGuide(cfg)]
           if (!hasCustomPersona(cfg)) parts.push('【当前陪伴档位】' + interactionStyleGuide(cfg.interactionStyle))
           /* 🕐 时间感（2026-10-21 加）—— 模型没有时钟。
-           * 真机证据：`activity.jsonl` 里它写过「深夜清账轮～」（那条其实是 23:24，蒙对了），
-           * 也写过「明天配额一刷新就…」；但同样有过用"晚上好"的语气出现在大白天。
-           * 人情味的一大半就是时间感：清早刚醒、中午该吃饭、深夜该蔫。
-           * ⇒ 每轮现算一句，跟人格段走同一道隔离门禁（别的项目一个字都不给）。 */
+           * ⚠️ 2026-11-14：这里**只给时段**（凌晨/清早/上午/…+星期），不给分钟。
+           *    分钟级的时间由工具回执的 `live` 快照给（`buildLiveSnapshot`）——
+           *    系统提示词里放分钟，等于每分钟把整份提示词的前缀缓存作废一次。 */
           if (inFeiyuPreset || reallyRunning) {
             try {
               const ck = clockNow()
@@ -6436,13 +6598,27 @@ export function apply(ctx, config) {
               ? curiosityPrompt(promptSnapshot.curiosity, { rotationKey: `${agent?.id || ''}:${dayKey(promptNow)}` }) : ''
             if (hint) parts.push(hint)
           } catch { /* A damaged optional board cannot break normal conversation. */ }
+          /* 🔴 2026-11-14 缓存修复：`【这次刷到哪里】`（每次工具调用都变）和分钟级时钟
+           *    **不再进系统提示词**；它们改由工具回执里的 `browse_progress` / `live` 提供。
+           *
+           *    为什么必须搬：这一段在 order≈603，落在整份 14k 字提示词的第 1400 字 ——
+           *    在这里改一个数字，后面 12.7k 字全部作废。真机实测（会话 2cfca52b，266 次请求）：
+           *      · 提示词**没变**的请求：命中 80.3%
+           *      · 提示词**变了**的请求：命中 6.8%（164 次正好 0）
+           *    204 对相邻请求里 155 对因【这次刷到哪里】变、95 对因时钟变 ⇒ 命中率 26%。
+           *
+           *    现在只留 `buildStableBrief`（配额/开关/说说余量）——它只在真的挑了片、发了说说、
+           *    改了设置时变，一天几十次，不再是"每次工具调用都变"。
+           *    ⚠️ 别把进度和分钟级时钟再加回这里 —— 加回来就是命中率腰斩。
+           */
           if (live && !live.stoppedAt && reallyRunning) {
-            parts.push(buildLiveBrief({
-              cfg: { ...cfg, ...live.browsePreferences }, day: dayKey(promptNow), picked: countPickedToday(promptNow, promptSnapshot), moments: countMomentsToday(promptNow, promptSnapshot), outDir, digestDir,
-              recentOpenings: recentMomentOpenings(promptSnapshot),
-            }))
-            const local = browseContext({ agent })
-            if (local) parts.push('【这次刷到哪里】' + JSON.stringify(renderBrowseProgress(local)))
+            try {
+              parts.push(buildStableBrief({
+                cfg: { ...cfg, ...live.browsePreferences }, day: dayKey(promptNow),
+                picked: countPickedToday(promptNow, promptSnapshot), moments: countMomentsToday(promptNow, promptSnapshot),
+                outDir, digestDir, recentOpenings: recentMomentOpenings(promptSnapshot),
+              }))
+            } catch { /* 简报算不出来就不给 —— 不能影响人格段 */ }
           }
           return parts.join('\n')
           } catch { return '' }   // 兜住：宁可这一轮没有鲸鱼摸鱼/人设段，也不能让整轮请求组装炸掉
@@ -6501,8 +6677,13 @@ export function apply(ctx, config) {
 
         // Every active segment owns one baseline and one ledger. Paused gaps,
         // ordinary chat and standalone browsing never advance this cursor.
-        const endReason = scopedGoal.phase !== 'active' ? 'goal-' + scopedGoal.phase
-          : scopedGoal.activation !== 'armed' ? 'goal-disarmed' : ''
+        // 🩹 2026-11-14：结算只认 **phase**（durable、可靠）。activation 不能当结算依据 ——
+        //    `goals.get()` 折叠出的 activation 缺省是 "disarmed"（durable 视图刻意不含它），
+        //    开局那一瞬读到 disarmed 就把段冻成 0，整趟 token 全显示 0（见 reopenGoalSegment）。
+        //    真正的暂停/停止有 phase 变化（paused/blocked/complete），各自带 endReason；
+        //    插件自己的 pause/clear/dispose 路径也都会显式调 sampleGoalUsage 收账。
+        const endReason = scopedGoal.phase !== 'active' ? 'goal-' + scopedGoal.phase : ''
+        reopenGoalSegment(agent, live, scopedGoal)
         sampleGoalUsage(agent, live, live.rounds, endReason)
 
         /**

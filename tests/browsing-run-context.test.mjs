@@ -9,7 +9,10 @@ import { McpClient } from '../lib/mcp.mjs'
 
 const immediate = () => new Promise(resolve => setImmediate(resolve))
 const A = 'BV1234567890', B = 'BV1234567891', SPOILER = 'BV1234567892', OLD = 'BV1234567893', AVOID = 'BV1234567894'
-const progressOf = prompt => JSON.parse(prompt.split('\n').find(line => line.startsWith('【这次刷到哪里】')).slice('【这次刷到哪里】'.length))
+/* 2026-11-14：浏览进度**不再进系统提示词**（它每调一次工具就变，会把整份提示词的前缀缓存打掉）。
+ * 现在进度挂在工具回执的 `browse_progress` 上；测试改成读"这个 agent 最近一次回执里的进度"。 */
+const lastProgress = new Map()
+const progressOf = row => lastProgress.get(row.id) || { pendingBvids: [] }
 
 test('real run wrappers freeze preferences, retain candidates across rounds, isolate chats and reset on restart', async () => {
   const root = mkdtempSync(join(tmpdir(), 'fish-browsing-run-context-')), home = join(root, 'bili-duty')
@@ -64,7 +67,11 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     assert.equal(res.status, 200)
     return res.body
   }
-  const execute = (row, name, args) => row.tools.get(name).execute(args, { agent: row })
+  const execute = async (row, name, args) => {
+    const value = await row.tools.get(name).execute(args, { agent: row })
+    if (value && typeof value === 'object' && value.browse_progress) lastProgress.set(row.id, value.browse_progress)
+    return value
+  }
   const prompt = row => String(sections.get('bili:dafeiyu').text({ agent: row }))
   const select = async (row, preset) => {
     row.session.header.agentPreset = preset
@@ -95,7 +102,7 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     }
     await execute(first, 'bili_search', { keyword: '科技', num: 80 })
     assert.equal(calls.filter(row => row.name === 'bili_search').at(-1).args.num, 50, 'the existing bounded response size remains enforced')
-    assert.deepEqual(progressOf(prompt(first)).pendingBvids, [AVOID, B, A], 'overlapping pages preserve the unfinished candidates')
+    assert.deepEqual(progressOf(first).pendingBvids, [AVOID, B, A], 'overlapping pages preserve the unfinished candidates')
     const beforeInvalidPages = calls.length
     for (const page of [true, '2', 0, 51, 1.5]) assert.equal((await execute(first, 'bili_search', { keyword: '科技', page })).ok, false)
     assert.equal(calls.length, beforeInvalidPages, 'malformed page inputs perform no account request')
@@ -103,7 +110,7 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     assert.deepEqual(read.browse_progress.pendingBvids, [AVOID, A])
     assert.equal(read.browse_progress.recentReadCount, 1)
     goals.get(first).roundsStarted++
-    assert.deepEqual(progressOf(prompt(first)).pendingBvids, [AVOID, A], 'next request retains unprocessed candidates')
+    assert.deepEqual(progressOf(first).pendingBvids, [AVOID, A], 'next request retains unprocessed candidates')
     const another = await request('/pet/start', { mode: 'session', sessionId: second.id, durationMinutes: 0, model: '', tokenBudget: 0 })
     assert.equal(another.ok, true)
     assert.equal(another.browsePreferences.browseRecentDays, 0)
@@ -111,8 +118,8 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     assert.deepEqual(calls.filter(row => row.name === 'bili_search').at(-1).args, { keyword: '旅行', num: 20, order: 'pubdate', days: 0 })
     assert.deepEqual(otherFound.fresh.map(row => row.bvid), [SPOILER, A, OLD], 'second run uses new preferences while respecting shared seen history')
     assert.equal(otherFound.browse_progress.recentReadCount, 0)
-    assert.deepEqual(progressOf(prompt(first)).pendingBvids, [AVOID, A], 'second chat never overwrites first chat progress')
-    assert.deepEqual(progressOf(prompt(second)).pendingBvids, [SPOILER, A, OLD])
+    assert.deepEqual(progressOf(first).pendingBvids, [AVOID, A], 'second chat never overwrites first chat progress')
+    assert.deepEqual(progressOf(second).pendingBvids, [SPOILER, A, OLD])
     const stale = first.tools.get('bili_search'), countBeforeExit = calls.length
     await select(first, 'standard')
     assert.equal((await stale.execute({ keyword: 'must not execute' }, { agent: first })).reason, 'mode_required')
@@ -125,10 +132,12 @@ test('real run wrappers freeze preferences, retain candidates across rounds, iso
     const restarted = await request('/pet/start', { mode: 'session', sessionId: first.id, durationMinutes: 0, model: '', tokenBudget: 0 })
     assert.equal(restarted.ok, true)
     assert.deepEqual(restarted.browsePreferences.browseAvoidKeywords, ['新避雷'])
-    assert.deepEqual(progressOf(prompt(first)).pendingBvids, [])
+    /* 重启后内存里的进度被丢掉，第一条回执必须是干净的一张新账（不再是上一趟的候选）。 */
+    lastProgress.delete(first.id)
     const newFound = await execute(first, 'bili_search', { keyword: '旅行' })
     assert.deepEqual(newFound.fresh.map(row => row.bvid), [SPOILER, A, OLD])
     assert.equal(newFound.browse_progress.recentReadCount, 0, 'fresh run has a fresh progress summary')
+    assert.ok(!(newFound.browse_progress.pendingBvids || []).includes(AVOID), 'restart drops the previous run candidates')
     const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.ok(state.seenVideos[B], 'resetting a run never deletes permanent browsing evidence')
     assert.ok(calls.every(row => ['bili_search', 'bili_guard_status', 'bili_subtitle'].includes(row.name)))

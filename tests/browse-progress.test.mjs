@@ -224,3 +224,22 @@ test('unchanged queries keep the semantic revision and compact guidance omits re
   assert.equal(migrated.revision, 1)
   assert.deepEqual(migrated.pendingBvids, [A, B])
 })
+
+test('a run of videos without subtitles switches source instead of grinding or debugging', () => {
+  /* 2026-11-14 真机事故：连续 22 条无字幕，鱼开始翻日志、写 `_diag_sub.py` 排查，
+     使用者看到的是「让他刷视频，他在改文件」。连续 5 条后必须把下一步改成换来源。 */
+  let state = observe(createBrowseProgress(NOW), 'bili_search', {}, { fresh: [{ bvid: A }, { bvid: B }, { bvid: C }] })
+  for (const bvid of [A, B, C]) state = observe(state, 'bili_subtitle', { bvid }, { message: '该视频没有字幕' })
+  assert.equal(state.noSubtitleStreak, 3)
+  assert.notEqual(browseProgressBrief(state, NOW).next.action, 'change-source', 'three misses are normal, not a reason to abandon the batch')
+  let more = observe(state, 'bili_search', {}, { fresh: [{ bvid: 'BV14AHP6VExU' }, { bvid: 'BV14AHP6VExV' }] })
+  more = observe(more, 'bili_subtitle', { bvid: 'BV14AHP6VExU' }, { message: '没有字幕' })
+  more = observe(more, 'bili_subtitle', { bvid: 'BV14AHP6VExV' }, { message: '没有字幕' })
+  assert.equal(more.noSubtitleStreak, 5)
+  const brief = browseProgressBrief(more, NOW)
+  assert.equal(brief.next.action, 'change-source')
+  assert.match(brief.next.hint, /别写脚本|改文件|跑命令/, 'the hint must explicitly forbid debugging with scripts')
+  // 读成功一条就清零
+  const recovered = observe(more, 'bili_subtitle', { bvid: 'BV14AHP6VExW' }, { text: '实际原文' })
+  assert.equal(recovered.noSubtitleStreak, 0)
+})

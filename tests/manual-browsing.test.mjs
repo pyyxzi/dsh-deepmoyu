@@ -587,6 +587,38 @@ test('starting a continuous goal closes manual usage before the new goal baselin
   })
 })
 
+test('a transient disarmed reading right after goal start no longer freezes this-run usage', async () => {
+  /* 🩹 2026-11-14 真机事故回归（会话 3cd15b67：整趟烧了 35.5M token，面板「本轮 token」一直 0）。
+   *    durable goal 视图刻意不含 activation（dsh-goal 源码注释原话），`goals.get()` 折叠出的
+   *    activation 在开局几秒里可能是 "disarmed"。旧代码据此把用量段提前结算
+   *    （ledger 记 goal-disarmed / 0 tok），sampleGoalUsage 从此永久早退，这一趟一分都记不上。
+   *    ⇒ idle 结算只认 phase（durable、可靠）；activation 抖动只采样、不封账。 */
+  await withFixture(async f => {
+    const agent = f.addAgent('transient-disarmed')
+    await f.running(agent)
+    const turn = await f.turnStart(agent)
+    const started = await f.execute(agent, 'bili_feiyu', { action: 'start', maxRounds: 8 })
+    assert.equal(started.ok, true)
+    // 模拟真机竞态：goal 仍 active，但宿主折叠视图里的 activation 短暂为 disarmed
+    f.goalsById.get(agent.id).activation = 'disarmed'
+    await f.turnEnd(agent, turn)
+    await f.idle(agent)
+    const mid = await f.request('/status')
+    assert.equal(mid.feiyu.tokens.thisRun, 0)
+    const openEntry = mid.tokenRounds.entries.find(entry => entry.why === 'session')
+    assert.ok(openEntry, 'this run still has its ledger entry')
+    assert.equal(openEntry.stopReason, '', 'a transient disarmed reading must not close the ledger as goal-disarmed')
+    // goal 继续跑：下一个 idle 重新采样，用量照常累计（基线 550 = startingUsage）
+    f.setUsage(agent, 3_500_000, 130_000)
+    await f.idle(agent)
+    const after = await f.request('/status')
+    assert.equal(after.feiyu.tokens.thisRun, 3_629_450, 'usage keeps counting while the goal stays active')
+    assertTotals(after, 3_629_450)
+    assert.ok(after.tokenRounds.entries.every(entry => entry.stopReason !== 'goal-disarmed'),
+      'no ledger entry may ever be closed by the flaky activation reading again')
+  })
+})
+
 for (const resumeAction of ['resume', 'start']) {
   test(`a paused goal resumed through ${resumeAction} excludes pause-gap chat and separately charged manual browsing`, async () => {
     await withFixture(async f => {

@@ -143,3 +143,61 @@ test('bili_comment is the direct under-video path and never becomes a floor repl
     assert.equal(Object.keys(saved.repliedComments).some(key => key.startsWith('video:')), false, 'bili_comment must not write a floor-reply key')
   } finally { f.close() }
 })
+
+test('a video moment carries the source link automatically, and the link counts toward the 300-char cap', async () => {
+  // 2026-11-14 使用者要求「发的动态需要贴出视频链接」。
+  const today = dayKey()
+  // ① 传 bvid ⇒ 自动补链接（每次用独立 fixture：上一次成功会钉住 30 分钟间隔）
+  const f1 = await fixture({ day: today, moments: 0, momentsDay: today })
+  try {
+    const out = await f1.execute('bili_moment', { text: '这条片讲得挺实在', bvid: 'bv1AbCdEfGh1' })
+    assert.equal(out.ok, true, JSON.stringify(out))
+    const sent = f1.calls.find(row => row.name === 'bili_send_dynamic')
+    assert.match(sent.args.text, /https:\/\/www\.bilibili\.com\/video\/BV1AbCdEfGh1/, 'the link must be appended')
+  } finally { f1.close() }
+  // ② 正文里已经写了链接 ⇒ 不重复追加
+  const f2 = await fixture({ day: today, moments: 0, momentsDay: today })
+  try {
+    const already = await f2.execute('bili_moment', { text: '看这个 https://www.bilibili.com/video/BV1AbCdEfGh1 笑死' })
+    assert.equal(already.ok, true, JSON.stringify(already))
+    const sent = f2.calls.find(row => row.name === 'bili_send_dynamic')
+    assert.equal((sent.args.text.match(/bilibili\.com\/video\//g) || []).length, 1, 'no duplicate link')
+  } finally { f2.close() }
+  // ③ 加了链接会超 300 字 ⇒ 先砍正文，不硬发
+  const f3 = await fixture({ day: today, moments: 0, momentsDay: today })
+  try {
+    const tooLong = await f3.execute('bili_moment', { text: '字'.repeat(280), bvid: 'BV1AbCdEfGh1' })
+    assert.equal(tooLong.ok, false)
+    assert.match(tooLong.error, /300 字/)
+    assert.deepEqual(f3.calls, [], 'an overlong moment must not reach the platform')
+  } finally { f3.close() }
+})
+
+test('a failed moment never stamps lastMomentAt, so the half-hour cadence is not reset by errors', async () => {
+  // 2026-11-14：以前预占/退回都写 lastMomentAt，一次失败就把「距上一条」重置成现在。
+  const today = dayKey()
+  const before = '2026-11-13T01:00:00.000Z'
+  const f = await fixture({ day: today, moments: 0, momentsDay: today, lastMomentAt: before })
+  const original = McpClient.prototype.call
+  McpClient.prototype.call = async function(name, args) {
+    if (name === 'bili_send_dynamic') return { success: false, error: '合成失败' }
+    return { success: true }
+  }
+  try {
+    const out = await f.execute('bili_moment', { text: TEXT })
+    assert.equal(out.ok, false)
+    assert.equal(f.state().lastMomentAt, before, 'a failed send must not move the last-moment clock')
+    assert.equal(f.state().moments, 0, 'the reserved slot must be refunded')
+  } finally { McpClient.prototype.call = original; f.close() }
+})
+
+test('a successful moment stamps lastMomentAt for the next half-hour window', async () => {
+  const today = dayKey()
+  const before = '2026-11-13T01:00:00.000Z'
+  const f = await fixture({ day: today, moments: 0, momentsDay: today, lastMomentAt: before })
+  try {
+    assert.equal((await f.execute('bili_moment', { text: TEXT })).ok, true)
+    assert.notEqual(f.state().lastMomentAt, before, 'success must move the clock forward')
+    assert.ok(Date.parse(f.state().lastMomentAt) > Date.parse(before))
+  } finally { f.close() }
+})

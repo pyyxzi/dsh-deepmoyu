@@ -331,16 +331,18 @@ window.__ModuleLoader__.load({
 /* 📖 使用指南（2026-11-07 使用者要求）：菜单卡片最末尾的折叠块，默认收起 ——
  *   不挤占菜单高度；展开后列表自身限高滚动，卡片 maxHeight 裁不到内容。 */
 [data-bd-menu-guide]{border-top:1px solid rgba(255,255,255,.09);}
-[data-bd-menu-guide] summary{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:12.5px;cursor:pointer;list-style:none;color:#cfe3f0;}
+/* 📖 2026-11-14 使用者反馈"太模糊"：正文 11px→12px、#a8c2d4→#c9dcea（毛玻璃暗底上更清楚），
+ *   标题 13px 近白；列表限高 180→260，8 条不用滚动就能看完。 */
+[data-bd-menu-guide] summary{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:13px;cursor:pointer;list-style:none;color:#e8f1f8;}
 [data-bd-menu-guide] summary::-webkit-details-marker{display:none;}
 [data-bd-menu-guide] summary:hover{background:rgba(125,211,252,.13);}
 [data-bd-menu-guide] summary svg{flex:none;font-size:15px;width:20px;height:20px;}
 [data-bd-menu-guide] summary::after{content:'▸';margin-left:auto;color:#7fa0b5;font-size:10px;transition:transform .16s ease;}
 [data-bd-menu-guide][open] summary::after{transform:rotate(90deg);}
-[data-bd-menu-guide] ul{margin:0;padding:2px 12px 10px;max-height:180px;overflow:auto;display:flex;flex-direction:column;gap:5px;
-  font-size:11px;line-height:1.55;color:#a8c2d4;}
+[data-bd-menu-guide] ul{margin:0;padding:2px 12px 10px;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:6px;
+  font-size:12px;line-height:1.6;color:#c9dcea;}
 [data-bd-menu-guide] li{list-style:none;}
-[data-bd-menu-guide] li b{color:#e8f1f8;font-weight:600;}
+[data-bd-menu-guide] li b{color:#fff;font-weight:600;}
 [data-bd-pet-spin]{flex:none;width:12px;height:12px;border-radius:50%;display:inline-block;
   border:2px solid rgba(125,211,252,.3);border-top-color:#7dd3fc;animation:bdPetSpin .7s linear infinite;}
 @keyframes bdPetSpin{to{transform:rotate(360deg)}}
@@ -3726,7 +3728,7 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           h('div', { 'data-bd-row': '' },
             h('button', {
               'data-bd-btn': '', 'data-primary': '', disabled: Boolean(busy),
-              onClick: () => patch({ perDay: clampField('perDay', perDay, 0, 50), reportLevel: rl || 'full', workspace: String(wsDir || '').trim() }, '报告与参考'),
+              onClick: () => patch({ perDay: clampField('perDay', perDay, 0, 100), reportLevel: rl || 'full', workspace: String(wsDir || '').trim() }, '报告与参考'),
             }, '保存报告设置'))),
         () => {
           const info = st && st.pace && st.pace.explanation
@@ -3738,8 +3740,14 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           const changed = valid && draft !== saved
           const presets = info?.presets || { normal: 1, responsive: 0.5, cautious: 1.5 }
           // 规则与基础秒数来自 paceExplain；本地只预览草稿，不另起请求、不改发送账。
-          const range = (v, factor) => `${Math.round(v.baseMinSec * 1000 * factor) / 1000}–${Math.round(v.baseMaxSec * 1000 * factor) / 1000} 秒`
+          // 🩹 2026-11-14：动态不吃节奏系数（scalesWithFactor=false），预览也不能自己乘 ——
+          //    否则「轻快 0.5」把动态显示成 15 分钟，实际闸还是 30 分钟。
+          const range = (v, factor) => {
+            const f = v.scalesWithFactor === false ? 1 : factor
+            return `${Math.round(v.baseMinSec * 1000 * f) / 1000}–${Math.round(v.baseMaxSec * 1000 * f) / 1000} 秒`
+          }
           const rules = info ? [
+            ['动态间隔', info.notes.moment],
             ['小时上限', info.notes.hour + ' 防止一小时的出手集中在一小会儿。'],
             ['连发刹车', `所有发送合计 ${info.burst.windowSec / 60} 分钟最多 ${info.burst.max} 次；达到 ${info.burst.extraAfterCount} 次还会额外等 ${info.burst.extraWaitSec / 60} 分钟。` + info.notes.burst],
             ['额度停牌', info.notes.quota + ` 再撞按 ${info.quota.parkSec.map((sec) => sec / 60).join(' → ')} 分钟递增，最晚只停到本地下一个 00:05；额度不是手速问题。`],
@@ -4645,17 +4653,20 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
            h('footer', { 'data-bd-menu-token': '' },
              attention.length ? h('div', { 'data-bd-menu-attention': '' }, '⚠ ' + attention[0]) : null,
              h('div', {}, h('span', {}, '本轮 token'), h('b', {}, tokenValue)), h('small', {}, tokenNote)),
-          /* 📖 使用指南（2026-11-07）：收在菜单最末尾，展开才占地方。只写代码里真实存在的行为，
-             不写虚的 —— 双击开刷、拖动挪位、会话里说「刷B站」启动目标、灯色含义都核对过实现。 */
+          /* 📖 使用指南（2026-11-07，2026-11-14 使用者反馈"太模糊"后重写）：
+             收在菜单最末尾，展开才占地方。每条都写**具体动作 → 具体结果**，
+             字号对比度也调大了（11px #a8c2d4 → 12px #c9dcea，标题 13px 近白）。 */
           h('details', { 'data-bd-menu-guide': '' },
             h('summary', {}, h(PetIcon, { name: 'spark' }), h('span', {}, '使用指南')),
             h('ul', {},
-              h('li', {}, h('b', {}, '双击我'), ' —— 直接新开会话开刷；按住拖动 —— 挪位置；单击或右键 —— 开这个菜单。'),
-              h('li', {}, '在', h('b', {}, '鲸鱼摸鱼模式'), '的会话里，说一句「去刷B站」就是启动目标：它会自己搜片、读字幕、发评论、写日报。'),
-              h('li', {}, h('b', {}, '后台刷'), ' —— 挂机长跑不用盯着会话；想每天定时自动刷，去 工作台 → 运行方式。'),
-              h('li', {}, 'B站没登录？工作台 → 账号与环境 里', h('b', {}, '扫码登录'), '。'),
-              h('li', {}, '头顶小灯：', h('b', {}, '青绿'), '在刷、', h('b', {}, '琥珀'), '后台跑、', h('b', {}, '淡红'), '没登录或异常、蓝灰空闲；被藏起来后，从右下角小圆点点回来。'),
-              h('li', {}, '评论配图、表情收藏、token 预算、节奏快慢，都在 工作台 里调。'))))
+              h('li', {}, h('b', {}, '怎么开刷'), ' —— ', h('b', {}, '双击鱼'), '直接新开会话刷；或在鲸鱼摸鱼模式的会话里说一句「', h('b', {}, '去刷B站'), '」。按住拖动挪位置，单击/右键开这个菜单。'),
+              h('li', {}, h('b', {}, '它会做什么'), ' —— 自己搜片、读字幕，看完尽量在评论区留一句（配表情包）；', h('b', {}, '有人私信/评论/回复就优先回'), '；距上一条动态满半小时发一条（自动贴视频链接）；收工写当天日报。'),
+              h('li', {}, h('b', {}, '怎么停'), ' —— 会话里说「停」或「够了」；后台刷去 工作台 → 运行方式 里停。'),
+              h('li', {}, h('b', {}, '挂机'), ' —— 菜单「后台刷」不用盯着会话；要每天定时自动刷，去 工作台 → 运行方式。'),
+              h('li', {}, h('b', {}, '看进度/花销'), ' —— 菜单「运行状态」看轮次和本轮 token；明细在 工作台 → 记录与用量 → token 账本。'),
+              h('li', {}, h('b', {}, 'B站没登录'), ' —— 工作台 → 账号与环境 里扫码。'),
+              h('li', {}, h('b', {}, '小灯含义'), ' —— 青绿在刷、琥珀后台跑或有待处理、淡红没登录/异常、蓝灰空闲；被藏起来后从右下角小圆点点回来。'),
+              h('li', {}, h('b', {}, '口味与预算'), ' —— 挑片偏好、评论配图、表情收藏、token 预算、节奏快慢，都在 工作台 里调。'))))
       })() : null
 
       return h('div', { style: { position: 'absolute', left: '0', top: '0' } },
