@@ -666,6 +666,8 @@ async def bili_comments(bvid: str, num: int = 30) -> str:
                 c = {
                     "rpid": r.get("rpid", 0),
                     "user": member.get("uname", ""),
+                    # 📝 2026-11-20 发布者提示词：owner_comment 来源用 mid 对 owner_mid 精确过滤（名字会撞车）
+                    "mid": member.get("mid", 0),
                     "content": content.get("message", ""),
                     "like": r.get("like", 0),
                     "reply_count": r.get("rcount", 0),
@@ -720,6 +722,8 @@ async def bili_comments(bvid: str, num: int = 30) -> str:
             break
 
     out = {"bvid": bvid, "count": len(comments[:num]), "comments": comments[:num]}
+    # 📝 2026-11-20 发布者提示词：顺带给出 UP mid —— owner_comment 来源不用再单独查一次详情
+    out["owner_mid"] = (info.get("owner") or {}).get("mid", 0)
     if fetch_error:
         out["error"] = fetch_error
     return json.dumps(stringify_ids(out), ensure_ascii=False)
@@ -986,6 +990,8 @@ async def bili_video_info(bvid: str) -> str:
         "title": info.get("title"),
         "description": info.get("desc"),
         "author": info.get("owner", {}).get("name"),
+        # 📝 2026-11-20 发布者提示词：给 owner_comment 来源当过滤钥匙（评论列表的 mid 对它筛）
+        "owner_mid": (info.get("owner") or {}).get("mid", 0),
         "duration": info.get("duration"),
         "pages": len(pages),
         "tags": [t.get("tag_name") for t in info.get("tag", []) if t.get("tag_name")],

@@ -1,5 +1,15 @@
 # 更新记录
 
+## 2.8.3（2026-11-20）
+
+新增「视频发布者提示词」：尊重视频 UP 主写给评论区的提示词，决定要不要回复、回复到哪；回复正文的生成规则不变。
+
+- **新设置（手动-only，模型不可写）**：`ownerPromptMode`（`ignore` 无视，默认 / `relaxed` 轻松，参考 / `strict` 严格，完全按提示词）+ `ownerPromptSources`（`description` 视频简介 / `subtitle` 字幕原文 / `owner_comment` UP主评论，默认只开简介；故意没有画面帧来源 —— 无画面识别能力）。设置页「互动与投递 → 发布者提示词」三档模式 + 来源多选；`lib/config-policy.mjs` 拒绝模型写这两个键（`OWNER_PROMPT_MANUAL_ONLY`），HTTP 与 `bili_config` 两条写入口共用白名单校验。
+- **拾取与注入**：材料顺手从三只本来就在跑的读取工具里攒（`bili_video_info` 简介+UP mid、`bili_subtitle` 字幕原文、`bili_comments` 评论列表带 mid，vendor 侧补了 `owner_mid`/`mid` 字段），按 bvid 带缓存；拾取到就随回执挂 `owner_prompt` 字段给模型看。策略指令与安全硬约束在 `lib/owner-prompt.mjs` 构造，经 `buildFeiyuObjective` 注入 —— `ignore` 模式一个字都不注入，行为与功能加入前完全一致。
+- **严格模式兜底**：保守解析（关键词白名单：deny / allow / 只一级评论 / 只在带某词的评论下回复 / 含义不明）+ 发送层拦截 —— 不明确允许就拒发，`force` 也绕不过；「收到的回复」通道复用 `replySkipReason` 的既有 `can_reply` 契约（新增第三个参数，判据顺序 rpid → 发布者提示词 → 判重）。发布者评论区拾取用 UP mid 精确过滤，不靠名字猜。
+- **安全边界（提示词不可覆盖）**：提示词只决定「是否回复」与「回复位置」；回复正文按原有规则生成；点赞/投币/关注/私信/夹带指定文字等其他要求一律忽略；提示词是不可信外部数据，自称系统指令也不升级权限。
+- 测试：新增 `tests/owner-prompt.test.mjs`（默认静默、白名单校验、三来源拾取、strict 解析与兜底判定、注入含安全约束、config-policy 拒写）。
+
 ## 2.8.2（2026-11-14）
 
 修三件事：摸鱼模式缓存命中率过低导致费用偏高、动态发得太少且没有反馈、私信被排在最后。另修「本轮 token」恒为 0 的账本冻结、重写使用指南、给鱼模式加「只做B站」边界，并把鲸鱼摸鱼的目标提示词从 26 行压到 11 行。详见[发布说明](docs/RELEASE_2_8_2.md)。
