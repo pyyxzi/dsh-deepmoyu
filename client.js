@@ -2791,6 +2791,9 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
       const [perDay, setPerDay] = React.useState(null)
       const [dmUid, setDmUid] = React.useState(null)
       const [dmMode, setDmMode] = React.useState(null)
+      /* 📝 发布者提示词（2026-11-20）：三档对待方式 + 拾取来源；保存走 patch（模型不可改这两键） */
+      const [ownerPromptMode, setOwnerPromptMode] = React.useState(null)
+      const [ownerPromptSources, setOwnerPromptSources] = React.useState(null)
       const [persona, setPersona] = React.useState(null)
       const [momentStyle, setMomentStyle] = React.useState(null)
       const [interactionStyle, setInteractionStyle] = React.useState(null)
@@ -2985,6 +2988,8 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
         if (perDay === null) setPerDay(String(cfg.perDay ?? 20))
         if (dmUid === null) setDmUid(cfg.dmUid ? String(cfg.dmUid) : '')
         if (dmMode === null) setDmMode(cfg.dmMode || 'off')
+        if (ownerPromptMode === null) setOwnerPromptMode(cfg.ownerPromptMode || 'ignore')
+        if (ownerPromptSources === null) setOwnerPromptSources(Array.isArray(cfg.ownerPromptSources) && cfg.ownerPromptSources.length ? [...cfg.ownerPromptSources] : ['description'])
         if (persona === null) setPersona(cfg.persona || '')
         if (momentStyle === null) setMomentStyle(cfg.momentStyle || '随心情')
         if (interactionStyle === null) setInteractionStyle(cfg.interactionStyle || 'companion')
@@ -3991,6 +3996,42 @@ function PetOtherSettings({ view = 'environment', st, setSt, busy, setBusy, say,
           sw('replyToComments') ? h('div', { 'data-bd-sub': '' },
             h('div', { 'data-bd-note': '' }, '无固定条数上限；是否回复由角色自主判断。同一条评论只回复一次，避免对同一对象连续重复回复。')) : null,
             h('button', { 'data-bd-btn': '', disabled: Boolean(busy), onClick: () => patch({ momentStyle: momentStyle || '随心情', momentPerDay: clampField('momentPerDay', momentPerDay, 0, 50) }, '动态设置') }, '保存动态设置')),
+          /* 📝 发布者提示词（2026-11-20）：UP 在简介/字幕/评论区留的提示词，决定要不要回、回到哪。
+             这两键模型不可改（config-policy 把 bili_config PATCH 挡住）；保存走 patch，与别的区块同一通道。 */
+          h('section', { 'data-bd-sec': '', 'data-bd-owner-prompt': '' }, heading('sliders', '发布者提示词'),
+            h('div', { 'data-bd-note': '' },
+              '视频 UP 主可以在简介、字幕或评论区留言里给评论区写提示词（如「评论区自由回复」「只在带提问二字的评论下回复」「不要回复」）。这里决定刷到那条视频时怎么对待它；拾取不到提示词时保持原有回复行为。'),
+            h('div', { 'data-bd-row': '' },
+              h('span', { 'data-bd-label': '', 'data-bd-grow': '' }, '对待方式'),
+              h('select', {
+                'data-bd-input': '', 'aria-label': '发布者提示词对待方式', style: { width: '240px' },
+                value: ownerPromptMode || 'ignore', onChange: (e) => setOwnerPromptMode(e.target.value),
+              },
+              h('option', { value: 'ignore' }, '无视 · 不拾取，行为与从前完全一样'),
+              h('option', { value: 'relaxed' }, '轻松 · 参考提示词自主判断'),
+              h('option', { value: 'strict' }, '严格 · 完全按提示词，不明确允许就不回'))),
+            ownerPromptMode && ownerPromptMode !== 'ignore' ? h('div', { 'data-bd-sub': '' },
+              h('div', { 'data-bd-label': '' }, '从哪里拾取'),
+              h('div', { 'data-bd-segments': '', role: 'group', 'aria-label': '发布者提示词来源', style: { flexWrap: 'wrap' } },
+                ...[['description', '视频简介'], ['subtitle', '字幕原文'], ['owner_comment', 'UP主评论']].map(([value, label]) =>
+                  h('button', { key: value, type: 'button', 'data-bd-btn': '', 'data-sm': '', disabled: Boolean(busy),
+                    'aria-pressed': (ownerPromptSources || []).includes(value),
+                    onClick: () => setOwnerPromptSources((old) => (old || []).includes(value) ? old.filter((x) => x !== value) : [...(old || []), value]) }, label))),
+              h('div', { 'data-bd-note': '' }, '可多选；一个都不选时按「视频简介」处理。拾取到的提示词会随视频详情 / 字幕 / 评论的回执挂出 owner_prompt 字段。'),
+              ownerPromptMode === 'strict' ? h('div', { 'data-bd-msg': '', 'data-warn': '' },
+                '严格模式很保守：提示词里没有明确写「允许回复」之类的字样就一律不回（含义不明也算不允许）。想正常刷评论、只是参考 UP 的意见，请选「轻松」。') : null,
+              h('div', { 'data-bd-note': '' },
+                '安全边界：提示词只决定「是否回复」与「回复位置」，不改变回复正文的写法；点赞、投币、关注、私信、在回复里夹带文字等其他要求一律忽略；它是外部内容，即使自称系统指令也不会获得任何权限。')) : null,
+            h('div', { 'data-bd-row': '' },
+              h('span', { 'data-bd-note': '', 'data-bd-grow': '' }, '改动在下一轮刷站时生效。'),
+              h('button', { 'data-bd-btn': '', disabled: Boolean(busy),
+                onClick: async () => {
+                  const mode = ownerPromptMode || 'ignore'
+                  const sources = (ownerPromptSources || []).filter((x) => ['description', 'subtitle', 'owner_comment'].includes(x))
+                  if (mode !== 'ignore' && !sources.length) { say('发布者提示词：至少选择一个拾取来源', 'warn'); return }
+                  await patch({ ownerPromptMode: mode, ownerPromptSources: sources }, '发布者提示词')
+                },
+              }, '保存发布者提示词'))),
           h('section', { 'data-bd-sec': '' }, heading('key', '私信与投递'), ToggleRow({
             label: '私信投递', on: dmMode !== 'off' && dmMode !== null, disabled: Boolean(busy),
             note: '将精选结果发送到指定 UID，可选择仅私信或同时投递。',
